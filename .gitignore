@@ -11,6 +11,7 @@ env/
 *.sqlite3
 *.duckdb
 *.db
+
 # Exclude the specific consolidation DB if it exists
 dataWarehouse.sqlite3
 
@@ -26,6 +27,7 @@ Bot Extract/
 Output_Consolidated/
 temp_uploads/
 temp/
+uploads/
 # We keep the source 'static/' folder, but ignore the collected 'staticfiles/'
 
 # Standalone file
@@ -41,3 +43,6 @@ Thumbs.db
 dist/
 build/
 *.spec
+
+# --- File Support ---
+.xlsx

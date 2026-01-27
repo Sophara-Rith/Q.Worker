@@ -1,19 +1,32 @@
 {% load static %}
 <!doctype html>
-<html lang="en">
+<html lang="en" class="group/html">
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Q.Worker - {% block title %}Dashboard{% endblock %}</title>
 
-        <script src="https://cdn.tailwindcss.com"></script>
+        <script>
+            // 1. Dark Mode Logic
+            if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
 
+            // 2. Sidebar Logic (Prevents layout shift)
+            // Default is OPEN (true). If explicitly 'false', add closed class.
+            if (localStorage.getItem('sidebarOpen') === 'false') {
+                document.documentElement.classList.add('sidebar-closed');
+            }
+        </script>
+
+        <script src="https://cdn.tailwindcss.com"></script>
         <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
         <style>
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-            /* Base Settings */
             html {
                 font-size: 14px;
             }
@@ -22,11 +35,9 @@
                 background-color: #f8fafc;
                 color: #1e293b;
             }
-
             [x-cloak] {
                 display: none !important;
             }
-
             .no-scrollbar::-webkit-scrollbar {
                 display: none;
             }
@@ -34,23 +45,56 @@
                 -ms-overflow-style: none;
                 scrollbar-width: none;
             }
+
+            /* Dark Mode Overrides */
+            .dark body {
+                background-color: #0f172a;
+                color: #f1f5f9;
+            }
+            .dark .bg-white {
+                background-color: #1e293b;
+                color: #f1f5f9;
+                border-color: #334155;
+            }
+            .dark .text-gray-900,
+            .dark .text-gray-800 {
+                color: #f1f5f9;
+            }
+            .dark .text-gray-500,
+            .dark .text-gray-600,
+            .dark .text-gray-700 {
+                color: #94a3b8;
+            }
+            .dark .border-gray-200,
+            .dark .border-gray-100,
+            .dark .border-gray-50 {
+                border-color: #334155;
+            }
+            .dark .bg-gray-50 {
+                background-color: #0f172a;
+            }
+            .dark input {
+                background-color: #334155;
+                border-color: #475569;
+                color: white;
+            }
+            .dark .shadow-xl,
+            .dark .shadow-2xl {
+                box-shadow:
+                    0 20px 25px -5px rgba(0, 0, 0, 0.5),
+                    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            }
         </style>
+
         <script>
             tailwind.config = {
+                darkMode: 'class',
                 theme: {
                     extend: {
                         colors: {
-                            brand: {
-                                50: '#eff6ff',
-                                100: '#dbeafe',
-                                500: '#3b82f6',
-                                600: '#2563eb',
-                                700: '#1d4ed8',
-                            },
+                            brand: {50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8'},
                         },
-                        fontSize: {
-                            xxs: '0.65rem',
-                        },
+                        fontSize: {xxs: '0.65rem'},
                     },
                 },
             };
@@ -59,84 +103,84 @@
     <body
         class="h-screen flex overflow-hidden"
         x-data="{ 
-          sidebarOpen: JSON.parse(localStorage.getItem('sidebarOpen')) ?? true,
-          toggle() {
-              this.sidebarOpen = !this.sidebarOpen;
-              localStorage.setItem('sidebarOpen', this.sidebarOpen);
-          }
-      }"
-        x-init="$watch('sidebarOpen', val => localStorage.setItem('sidebarOpen', val))"
+            settingsOpen: false,
+            darkMode: document.documentElement.classList.contains('dark'),
+            
+            toggleSidebar() {
+                // Toggle Class directly
+                document.documentElement.classList.toggle('sidebar-closed');
+                // Save state based on class presence
+                const isClosed = document.documentElement.classList.contains('sidebar-closed');
+                localStorage.setItem('sidebarOpen', !isClosed);
+            }
+        }"
     >
-        <aside class="relative bg-white flex flex-col transition-all duration-300 ease-in-out z-30 shadow-xl shadow-gray-200/50" :class="sidebarOpen ? 'w-64' : 'w-20'">
-            <div class="h-16 flex items-center px-5 mb-2 flex-shrink-0">
+        <aside class="relative bg-white flex flex-col transition-all duration-300 ease-in-out z-30 shadow-xl shadow-gray-200/50 w-64 [.sidebar-closed_&]:w-20">
+            <div class="h-16 flex items-center px-6 mb-2 flex-shrink-0">
                 <div class="flex items-center gap-3 overflow-hidden whitespace-nowrap">
                     <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center flex-shrink-0 text-white shadow-md shadow-brand-500/20">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                     </div>
-                    <div class="overflow-hidden transition-all duration-300 ease-in-out" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">
+                    <div class="overflow-hidden transition-all duration-300 ease-in-out max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">
                         <h1 class="font-bold text-gray-900 text-base leading-none">Q.Worker</h1>
                         <p class="text-[10px] text-brand-600 font-bold uppercase tracking-wider mt-0.5 whitespace-nowrap">{% block sidebar_subtitle %}PROFESSIONAL EDITION{% endblock %}</p>
                     </div>
                 </div>
             </div>
 
-            <button @click="toggle()" class="absolute -right-3 top-20 w-6 h-6 bg-white border border-gray-100 rounded-full flex items-center justify-center p-0 leading-none text-gray-400 hover:text-brand-600 hover:border-brand-300 shadow-sm transition-transform z-50 focus:outline-none">
-                <svg :class="sidebarOpen ? '' : 'rotate-180'" class="w-4 h-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+            <button @click="toggleSidebar()" class="absolute -right-3 top-20 w-6 h-6 bg-white border border-gray-100 rounded-full flex items-center justify-center p-0 leading-none text-gray-400 hover:text-brand-600 hover:border-brand-300 shadow-sm transition-transform z-50 focus:outline-none">
+                <svg class="w-4 h-4 transition-transform duration-300 [.sidebar-closed_&]:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
             </button>
 
-            <nav class="flex-1 overflow-y-auto overflow-x-hidden px-3 space-y-1 no-scrollbar">
+            <nav class="flex-1 overflow-y-auto overflow-x-hidden px-4 space-y-1 no-scrollbar">
                 <a href="{% url 'dashboard:index' %}" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg transition-all group relative overflow-hidden" :class="window.location.pathname == '/dashboard/' ? 'bg-brand-50 text-brand-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
                     </svg>
-                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">Dashboard</span>
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Dashboard</span>
                 </a>
 
                 <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">New Crosscheck</span>
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">New Crosscheck</span>
                 </a>
 
                 <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group justify-between">
                     <div class="flex items-center gap-3">
                         <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">History</span>
+                        <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">History</span>
                     </div>
-                    <span class="bg-brand-100 text-brand-700 text-xxs font-bold px-2 py-0.5 rounded-full leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[50px] opacity-100' : 'max-w-0 opacity-0'">24</span>
+                    <span class="bg-brand-100 text-brand-700 text-xxs font-bold px-2 py-0.5 rounded-full leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[50px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">24</span>
                 </a>
 
                 <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.384-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
                     </svg>
-                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">Processing</span>
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Processing</span>
                 </a>
 
                 <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">Results</span>
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Results</span>
                 </a>
 
                 <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">Reports</span>
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Reports</span>
                 </a>
 
-                <div class="my-3 px-2">
-                    <div class="h-px bg-gray-100"></div>
-                </div>
+                <div class="my-3 px-2"><div class="h-px bg-gray-100"></div></div>
 
                 <a href="{% url 'consolidation:index' %}" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg transition-all group" :class="window.location.pathname.includes('consolidation') ? 'bg-brand-50 text-brand-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'">Data Consolidation</span>
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Data Consolidation</span>
                 </a>
+            </nav>
 
-                <div class="my-3 px-2">
-                    <div class="h-px bg-gray-100"></div>
-                </div>
-
-                <a href="{% url 'core:settings' %}" class="group flex items-center px-2 py-2 text-sm font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900">
-                    <svg class="mr-3 h-6 w-6 text-gray-400 group-hover:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="p-3 border-t border-gray-100 bg-white z-10" x-show="!document.documentElement.classList.contains('sidebar-closed')" x-transition>
+                <a href="#" @click.prevent="settingsOpen = true" class="w-full flex items-center gap-3 px-3 py-3 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -145,29 +189,26 @@
                         ></path>
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                     </svg>
-                    Settings
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Settings</span>
                 </a>
-            </nav>
+            </div>
 
-            <div class="p-4 border-t border-gray-100 bg-gray-50/50" x-show="sidebarOpen" x-transition>
-                <div class="bg-brand-600 rounded-xl p-3 text-white shadow-lg shadow-brand-500/20 relative overflow-hidden group cursor-default">
-                    <div class="absolute inset-0 opacity-10" style="background-image: radial-gradient(circle, white 1px, transparent 1px); background-size: 8px 8px"></div>
-
-                    <div class="relative z-10 flex items-start gap-3">
-                        <div class="p-1.5 bg-white/20 rounded-lg backdrop-blur-sm animate-pulse">
-                            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path></svg>
-                        </div>
-                        <div>
-                            <p class="text-[10px] font-bold uppercase tracking-wide opacity-80 leading-none">System Status</p>
-                            <p class="text-xs font-bold mt-1 leading-none">All systems operational</p>
-                            <p class="text-[10px] mt-1 opacity-70 leading-none">DuckDB Ready • 10.2M rows</p>
-                        </div>
-                    </div>
-                </div>
+            <div class="p-3 border-t border-gray-100 bg-white z-10" style="display: none" :style="document.documentElement.classList.contains('sidebar-closed') ? 'display: block;' : 'display: none;'">
+                <a href="#" @click.prevent="settingsOpen = true" class="w-full flex items-center justify-center gap-3 px-3 py-3 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        ></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                </a>
             </div>
         </aside>
 
-        <div class="flex-1 flex flex-col h-screen overflow-hidden bg-[#f8fafc]">
+        <div class="flex-1 flex flex-col h-screen overflow-hidden bg-[#f8fafc] dark:bg-[#0f172a]">
             <header class="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-8 flex-shrink-0 z-10">
                 <div class="flex-1 max-w-xl">
                     <div class="relative group">
@@ -179,141 +220,18 @@
                 </div>
 
                 <div class="flex items-center gap-6 ml-6">
-                    <div
-                        class="relative"
-                        x-data="{
-                            open: false,
-                            count: 0,
-                            notifications: [],
-                            audio: new Audio('https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3'), 
-
-                            init() {
-                                if ('Notification' in window && Notification.permission !== 'granted') {
-                                    Notification.requestPermission();
-                                }
-                                this.fetchNotifications();
-                                setInterval(() => this.fetchNotifications(), 5000);
-
-                                this.$watch('count', value => {
-                                    const baseTitle = 'Q.Worker';
-                                    document.title = value > 0 ? `🔴 (${value}) ${baseTitle}` : baseTitle;
-                                });
-                            },
-
-                            fetchNotifications() {
-                                const previousCount = this.count;
-                                fetch('{% url 'core:api_notifications' %}')
-                                    .then(res => res.json())
-                                    .then(data => {
-                                        this.count = data.unread_count;
-                                        this.notifications = data.notifications;
-                                        if (this.count > previousCount) {
-                                            this.handleNewNotification(data.notifications[0]); 
-                                        }
-                                    });
-                            },
-
-                            handleNewNotification(latest) {
-                                if (document.hidden && Notification.permission === 'granted') {
-                                    const notif = new Notification(latest.title, {
-                                        body: latest.message,
-                                        icon: '{% static 'img/logo.png' %}',
-                                        tag: 'qworker-notification'
-                                    });
-                                    notif.onclick = function() { window.focus(); this.close(); };
-                                } else {
-                                    this.audio.play().catch(e => console.log('Audio blocked:', e));
-                                }
-                            },
-
-                            markRead(id) {
-                                const notif = this.notifications.find(n => n.id === id);
-                                if(notif && !notif.is_read) {
-                                    notif.is_read = true;
-                                    this.count = Math.max(0, this.count - 1);
-                                    fetch(`/core/api/notifications/${id}/read/`, {
-                                        method: 'POST',
-                                        headers: {'X-CSRFToken': '{{ csrf_token }}'}
-                                    });
-                                }
-                            },
-
-                            markAllRead() {
-                                this.notifications.forEach(n => n.is_read = true);
-                                this.count = 0;
-                                fetch('{% url 'core:mark_all_read' %}', {
-                                    method: 'POST',
-                                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
-                                });
-                            },
-
-                            clearAll() {
-                                this.notifications = [];
-                                this.count = 0;
-                                fetch('{% url 'core:clear_all_notifications' %}', {
-                                    method: 'POST',
-                                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
-                                });
-                            }
-                        }"
-                        @click.outside="open = false"
-                    >
+                    <div class="relative" x-data="{ open: false, count: 0, notifications: [], init() { this.fetchNotifications(); }, fetchNotifications() { fetch('{% url 'core:api_notifications' %}').then(r=>r.json()).then(d=>{this.count=d.unread_count;this.notifications=d.notifications;}) } }" @click.outside="open = false">
                         <button @click="open = !open" class="relative p-2 text-gray-400 hover:text-gray-600 transition rounded-full hover:bg-gray-50 focus:outline-none">
                             <span x-show="count > 0" x-transition.scale class="absolute top-2 right-2.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                         </button>
-
                         <div x-show="open" x-transition.origin.top.right style="display: none" class="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden">
-                            <div class="px-4 py-2 border-b border-gray-50 flex justify-between items-center">
-                                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Notifications</h3>
-                                <div class="flex gap-3">
-                                    <button @click="markAllRead" x-show="count > 0" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Mark as all read</button>
-                                    <button @click="clearAll" x-show="notifications.length > 0" class="text-xs text-gray-400 hover:text-gray-600 font-medium">Clear all</button>
-                                </div>
-                            </div>
-
-                            <div class="max-h-80 overflow-y-auto">
-                                <template x-for="note in notifications" :key="note.id">
-                                    <div @click="markRead(note.id)" class="px-4 py-3 hover:bg-gray-50 transition cursor-pointer border-b border-gray-50 last:border-0 relative">
-                                        <div x-show="!note.is_read" class="absolute left-0 top-0 bottom-0 w-1 bg-brand-500"></div>
-                                        <div class="flex items-start gap-3">
-                                            <div class="mt-0.5 flex-shrink-0">
-                                                <template x-if="note.type === 'SUCCESS'"
-                                                    ><div class="text-green-500">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div
-                                                ></template>
-                                                <template x-if="note.type === 'WARNING'"
-                                                    ><div class="text-orange-500">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div
-                                                ></template>
-                                                <template x-if="note.type === 'ERROR'"
-                                                    ><div class="text-red-500">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div
-                                                ></template>
-                                                <template x-if="note.type === 'INFO'"
-                                                    ><div class="text-blue-500">
-                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div
-                                                ></template>
-                                            </div>
-                                            <div class="flex-1">
-                                                <p class="text-sm font-semibold text-gray-800" x-text="note.title"></p>
-                                                <p class="text-xs text-gray-500 mt-0.5" x-text="note.message"></p>
-                                                <p class="text-[10px] text-gray-400 mt-1" x-text="note.time + ' · ' + note.date"></p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </template>
-                                <div x-show="notifications.length === 0" class="px-4 py-8 text-center text-gray-500">
-                                    <p class="text-sm">No notifications</p>
-                                </div>
-                            </div>
+                            <div class="px-4 py-2 border-b border-gray-50"><h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Notifications</h3></div>
+                            <div class="max-h-80 overflow-y-auto px-4 py-4 text-center text-sm text-gray-500" x-text="notifications.length ? '' : 'No notifications'"></div>
                         </div>
                     </div>
 
-                    <div class="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-100 text-xs font-bold uppercase tracking-wide">
-                        <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                        Licensed
-                    </div>
+                    <div class="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-100 text-xs font-bold uppercase tracking-wide"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Licensed</div>
 
                     <div class="relative" x-data="{ userMenuOpen: false }">
                         <button @click="userMenuOpen = !userMenuOpen" @click.outside="userMenuOpen = false" class="flex items-center gap-3 pl-3 border-l border-gray-100 transition cursor-pointer focus:outline-none">
@@ -324,18 +242,14 @@
                             </div>
                             <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </button>
-
-                        <div x-show="userMenuOpen" x-transition.origin.top.right class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50" style="display: none">
-                            <div class="px-4 py-2 border-b border-gray-50">
+                        <div x-show="userMenuOpen" x-transition.origin.top.right class="absolute left-4 mt-3 w-36 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 overflow-hidden" style="display: none">
+                            <!-- <div class="px-4 py-2 border-b border-gray-50">
                                 <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">My Account</p>
                             </div>
                             <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-brand-600">Profile Settings</a>
                             <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-brand-600">License Info</a>
-                            <div class="my-1 border-t border-gray-100"></div>
-                            <a href="{% url 'accounts:logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
-                                Sign Out
-                            </a>
+                            <div class="my-1 border-t border-gray-100"></div> -->
+                            <a href="{% url 'accounts:logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:text-red-100 flex items-center gap-2">Sign Out</a>
                         </div>
                     </div>
                 </div>
@@ -345,5 +259,165 @@
                 <div class="max-w-[1600px] mx-auto">{% block content %} {% endblock %}</div>
             </main>
         </div>
+
+        <div x-cloak x-show="settingsOpen" class="relative z-50" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+            <div x-show="settingsOpen" x-transition.opacity class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" @click="settingsOpen = false"></div>
+
+            <div class="fixed inset-0 z-10 w-screen overflow-y-auto">
+                <div class="flex min-h-full items-center justify-center p-4">
+                    <div x-show="settingsOpen" x-transition:enter="ease-out duration-300" class="relative transform overflow-hidden rounded-xl bg-white text-left shadow-2xl transition-all w-full max-w-4xl h-[600px] flex flex-col md:flex-row" x-data="settingsForm()">
+                        <div class="w-full md:w-64 bg-gray-50 border-r border-gray-100 p-4 flex flex-col">
+                            <h2 class="px-2 mb-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Settings</h2>
+                            <nav class="space-y-1.5">
+                                <button @click="activeTab = 'general'" :class="activeTab === 'general' ? 'bg-white text-brand-600 shadow-sm ring-1 ring-black/5' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'" class="w-full flex items-center gap-3 px-3 py-3 text-sm font-medium rounded-lg transition-all text-left">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                                        ></path>
+                                    </svg>
+                                    General
+                                </button>
+                                <button @click="activeTab = 'profile'" :class="activeTab === 'profile' ? 'bg-white text-brand-600 shadow-sm ring-1 ring-black/5' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'" class="w-full flex items-center gap-3 px-3 py-3 text-sm font-medium rounded-lg transition-all text-left">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg> Profile
+                                </button>
+                                <button @click="activeTab = 'about'" :class="activeTab === 'about' ? 'bg-white text-brand-600 shadow-sm ring-1 ring-black/5' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'" class="w-full flex items-center gap-3 px-3 py-3 text-sm font-medium rounded-lg transition-all text-left">
+                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> About
+                                </button>
+                            </nav>
+                        </div>
+
+                        <div class="flex-1 flex flex-col min-w-0 bg-white dark:bg-gray-800">
+                            <div class="flex items-center justify-between px-8 py-6 border-b border-gray-100 dark:border-gray-700">
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-900 dark:text-white" x-text="tabTitles[activeTab]">General Settings</h3>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Manage your application preferences.</p>
+                                </div>
+                                <button @click="settingsOpen = false" class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300 transition-colors rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                </button>
+                            </div>
+
+                            <div class="flex-1 overflow-y-auto p-8">
+                                <div x-show="activeTab === 'general'" class="space-y-8">
+                                    <div>
+                                        <label class="block text-sm font-semibold text-gray-900 dark:text-white mb-2">Default Output Directory</label>
+                                        <div class="flex gap-2">
+                                            <input type="text" x-model="outputDir" class="flex-1 rounded-lg border border-gray-300 bg-gray-50 dark:bg-gray-900 dark:border-gray-600 shadow-sm focus:border-brand-500 focus:ring-brand-500 text-sm py-2.5 px-3" placeholder="Select a folder..." />
+                                            <button type="button" @click="browse" class="px-4 py-2.5 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 border border-gray-300 dark:border-gray-600 text-sm font-medium flex items-center gap-2 shadow-sm" :disabled="browsing">
+                                                <svg x-show="!browsing" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"></path></svg>
+                                                <span x-text="browsing ? 'Opening...' : 'Browse'"></span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="pt-6 border-t border-gray-100 dark:border-gray-700">
+                                        <label class="block text-sm font-semibold text-gray-900 dark:text-white mb-4">Appearance</label>
+                                        <div class="grid grid-cols-2 gap-4">
+                                            <div @click="setTheme(false)" class="cursor-pointer relative flex items-center gap-3 p-3 rounded-xl transition-all" :class="!darkMode ? 'bg-white text-brand-600 shadow-sm ring-1 ring-black/5 dark:ring-white/10 dark:bg-gray-700' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400'">
+                                                <div class="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center shadow-sm text-gray-500">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                                                </div>
+                                                <div class="text-sm font-medium">Light Mode</div>
+                                                <div x-show="!darkMode" class="absolute top-3 right-3 w-4 h-4 bg-brand-600 rounded-full border-2 border-white"></div>
+                                            </div>
+                                            <div @click="setTheme(true)" class="cursor-pointer relative flex items-center gap-3 p-3 rounded-xl transition-all" :class="darkMode ? 'bg-white text-brand-600 shadow-sm ring-1 ring-black/5 dark:ring-white/10 dark:bg-gray-700' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400'">
+                                                <div class="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center shadow-sm text-gray-300">
+                                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path></svg>
+                                                </div>
+                                                <div class="text-sm font-medium">Dark Mode</div>
+                                                <div x-show="darkMode" class="absolute top-3 right-3 w-4 h-4 bg-brand-600 rounded-full border-2 border-white"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div x-show="activeTab === 'profile'" class="text-center py-10"><p class="text-sm text-gray-500">User Profile settings coming soon.</p></div>
+                                <div x-show="activeTab === 'about'" class="space-y-4">
+                                    <div class="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+                                        <p class="text-sm font-semibold">Q.Worker Pro</p>
+                                        <p class="text-xs text-gray-500">v1.0.2</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div x-show="activeTab === 'general'" class="px-8 py-5 bg-gray-50 dark:bg-gray-900 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center">
+                                <div class="flex-1 mr-4">
+                                    <div x-show="msg" x-transition class="text-sm font-medium flex items-center gap-2" :class="msgType === 'success' ? 'text-green-600' : 'text-red-600'"><span x-text="msg"></span></div>
+                                </div>
+                                <button type="button" @click="save" class="px-6 py-2.5 bg-brand-600 text-white rounded-lg hover:bg-brand-700 shadow-sm text-sm font-semibold" :disabled="saving"><span x-show="!saving">Save Changes</span><span x-show="saving">Saving...</span></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function settingsForm() {
+                return {
+                    activeTab: 'general',
+                    tabTitles: {general: 'General Settings', profile: 'User Profile', about: 'About Q.Worker'},
+                    outputDir: '',
+                    darkMode: document.documentElement.classList.contains('dark'),
+                    browsing: false,
+                    saving: false,
+                    msg: '',
+                    msgType: '',
+                    init() {
+                        this.loadSettings();
+                        this.$watch('darkMode', (val) => {
+                            if (val) document.documentElement.classList.add('dark');
+                            else document.documentElement.classList.remove('dark');
+                        });
+                    },
+                    setTheme(isDark) {
+                        this.darkMode = isDark;
+                        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                    },
+                    async loadSettings() {
+                        try {
+                            let res = await fetch("{% url 'core:get_settings' %}");
+                            let data = await res.json();
+                            if (data.output_dir) this.outputDir = data.output_dir;
+                        } catch (e) {}
+                    },
+                    async browse() {
+                        this.browsing = true;
+                        try {
+                            let res = await fetch("{% url 'core:browse' %}");
+                            let data = await res.json();
+                            if (data.path) this.outputDir = data.path;
+                        } catch (e) {
+                        } finally {
+                            this.browsing = false;
+                        }
+                    },
+                    async save() {
+                        this.saving = true;
+                        this.msg = '';
+                        try {
+                            let res = await fetch("{% url 'core:save_settings' %}", {method: 'POST', body: JSON.stringify({output_dir: this.outputDir}), headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'}});
+                            let data = await res.json();
+                            if (data.success) {
+                                this.msg = 'Saved!';
+                                this.msgType = 'success';
+                                setTimeout(() => {
+                                    this.msg = '';
+                                }, 3000);
+                            } else {
+                                this.msg = 'Failed';
+                                this.msgType = 'error';
+                            }
+                        } catch (e) {
+                            this.msg = 'Error';
+                            this.msgType = 'error';
+                        } finally {
+                            this.saving = false;
+                        }
+                    },
+                };
+            }
+        </script>
     </body>
 </html>

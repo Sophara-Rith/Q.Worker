@@ -1,3 +1,5 @@
+import subprocess
+import sys
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.contrib import messages
@@ -9,33 +11,81 @@ import os
 
 @login_required
 def settings_view(request):
-    # Get or Create Settings for the user
     user_settings, created = UserSettings.objects.get_or_create(user=request.user)
 
     if request.method == 'POST':
         new_dir = request.POST.get('output_dir')
-        
         if new_dir:
-            # Normalize path (handle slashes)
-            clean_path = os.path.normpath(new_dir)
-            
-            # Basic validation: Check if drive/root exists
-            root = os.path.splitdrive(clean_path)[0]
-            if root and not os.path.exists(root):
-                 messages.error(request, f"The drive {root} does not exist.")
-            else:
-                try:
-                    # Try creating/validating permissions
-                    os.makedirs(clean_path, exist_ok=True)
-                    user_settings.default_output_dir = clean_path
-                    user_settings.save()
-                    messages.success(request, "Global output directory updated successfully!")
-                except Exception as e:
-                    messages.error(request, f"Error saving path: {e}")
+            # Save the manually entered or browsed path
+            user_settings.default_output_dir = new_dir
+            user_settings.save()
+            messages.success(request, "Output directory updated!")
         else:
             messages.error(request, "Path cannot be empty.")
-
+    
     return render(request, 'core/settings.html', {'settings': user_settings})
+
+@login_required
+def save_settings_ajax(request):
+    """
+    API endpoint to save settings via JavaScript (AJAX)
+    """
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            new_dir = data.get('output_dir')
+            
+            if not new_dir:
+                 return JsonResponse({'success': False, 'error': "Path cannot be empty."})
+
+            # Validate path
+            if not os.path.exists(new_dir):
+                try:
+                    os.makedirs(new_dir, exist_ok=True)
+                except OSError:
+                     return JsonResponse({'success': False, 'error': "Invalid path or permission denied."})
+
+            # Save
+            settings, _ = UserSettings.objects.get_or_create(user=request.user)
+            settings.default_output_dir = new_dir
+            settings.save()
+            
+            return JsonResponse({'success': True})
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+
+    return JsonResponse({'error': 'POST required'}, status=400)
+
+@login_required
+def get_settings_json(request):
+    """API to fetch settings for the modal"""
+    settings, _ = UserSettings.objects.get_or_create(user=request.user)
+    return JsonResponse({'output_dir': settings.default_output_dir})
+
+@login_required
+def browse_directory(request):
+    """
+    Opens a native OS folder picker on the server (local machine).
+    Uses a subprocess to avoid Tkinter thread issues in Django.
+    """
+    try:
+        # One-liner Python script to open dialog and print result
+        script = "import tkinter as tk, tkinter.filedialog as fd; root=tk.Tk(); root.withdraw(); print(fd.askdirectory())"
+        
+        # Run independent process
+        result = subprocess.check_output([sys.executable, "-c", script], stderr=subprocess.STDOUT)
+        
+        # Decode path
+        path = result.decode().strip()
+        
+        if path:
+            return JsonResponse({'path': path})
+        else:
+            return JsonResponse({'status': 'cancelled'})
+            
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
 
 @login_required
 def get_notifications(request):

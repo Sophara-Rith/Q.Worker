@@ -5,6 +5,9 @@ app_name = 'core'
 
 urlpatterns = [
     path('settings/', views.settings_view, name='settings'),
+    path('browse/', views.browse_directory, name='browse'),
+    path('save-settings/', views.save_settings_ajax, name='save_settings'),
+    path('get-settings/', views.get_settings_json, name='get_settings'),
 
     path('api/notifications/', views.get_notifications, name='api_notifications'),
     path('api/notifications/<int:notification_id>/read/', views.mark_notification_read, name='mark_notification_read'),
