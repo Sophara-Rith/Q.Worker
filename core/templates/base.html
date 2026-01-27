@@ -25,13 +25,16 @@
         <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
         <style>
+            /* ADDED: Import Google Font 'Siemreap' as fallback for Khmer */
+            @import url('https://fonts.googleapis.com/css2?family=Siemreap&display=swap');
             @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
             html {
                 font-size: 14px;
             }
             body {
-                font-family: 'Inter', sans-serif;
+                /* MODIFIED: Prioritize Khmer OS Siemreap, then Google Siemreap, then Inter */
+                font-family: 'Khmer OS Siemreap', 'Siemreap', 'Inter', sans-serif;
                 background-color: #f8fafc;
                 color: #1e293b;
             }
@@ -95,6 +98,11 @@
                             brand: {50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8'},
                         },
                         fontSize: {xxs: '0.65rem'},
+                        // MODIFIED: Register fonts in Tailwind
+                        fontFamily: {
+                            sans: ['Khmer OS Siemreap', 'Siemreap', 'Inter', 'sans-serif'],
+                            khmer: ['Khmer OS Siemreap', 'Siemreap', 'serif'],
+                        },
                     },
                 },
             };
@@ -140,9 +148,11 @@
                     <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Dashboard</span>
                 </a>
 
-                <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group">
-                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">New Crosscheck</span>
+                <a href="{% url 'crosscheck:new' %}" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg transition-all group" :class="window.location.pathname.includes('/crosscheck/') ? 'bg-brand-50 text-brand-600' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'">
+                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                    </svg>
+                    <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden" :class="sidebarOpen ? 'max-w-[200px] opacity-100' : 'max-w-0 opacity-0'"> New Crosscheck </span>
                 </a>
 
                 <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group justify-between">
@@ -243,12 +253,6 @@
                             <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </button>
                         <div x-show="userMenuOpen" x-transition.origin.top.right class="absolute left-4 mt-3 w-36 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 overflow-hidden" style="display: none">
-                            <!-- <div class="px-4 py-2 border-b border-gray-50">
-                                <p class="text-[10px] text-gray-400 uppercase font-bold tracking-wider">My Account</p>
-                            </div>
-                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-brand-600">Profile Settings</a>
-                            <a href="#" class="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 hover:text-brand-600">License Info</a>
-                            <div class="my-1 border-t border-gray-100"></div> -->
                             <a href="{% url 'accounts:logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:text-red-100 flex items-center gap-2">Sign Out</a>
                         </div>
                     </div>
