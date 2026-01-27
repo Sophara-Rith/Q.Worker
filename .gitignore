@@ -1,0 +1,43 @@
+# --- Python & Django ---
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+*.log
+*.pot
+
+# --- Database (CRITICAL) ---
+*.sqlite3
+*.duckdb
+*.db
+# Exclude the specific consolidation DB if it exists
+dataWarehouse.sqlite3
+
+# --- Security & Licensing (CRITICAL) ---
+license.key
+.env
+secrets.py
+
+# --- Django Media & Static ---
+media/
+staticfiles/
+Bot Extract/
+Output_Consolidated/
+temp_uploads/
+temp/
+# We keep the source 'static/' folder, but ignore the collected 'staticfiles/'
+
+# Standalone file
+dataConsolidation/
+
+# --- OS & IDE ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Build & Distribution ---
+dist/
+build/
+*.spec

@@ -1,0 +1,65 @@
+{% extends 'base.html' %} {% block content %}
+<div class="w-full max-w-4xl">
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900">Application Settings</h2>
+        <p class="text-sm text-gray-500">Global configurations for Q.Worker.</p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-4 border-b border-gray-200 bg-gray-50">
+            <h3 class="text-base font-semibold text-gray-900">Output Configuration</h3>
+            <p class="text-sm text-gray-500">Specify the default folder for all generated reports.</p>
+        </div>
+
+        <form method="POST" class="p-4 space-y-6">
+            {% csrf_token %}
+
+            <div>
+                <label for="output_dir" class="block text-sm font-medium text-gray-700 mb-2">Default Output Directory</label>
+                <div class="flex gap-2">
+                    <div class="relative flex-grow rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                            </svg>
+                        </div>
+                        <input type="text" name="output_dir" id="output_dir" value="{{ settings.default_output_dir }}" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-gray-300 rounded-lg p-2.5" placeholder="C:\QWorker_Output" />
+                    </div>
+                    <button type="button" onclick="document.getElementById('folderInput').click()" class="px-4 py-2 bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 whitespace-nowrap">Browse...</button>
+                    <input type="file" id="folderInput" webkitdirectory directory multiple class="hidden" onchange="handleFolderSelect(this)" />
+                </div>
+                <p class="mt-2 text-xs text-gray-500 flex items-center gap-1">
+                    <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <span><strong>Note:</strong> Browsers restrict reading full paths. If "Browse" doesn't fill the exact path, please copy/paste it from your Explorer window.</span>
+                </p>
+            </div>
+
+            {% if messages %}
+            <div class="space-y-2">
+                {% for message in messages %}
+                <div class="p-3 rounded-md {% if message.tags == 'error' %}bg-red-50 text-red-700{% else %}bg-green-50 text-green-700{% endif %} text-sm">{{ message }}</div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="flex items-center justify-end gap-3 pt-4">
+                <a href="{% url 'dashboard:index' %}" class="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"> Back to Dashboard </a>
+                <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    function handleFolderSelect(input) {
+        if (input.files && input.files.length > 0) {
+            const file = input.files[0];
+            const relativePath = file.webkitRelativePath.split('/')[0];
+
+            alert('Folder selected: ' + relativePath + "\n\nDue to browser security, we cannot read the full 'C:/...' path automatically.\n\nPlease COPY the address from the folder window you just opened and PASTE it into the text box.");
+
+            document.getElementById('output_dir').focus();
+        }
+    }
+</script>
+{% endblock %}
