@@ -179,10 +179,136 @@
                 </div>
 
                 <div class="flex items-center gap-6 ml-6">
-                    <button class="relative p-2 text-gray-400 hover:text-gray-600 transition rounded-full hover:bg-gray-50">
-                        <span class="absolute top-2 right-2.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
-                    </button>
+                    <div
+                        class="relative"
+                        x-data="{
+                            open: false,
+                            count: 0,
+                            notifications: [],
+                            audio: new Audio('https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3'), 
+
+                            init() {
+                                if ('Notification' in window && Notification.permission !== 'granted') {
+                                    Notification.requestPermission();
+                                }
+                                this.fetchNotifications();
+                                setInterval(() => this.fetchNotifications(), 5000);
+
+                                this.$watch('count', value => {
+                                    const baseTitle = 'Q.Worker';
+                                    document.title = value > 0 ? `🔴 (${value}) ${baseTitle}` : baseTitle;
+                                });
+                            },
+
+                            fetchNotifications() {
+                                const previousCount = this.count;
+                                fetch('{% url 'core:api_notifications' %}')
+                                    .then(res => res.json())
+                                    .then(data => {
+                                        this.count = data.unread_count;
+                                        this.notifications = data.notifications;
+                                        if (this.count > previousCount) {
+                                            this.handleNewNotification(data.notifications[0]); 
+                                        }
+                                    });
+                            },
+
+                            handleNewNotification(latest) {
+                                if (document.hidden && Notification.permission === 'granted') {
+                                    const notif = new Notification(latest.title, {
+                                        body: latest.message,
+                                        icon: '{% static 'img/logo.png' %}',
+                                        tag: 'qworker-notification'
+                                    });
+                                    notif.onclick = function() { window.focus(); this.close(); };
+                                } else {
+                                    this.audio.play().catch(e => console.log('Audio blocked:', e));
+                                }
+                            },
+
+                            markRead(id) {
+                                const notif = this.notifications.find(n => n.id === id);
+                                if(notif && !notif.is_read) {
+                                    notif.is_read = true;
+                                    this.count = Math.max(0, this.count - 1);
+                                    fetch(`/core/api/notifications/${id}/read/`, {
+                                        method: 'POST',
+                                        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                                    });
+                                }
+                            },
+
+                            markAllRead() {
+                                this.notifications.forEach(n => n.is_read = true);
+                                this.count = 0;
+                                fetch('{% url 'core:mark_all_read' %}', {
+                                    method: 'POST',
+                                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                                });
+                            },
+
+                            clearAll() {
+                                this.notifications = [];
+                                this.count = 0;
+                                fetch('{% url 'core:clear_all_notifications' %}', {
+                                    method: 'POST',
+                                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                                });
+                            }
+                        }"
+                        @click.outside="open = false"
+                    >
+                        <button @click="open = !open" class="relative p-2 text-gray-400 hover:text-gray-600 transition rounded-full hover:bg-gray-50 focus:outline-none">
+                            <span x-show="count > 0" x-transition.scale class="absolute top-2 right-2.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                        </button>
+
+                        <div x-show="open" x-transition.origin.top.right style="display: none" class="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden">
+                            <div class="px-4 py-2 border-b border-gray-50 flex justify-between items-center">
+                                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Notifications</h3>
+                                <div class="flex gap-3">
+                                    <button @click="markAllRead" x-show="count > 0" class="text-xs text-brand-600 hover:text-brand-700 font-medium">Mark as all read</button>
+                                    <button @click="clearAll" x-show="notifications.length > 0" class="text-xs text-gray-400 hover:text-gray-600 font-medium">Clear all</button>
+                                </div>
+                            </div>
+
+                            <div class="max-h-80 overflow-y-auto">
+                                <template x-for="note in notifications" :key="note.id">
+                                    <div @click="markRead(note.id)" class="px-4 py-3 hover:bg-gray-50 transition cursor-pointer border-b border-gray-50 last:border-0 relative">
+                                        <div x-show="!note.is_read" class="absolute left-0 top-0 bottom-0 w-1 bg-brand-500"></div>
+                                        <div class="flex items-start gap-3">
+                                            <div class="mt-0.5 flex-shrink-0">
+                                                <template x-if="note.type === 'SUCCESS'"
+                                                    ><div class="text-green-500">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div
+                                                ></template>
+                                                <template x-if="note.type === 'WARNING'"
+                                                    ><div class="text-orange-500">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg></div
+                                                ></template>
+                                                <template x-if="note.type === 'ERROR'"
+                                                    ><div class="text-red-500">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div
+                                                ></template>
+                                                <template x-if="note.type === 'INFO'"
+                                                    ><div class="text-blue-500">
+                                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div
+                                                ></template>
+                                            </div>
+                                            <div class="flex-1">
+                                                <p class="text-sm font-semibold text-gray-800" x-text="note.title"></p>
+                                                <p class="text-xs text-gray-500 mt-0.5" x-text="note.message"></p>
+                                                <p class="text-[10px] text-gray-400 mt-1" x-text="note.time + ' · ' + note.date"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                                <div x-show="notifications.length === 0" class="px-4 py-8 text-center text-gray-500">
+                                    <p class="text-sm">No notifications</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="hidden md:flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-100 text-xs font-bold uppercase tracking-wide">
                         <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
