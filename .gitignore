@@ -31,7 +31,7 @@ uploads/
 # We keep the source 'static/' folder, but ignore the collected 'staticfiles/'
 
 # Standalone file
-dataConsolidation/
+dataConsolidation/dataConsolidation.py
 
 # --- OS & IDE ---
 .DS_Store
@@ -43,6 +43,3 @@ Thumbs.db
 dist/
 build/
 *.spec
-
-# --- File Support ---
-.xlsx

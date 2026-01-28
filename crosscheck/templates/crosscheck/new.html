@@ -11,6 +11,7 @@
                 <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-400" x-text="ovatrCode"></span>
                 <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse ml-1"></div>
             </div>
+
             <div class="flex items-center gap-2 text-sm font-medium text-gray-400 bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm">
                 <span :class="state === 'locked' ? 'text-brand-600 dark:text-brand-400' : ''">1. Auth</span>
                 <span class="text-gray-300 dark:text-gray-600">/</span>
@@ -51,15 +52,22 @@
 
             <div x-show="isProcessing" class="absolute inset-0 bg-white/95 dark:bg-gray-900/90 backdrop-blur z-10 flex flex-col items-center justify-center rounded-xl">
                 <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-600 mb-2"></div>
-                <span class="text-xs font-bold text-brand-600 uppercase tracking-wide">Extracting 24 Fields + Tables...</span>
+                <span class="text-xs font-bold text-brand-600 uppercase tracking-wide">Extracting Data...</span>
             </div>
         </div>
     </div>
 
     <div x-show="state === 'preview'" x-cloak x-transition.opacity>
-        <div class="flex justify-end gap-3 mb-6">
-            <button @click="resetUpload()" class="px-5 py-2.5 text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancel</button>
-            <button @click="startProcessing()" class="px-6 py-2.5 text-xs font-bold text-white bg-brand-600 rounded-lg shadow-md hover:bg-brand-700 transition-colors">Confirm & Save Data</button>
+        <div class="flex items-center justify-end gap-3 mb-6">
+            <span x-text="saveMessage" class="text-sm font-bold text-green-600 dark:text-green-400" x-transition></span>
+            <button @click="resetUpload()" :disabled="isSaving" class="px-5 py-2.5 text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">Cancel</button>
+            <button @click="saveCompanyInfo()" :disabled="isSaving" :class="isSaving ? 'opacity-75 cursor-wait' : 'hover:bg-brand-700'" class="px-6 py-2.5 text-xs font-bold text-white bg-brand-600 rounded-lg shadow-md transition-colors flex items-center gap-2">
+                <svg x-show="isSaving" class="animate-spin -ml-1 mr-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span x-text="isSaving ? 'Processing...' : 'Confirm & Save Data'"></span>
+            </button>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6">
@@ -67,28 +75,28 @@
                 <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">A. Core Identity</h4>
                 <div class="grid grid-cols-2 gap-5">
                     <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (English)</label
-                        ><input type="text" x-model="formData.company_name_en" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-bold text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (English)</label>
+                        <input type="text" x-model="formData.company_name_en" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-bold text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (Khmer)</label
-                        ><input type="text" x-model="formData.company_name_kh" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-khmer text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (Khmer)</label>
+                        <input type="text" x-model="formData.company_name_kh" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-khmer text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (New)</label
-                        ><input type="text" x-model="formData.vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed bg-yellow-50 dark:bg-yellow-900/30 text-gray-900 dark:text-yellow-100 font-bold focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (New)</label>
+                        <input type="text" x-model="formData.vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed bg-yellow-50 dark:bg-yellow-900/30 text-gray-900 dark:text-yellow-100 font-bold focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (Old)</label
-                        ><input type="text" x-model="formData.old_vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 dark:text-gray-300 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (Old)</label>
+                        <input type="text" x-model="formData.old_vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 dark:text-gray-300 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Enterprise ID</label
-                        ><input type="text" x-model="formData.enterprise_id" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Enterprise ID</label>
+                        <input type="text" x-model="formData.enterprise_id" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">File Barcode</label
-                        ><input type="text" x-model="formData.file_barcode" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-500 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">File Barcode</label>
+                        <input type="text" x-model="formData.file_barcode" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-500 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                 </div>
             </div>
@@ -97,32 +105,32 @@
                 <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">B. Registration</h4>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Status</label
-                        ><input type="text" x-model="formData.status" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed text-green-700 dark:text-green-400 font-bold bg-green-50 dark:bg-green-900/20 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Status</label>
+                        <input type="text" x-model="formData.status" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed text-green-700 dark:text-green-400 font-bold bg-green-50 dark:bg-green-900/20 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Reg. Date</label
-                            ><input type="text" x-model="formData.reg_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Reg. Date</label>
+                            <input type="text" x-model="formData.reg_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Success Date</label
-                            ><input type="text" x-model="formData.success_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Success Date</label>
+                            <input type="text" x-model="formData.success_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Taxpayer Type</label
-                            ><input type="text" x-model="formData.taxpayer_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Taxpayer Type</label>
+                            <input type="text" x-model="formData.taxpayer_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                         <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Tax Year</label
-                            ><input type="text" x-model="formData.tax_year" class="w-full text-sm border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-900 dark:text-white font-normal focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Tax Year</label>
+                            <input type="text" x-model="formData.tax_year" class="w-full text-sm border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-900 dark:text-white font-normal focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Registered Entity</label
-                        ><input type="text" x-model="formData.registered_entity" class="w-full text-xs border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Registered Entity</label>
+                        <input type="text" x-model="formData.registered_entity" class="w-full text-xs border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                 </div>
             </div>
@@ -135,12 +143,12 @@
                 </div>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Main Address</label
-                        ><textarea x-model="formData.address_main" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Main Address</label>
+                        <textarea x-model="formData.address_main" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Office Address</label
-                        ><textarea x-model="formData.address_office" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Office Address</label>
+                        <textarea x-model="formData.address_office" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
                     </div>
                 </div>
             </div>
@@ -149,32 +157,29 @@
                 <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">D. Metrics</h4>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Employees</label
-                        ><input type="text" x-model="formData.employee_count" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Employees</label>
+                        <input type="text" x-model="formData.employee_count" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Total Salary (KHR)</label
-                        ><input type="text" x-model="formData.total_salary" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Total Salary (KHR)</label>
+                        <input type="text" x-model="formData.total_salary" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Property Type</label
-                        ><input type="text" x-model="formData.property_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Property Type</label>
+                        <input type="text" x-model="formData.property_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Rent (KHR)</label
-                        ><input type="text" x-model="formData.rent_per_month" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Rent (KHR)</label>
+                        <input type="text" x-model="formData.rent_per_month" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div class="col-span-2">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Form</label
-                        ><input type="text" x-model="formData.enterprise_form" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed mb-2 text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" /><input
-                            type="text"
-                            x-model="formData.add_ent_form"
-                            class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"
-                            placeholder="Additional"
-                        />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Form</label>
+                        <input type="text" x-model="formData.enterprise_form" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed mb-2 text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <input type="text" x-model="formData.add_ent_form" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" placeholder="Additional" />
                     </div>
                     <div class="col-span-2">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Signage</label><input type="text" x-model="formData.signage" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Signage</label>
+                        <input type="text" x-model="formData.signage" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                 </div>
             </div>
@@ -333,12 +338,17 @@
 <script>
     document.addEventListener('alpine:init', () => {
         Alpine.data('crosscheckWorkflow', () => ({
-            state: 'locked',
+            state: 'locked', // locked | upload | preview
             inputCode: '',
             ovatrCode: '',
             codeError: '',
             isDragging: false,
             isProcessing: false,
+            isSaving: false,
+            saveMessage: '',
+            tempFilePath: '', // Stores the path of the uploaded Excel on server
+
+            // Data Structure matching the "Company Info" sheet
             formData: {
                 company_name_en: '',
                 company_name_kh: '',
@@ -363,16 +373,19 @@
                 enterprise_form: '',
                 add_ent_form: '',
                 signage: '',
+                // Estimates (Section H)
                 h_date: '',
                 h_real_12m: '',
                 h_real_3m: '',
                 h_est_12m: '',
                 h_est_3m: '',
+                // Dynamic Tables
                 business_activities: [],
                 enterprise_accounts: [],
                 related_institutions: [],
             },
 
+            // --- STEP 1: Security Check ---
             validateCode() {
                 const code = this.inputCode.toUpperCase();
                 if (code.length === 0) {
@@ -386,6 +399,7 @@
                 if (code.length === 18) {
                     this.codeError = '';
                     this.isProcessing = true;
+                    // Simulate verification delay
                     setTimeout(() => {
                         this.ovatrCode = code;
                         this.state = 'upload';
@@ -399,6 +413,7 @@
                 }
             },
 
+            // --- STEP 2: Upload Handling ---
             handleDrop(e) {
                 this.isDragging = false;
                 if (e.dataTransfer.files.length > 0) this.uploadFile(e.dataTransfer.files[0]);
@@ -409,7 +424,7 @@
 
             uploadFile(file) {
                 if (!file.name.match(/\.(xlsx|xls)$/i)) {
-                    alert('Invalid file format.');
+                    alert('Invalid file format. Please upload .xlsx');
                     return;
                 }
                 this.isProcessing = true;
@@ -422,26 +437,130 @@
                         this.isProcessing = false;
                         if (res.status === 'success') {
                             this.formData = res.data;
+                            this.tempFilePath = res.temp_path; // Critical: Save path for next steps
                             this.state = 'preview';
                         } else {
-                            alert('Error: ' + res.message);
+                            alert('Upload Error: ' + res.message);
                         }
                     })
                     .catch((e) => {
                         this.isProcessing = false;
                         console.error(e);
-                        alert('Upload failed.');
+                        alert('System Error: Upload failed.');
                     });
             },
 
             resetUpload() {
-                if (confirm('Discard changes?')) {
+                if (confirm('Discard current data and upload new file?')) {
                     this.state = 'upload';
                     this.formData = {};
+                    this.tempFilePath = '';
                 }
             },
-            startProcessing() {
-                alert('All fields confirmed. Starting Processing Engine...');
+
+            // --- STEP 3: Chain Saving (Company -> TaxPaid -> Purchase -> SKIP SALE -> Reverse Charge) ---
+            saveCompanyInfo() {
+                if (!this.tempFilePath) {
+                    alert('Error: Source file lost. Please upload again.');
+                    return;
+                }
+
+                this.isSaving = true;
+                this.saveMessage = 'Saving Company Info...';
+
+                // Ensure the OVATR in the form matches the authenticated session
+                this.formData.OVATR = this.ovatrCode;
+
+                // 1. Save Company Info (Sheet 1)
+                fetch('{% url "crosscheck:save_company_info" %}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token }}',
+                    },
+                    body: JSON.stringify(this.formData),
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        if (data.status !== 'success') throw new Error(data.message);
+
+                        // 2. Save TaxPaid (Sheet 2)
+                        this.saveMessage = '⏳ Processing Tax Paid...';
+                        return fetch('{% url "crosscheck:save_taxpaid" %}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': '{{ csrf_token }}',
+                            },
+                            body: JSON.stringify({
+                                ovatr: this.ovatrCode,
+                                temp_path: this.tempFilePath,
+                            }),
+                        });
+                    })
+                    .then((response) => response.json())
+                    .then((taxData) => {
+                        if (taxData.status !== 'success' && taxData.status !== 'warning') {
+                            throw new Error('TaxPaid Error: ' + taxData.message);
+                        }
+                        console.log('TaxPaid:', taxData.message);
+
+                        // 3. Save Purchase (Sheet 3)
+                        this.saveMessage = '⏳ Processing Purchase Invoices...';
+                        return fetch('{% url "crosscheck:save_purchase" %}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': '{{ csrf_token }}',
+                            },
+                            body: JSON.stringify({
+                                ovatr: this.ovatrCode,
+                                temp_path: this.tempFilePath,
+                            }),
+                        });
+                    })
+                    .then((response) => response.json())
+                    .then((purchData) => {
+                        if (purchData.status !== 'success') {
+                            throw new Error('Purchase Error: ' + purchData.message);
+                        }
+                        console.log('Purchase:', purchData.message);
+
+                        // 4. Save Reverse Charge (Skipping Sale as requested)
+                        this.saveMessage = '⏳ Processing Reverse Charge...';
+                        return fetch('{% url "crosscheck:save_reverse_charge" %}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': '{{ csrf_token }}',
+                            },
+                            body: JSON.stringify({
+                                ovatr: this.ovatrCode,
+                                temp_path: this.tempFilePath,
+                            }),
+                        });
+                    })
+                    .then((response) => response.json())
+                    .then((rcData) => {
+                        this.isSaving = false;
+
+                        if (rcData.status === 'success') {
+                            this.saveMessage = '✅ All Data Saved!';
+                            // Final Success Alert
+                            // alert(`Process Complete!\n\n1. Company Info: Saved\n2. Tax Records: Processed\n3. Purchase: Saved\n4. Sale: Skipped\n5. Reverse Charge: ${rcData.message}`);
+
+                            // Redirect Option
+                            // window.location.href = "{% url 'dashboard:index' %}";
+                        } else {
+                            alert('Warning during Reverse Charge save: ' + rcData.message);
+                        }
+                    })
+                    .catch((err) => {
+                        this.isSaving = false;
+                        console.error(err);
+                        this.saveMessage = '❌ Error';
+                        alert('Process Failed: ' + err.message);
+                    });
             },
         }));
     });
