@@ -9,6 +9,7 @@ urlpatterns = [
     path('save-company-info/', views.save_company_info, name='save_company_info'),
     path('api/save-taxpaid/', views.save_taxpaid, name='save_taxpaid'),
     path('api/save-purchase/', views.save_purchase, name='save_purchase'),
+    path('api/save-sale/', views.save_sale, name='save_sale'),
     path('api/save-reverse-charge/', views.save_reverse_charge, name='save_reverse_charge'),
 
 ]

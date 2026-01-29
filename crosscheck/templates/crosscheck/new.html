@@ -11,7 +11,6 @@
                 <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-400" x-text="ovatrCode"></span>
                 <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse ml-1"></div>
             </div>
-
             <div class="flex items-center gap-2 text-sm font-medium text-gray-400 bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm">
                 <span :class="state === 'locked' ? 'text-brand-600 dark:text-brand-400' : ''">1. Auth</span>
                 <span class="text-gray-300 dark:text-gray-600">/</span>
@@ -75,28 +74,28 @@
                 <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">A. Core Identity</h4>
                 <div class="grid grid-cols-2 gap-5">
                     <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (English)</label>
-                        <input type="text" x-model="formData.company_name_en" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-bold text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (English)</label
+                        ><input type="text" x-model="formData.company_name_en" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-bold text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (Khmer)</label>
-                        <input type="text" x-model="formData.company_name_kh" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-khmer text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (Khmer)</label
+                        ><input type="text" x-model="formData.company_name_kh" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-khmer text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (New)</label>
-                        <input type="text" x-model="formData.vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed bg-yellow-50 dark:bg-yellow-900/30 text-gray-900 dark:text-yellow-100 font-bold focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (New)</label
+                        ><input type="text" x-model="formData.vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed bg-yellow-50 dark:bg-yellow-900/30 text-gray-900 dark:text-yellow-100 font-bold focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (Old)</label>
-                        <input type="text" x-model="formData.old_vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 dark:text-gray-300 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (Old)</label
+                        ><input type="text" x-model="formData.old_vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 dark:text-gray-300 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Enterprise ID</label>
-                        <input type="text" x-model="formData.enterprise_id" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Enterprise ID</label
+                        ><input type="text" x-model="formData.enterprise_id" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">File Barcode</label>
-                        <input type="text" x-model="formData.file_barcode" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-500 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">File Barcode</label
+                        ><input type="text" x-model="formData.file_barcode" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-500 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                 </div>
             </div>
@@ -105,32 +104,32 @@
                 <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">B. Registration</h4>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Status</label>
-                        <input type="text" x-model="formData.status" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed text-green-700 dark:text-green-400 font-bold bg-green-50 dark:bg-green-900/20 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Status</label
+                        ><input type="text" x-model="formData.status" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed text-green-700 dark:text-green-400 font-bold bg-green-50 dark:bg-green-900/20 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Reg. Date</label>
-                            <input type="text" x-model="formData.reg_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Reg. Date</label
+                            ><input type="text" x-model="formData.reg_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Success Date</label>
-                            <input type="text" x-model="formData.success_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Success Date</label
+                            ><input type="text" x-model="formData.success_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Taxpayer Type</label>
-                            <input type="text" x-model="formData.taxpayer_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Taxpayer Type</label
+                            ><input type="text" x-model="formData.taxpayer_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                         <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Tax Year</label>
-                            <input type="text" x-model="formData.tax_year" class="w-full text-sm border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-900 dark:text-white font-normal focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Tax Year</label
+                            ><input type="text" x-model="formData.tax_year" class="w-full text-sm border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-900 dark:text-white font-normal focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                         </div>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Registered Entity</label>
-                        <input type="text" x-model="formData.registered_entity" class="w-full text-xs border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Registered Entity</label
+                        ><input type="text" x-model="formData.registered_entity" class="w-full text-xs border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                 </div>
             </div>
@@ -143,12 +142,12 @@
                 </div>
                 <div class="space-y-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Main Address</label>
-                        <textarea x-model="formData.address_main" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Main Address</label
+                        ><textarea x-model="formData.address_main" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Office Address</label>
-                        <textarea x-model="formData.address_office" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Office Address</label
+                        ><textarea x-model="formData.address_office" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
                     </div>
                 </div>
             </div>
@@ -157,20 +156,20 @@
                 <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">D. Metrics</h4>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Employees</label>
-                        <input type="text" x-model="formData.employee_count" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Employees</label
+                        ><input type="text" x-model="formData.employee_count" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Total Salary (KHR)</label>
-                        <input type="text" x-model="formData.total_salary" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Total Salary (KHR)</label
+                        ><input type="text" x-model="formData.total_salary" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Property Type</label>
-                        <input type="text" x-model="formData.property_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Property Type</label
+                        ><input type="text" x-model="formData.property_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Rent (KHR)</label>
-                        <input type="text" x-model="formData.rent_per_month" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Rent (KHR)</label
+                        ><input type="text" x-model="formData.rent_per_month" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                     <div class="col-span-2">
                         <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Form</label>
@@ -178,8 +177,7 @@
                         <input type="text" x-model="formData.add_ent_form" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" placeholder="Additional" />
                     </div>
                     <div class="col-span-2">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Signage</label>
-                        <input type="text" x-model="formData.signage" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Signage</label><input type="text" x-model="formData.signage" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
                     </div>
                 </div>
             </div>
@@ -458,7 +456,7 @@
                 }
             },
 
-            // --- STEP 3: Chain Saving (Company -> TaxPaid -> Purchase -> SKIP SALE -> Reverse Charge) ---
+            // --- STEP 3: Chain Saving (Company -> TaxPaid -> Purchase -> Sale -> Reverse Charge) ---
             saveCompanyInfo() {
                 if (!this.tempFilePath) {
                     alert('Error: Source file lost. Please upload again.');
@@ -526,7 +524,28 @@
                         }
                         console.log('Purchase:', purchData.message);
 
-                        // 4. Save Reverse Charge (Skipping Sale as requested)
+                        // 4. Save Sale (Sheet 4)
+                        this.saveMessage = '⏳ Processing Sale Invoices...';
+                        return fetch('{% url "crosscheck:save_sale" %}', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRFToken': '{{ csrf_token }}',
+                            },
+                            body: JSON.stringify({
+                                ovatr: this.ovatrCode,
+                                temp_path: this.tempFilePath,
+                            }),
+                        });
+                    })
+                    .then((response) => response.json())
+                    .then((saleData) => {
+                        if (saleData.status !== 'success') {
+                            console.warn('Sale Error: ' + saleData.message);
+                        }
+                        console.log('Sale:', saleData.message);
+
+                        // 5. Save Reverse Charge
                         this.saveMessage = '⏳ Processing Reverse Charge...';
                         return fetch('{% url "crosscheck:save_reverse_charge" %}', {
                             method: 'POST',
@@ -546,10 +565,8 @@
 
                         if (rcData.status === 'success') {
                             this.saveMessage = '✅ All Data Saved!';
-                            // Final Success Alert
-                            // alert(`Process Complete!\n\n1. Company Info: Saved\n2. Tax Records: Processed\n3. Purchase: Saved\n4. Sale: Skipped\n5. Reverse Charge: ${rcData.message}`);
-
-                            // Redirect Option
+                            // alert(`Process Complete!\n\n1. Company Info: Saved\n2. Tax: Processed\n3. Purchase: Saved\n4. Sale: Saved\n5. Reverse Charge: ${rcData.message}`);
+                            // Optional Redirect
                             // window.location.href = "{% url 'dashboard:index' %}";
                         } else {
                             alert('Warning during Reverse Charge save: ' + rcData.message);
