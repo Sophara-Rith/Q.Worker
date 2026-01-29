@@ -216,39 +216,65 @@ class ConsolidationService:
                     df.columns = [f'Column{i}' for i in range(len(df.columns))]
                     safe_branch = branch_info.replace("'", "''")
                     
-                    self.con.sql(f"""
+                    # Register dataframe as a view for SQL operations
+                    self.con.register('df_view', df)
+
+                    # List of core fields to check for duplicates
+                    # These are the fields that must be unique to consider a row "new"
+                    core_fields_str = """
+                        date, invoice_number, credit_notification_letter_number, buyer_type,
+                        tax_registration_id, buyer_name, total_invoice_amount, 
+                        amount_exclude_vat, non_vat_sales, vat_zero_rate, vat_local_sale,
+                        vat_export, vat_local_sale_state_burden, vat_withheld_by_national_treasury,
+                        plt, special_tax_on_goods, special_tax_on_services, accommodation_tax,
+                        income_tax_redemption_rate, notes, description, tax_declaration_status
+                    """
+
+                    # Execute Insert with EXCEPT logic to skip duplicates
+                    # 1. Select cleaned data from the uploaded file (df_view)
+                    # 2. EXCEPT (subtract) rows that already exist in the database (matching core fields)
+                    # 3. Insert the remaining (unique) rows, adding the new metadata (timestamp, user, etc.)
+                    self.con.execute(f"""
                         INSERT INTO tax_declaration 
                         (
-                            date, invoice_number, credit_notification_letter_number, buyer_type,
-                            tax_registration_id, buyer_name, total_invoice_amount, 
-                            amount_exclude_vat, non_vat_sales, vat_zero_rate, vat_local_sale,
-                            vat_export, vat_local_sale_state_burden, vat_withheld_by_national_treasury,
-                            plt, special_tax_on_goods, special_tax_on_services, accommodation_tax,
-                            income_tax_redemption_rate, notes, description, tax_declaration_status,
+                            {core_fields_str},
                             file_tin, import_timestamp, telegram_username, branch_name
                         )
                         SELECT 
-                            TRY_CAST(strptime(Column1, '%d-%m-%Y') AS DATE),
-                            Column2, Column3, Column4,
-                            Column5, Column6, 
-                            TRY_CAST(Column7 AS DECIMAL(15,2)),
-                            TRY_CAST(Column8 AS DECIMAL(15,2)),
-                            TRY_CAST(Column9 AS DECIMAL(15,2)),
-                            TRY_CAST(Column10 AS DECIMAL(15,2)),
-                            TRY_CAST(Column11 AS DECIMAL(15,2)),
-                            TRY_CAST(Column12 AS DECIMAL(15,2)),
-                            TRY_CAST(Column13 AS DECIMAL(15,2)),
-                            TRY_CAST(Column14 AS DECIMAL(15,2)),
-                            TRY_CAST(Column15 AS DECIMAL(15,2)),
-                            TRY_CAST(Column16 AS DECIMAL(15,2)),
-                            TRY_CAST(Column17 AS DECIMAL(15,2)),
-                            TRY_CAST(Column18 AS DECIMAL(15,2)),
-                            TRY_CAST(Column19 AS DECIMAL(15,2)),
-                            Column20, Column21, Column22,
+                            *,
                             '{tin}', now(), '{self.user.username}', '{safe_branch}'
-                        FROM df
-                        WHERE Column2 IS NOT NULL
+                        FROM (
+                            SELECT 
+                                TRY_CAST(strptime(Column1, '%d-%m-%Y') AS DATE) as date,
+                                Column2 as invoice_number, Column3 as credit_notification_letter_number, Column4 as buyer_type,
+                                Column5 as tax_registration_id, Column6 as buyer_name, 
+                                TRY_CAST(Column7 AS DECIMAL(15,2)) as total_invoice_amount,
+                                TRY_CAST(Column8 AS DECIMAL(15,2)) as amount_exclude_vat,
+                                TRY_CAST(Column9 AS DECIMAL(15,2)) as non_vat_sales,
+                                TRY_CAST(Column10 AS DECIMAL(15,2)) as vat_zero_rate,
+                                TRY_CAST(Column11 AS DECIMAL(15,2)) as vat_local_sale,
+                                TRY_CAST(Column12 AS DECIMAL(15,2)) as vat_export,
+                                TRY_CAST(Column13 AS DECIMAL(15,2)) as vat_local_sale_state_burden,
+                                TRY_CAST(Column14 AS DECIMAL(15,2)) as vat_withheld_by_national_treasury,
+                                TRY_CAST(Column15 AS DECIMAL(15,2)) as plt,
+                                TRY_CAST(Column16 AS DECIMAL(15,2)) as special_tax_on_goods,
+                                TRY_CAST(Column17 AS DECIMAL(15,2)) as special_tax_on_services,
+                                TRY_CAST(Column18 AS DECIMAL(15,2)) as accommodation_tax,
+                                TRY_CAST(Column19 AS DECIMAL(15,2)) as income_tax_redemption_rate,
+                                Column20 as notes, Column21 as description, Column22 as tax_declaration_status
+                            FROM df_view
+                            WHERE Column2 IS NOT NULL
+                            
+                            EXCEPT 
+                            
+                            SELECT {core_fields_str}
+                            FROM tax_declaration
+                            WHERE file_tin = '{tin}'
+                        ) as unique_rows
                     """)
+                    
+                    self.con.unregister('df_view')
+                    
                 except Exception as e:
                     logger.error(f"Failed to import {fname}: {e}")
                     continue
