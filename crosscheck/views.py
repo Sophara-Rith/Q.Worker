@@ -44,6 +44,7 @@ def upload_init(request):
             except:
                 df = pd.read_excel(uploaded_file_path, sheet_name=0, header=None)
             
+            # Map is already lowercase, keeping it as is
             data_map = {
                 'company_name_kh': '', 'company_name_en': '', 'file_barcode': '',
                 'old_vatin': '', 'vatin': '', 'enterprise_id': '',
@@ -172,21 +173,25 @@ def save_company_info(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            if 'OVATR' not in data or not data['OVATR']:
+            # Normalize keys to lowercase
+            clean_data = {k.lower(): v for k, v in data.items()}
+            
+            if 'ovatr' not in clean_data or not clean_data['ovatr']:
                 return JsonResponse({'status': 'error', 'message': 'Missing Critical Field: OVATR'}, status=400)
 
             con = get_db_connection()
             columns_schema = []
-            for key in data.keys():
-                if key == 'OVATR': columns_schema.append(f'"{key}" VARCHAR PRIMARY KEY')
+            for key in clean_data.keys():
+                if key == 'ovatr': columns_schema.append(f'"{key}" VARCHAR PRIMARY KEY')
                 else: columns_schema.append(f'"{key}" VARCHAR')
             
-            con.execute(f"CREATE TABLE IF NOT EXISTS companyInfo ({', '.join(columns_schema)})")
+            # Table name also cleaned up
+            con.execute(f"CREATE TABLE IF NOT EXISTS company_info ({', '.join(columns_schema)})")
             
-            columns = [f'"{k}"' for k in data.keys()]
-            placeholders = ['?'] * len(data)
-            values = list(data.values())
-            con.execute(f"INSERT OR REPLACE INTO companyInfo ({', '.join(columns)}) VALUES ({', '.join(placeholders)})", values)
+            columns = [f'"{k}"' for k in clean_data.keys()]
+            placeholders = ['?'] * len(clean_data)
+            values = list(clean_data.values())
+            con.execute(f"INSERT OR REPLACE INTO company_info ({', '.join(columns)}) VALUES ({', '.join(placeholders)})", values)
             con.close()
             return JsonResponse({'status': 'success', 'message': 'Company Info saved successfully'})
         except Exception as e:
@@ -198,6 +203,9 @@ def save_taxpaid(request):
     if request.method == 'POST':
         try:
             body = json.loads(request.body)
+            # Use lowercase key access
+            ovatr_val = body.get('ovatr') or body.get('OVATR')
+
             fs = FileSystemStorage()
             full_path = fs.path(body['temp_path'])
             try:
@@ -233,19 +241,21 @@ def save_taxpaid(request):
                     if not description or description.lower() in ['nan', 'close', ''] or description == "ឆ្នាំបង់ពន្ធ": continue
 
                     extracted_rows.append({
-                        'OVATR': body['ovatr'], 'TaxYear': current_year, 'Description': description,
-                        'Jan': clean_money(row.values[3]), 'Feb': clean_money(row.values[4]), 'Mar': clean_money(row.values[5]),
-                        'Apr': clean_money(row.values[6]), 'May': clean_money(row.values[7]), 'Jun': clean_money(row.values[8]),
-                        'Jul': clean_money(row.values[9]), 'Aug': clean_money(row.values[10]), 'Sep': clean_money(row.values[11]),
-                        'Oct': clean_money(row.values[12]), 'Nov': clean_money(row.values[13]), 'Dec': clean_money(row.values[14]),
-                        'Total': clean_money(row.values[15]),
+                        'ovatr': ovatr_val, 'tax_year': current_year, 'description': description,
+                        'jan': clean_money(row.values[3]), 'feb': clean_money(row.values[4]), 'mar': clean_money(row.values[5]),
+                        'apr': clean_money(row.values[6]), 'may': clean_money(row.values[7]), 'jun': clean_money(row.values[8]),
+                        'jul': clean_money(row.values[9]), 'aug': clean_money(row.values[10]), 'sep': clean_money(row.values[11]),
+                        'oct': clean_money(row.values[12]), 'nov': clean_money(row.values[13]), 'dec': clean_money(row.values[14]),
+                        'total': clean_money(row.values[15]),
                     })
 
             if extracted_rows:
                 con = get_db_connection()
-                con.execute("CREATE TABLE IF NOT EXISTS taxPaid (OVATR VARCHAR, TaxYear VARCHAR, Description VARCHAR, Jan DOUBLE, Feb DOUBLE, Mar DOUBLE, Apr DOUBLE, May DOUBLE, Jun DOUBLE, Jul DOUBLE, Aug DOUBLE, Sep DOUBLE, Oct DOUBLE, Nov DOUBLE, Dec DOUBLE, Total DOUBLE, PRIMARY KEY (OVATR, TaxYear, Description))")
-                con.execute("DELETE FROM taxPaid WHERE OVATR = ?", [body['ovatr']])
-                con.executemany("INSERT INTO taxPaid VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [list(d.values()) for d in extracted_rows])
+                # Lowercase columns in CREATE TABLE
+                con.execute("CREATE TABLE IF NOT EXISTS tax_paid (ovatr VARCHAR, tax_year VARCHAR, description VARCHAR, jan DOUBLE, feb DOUBLE, mar DOUBLE, apr DOUBLE, may DOUBLE, jun DOUBLE, jul DOUBLE, aug DOUBLE, sep DOUBLE, oct DOUBLE, nov DOUBLE, dec DOUBLE, total DOUBLE, PRIMARY KEY (ovatr, tax_year, description))")
+                con.execute("DELETE FROM tax_paid WHERE ovatr = ?", [ovatr_val])
+                # Insert matches dictionary order
+                con.executemany("INSERT INTO tax_paid VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [list(d.values()) for d in extracted_rows])
                 con.close()
                 return JsonResponse({'status': 'success', 'message': f'Saved {len(extracted_rows)} records for TaxPaid.'})
             return JsonResponse({'status': 'warning', 'message': 'No valid tax data found in TAXPAID sheet.'})
@@ -258,6 +268,8 @@ def save_purchase(request):
     if request.method == 'POST':
         try:
             body = json.loads(request.body)
+            ovatr_val = body.get('ovatr') or body.get('OVATR')
+
             fs = FileSystemStorage()
             try:
                 df = pd.read_excel(fs.path(body['temp_path']), sheet_name='PURCHASE', header=None)
@@ -268,26 +280,28 @@ def save_purchase(request):
             if len(df.columns) < 17:
                 return JsonResponse({'status': 'error', 'message': f'Format Mismatch: Expected 17 columns (A-Q), found {len(df.columns)}.'})
 
+            # Lowercase target columns
             target_cols = [
-                'Excel_No', 'Date', 'Invoice_No', 'Type', 'Supplier_TIN', 'Supplier_Name', 
-                'Total_Amount', 'Exclude_VAT', 'Non_VAT_Purchase', 'VAT_0', 
-                'Purchase', 'Import', 'Non_Creditable_VAT', 'State_Charge', 'Non_State_Charge', 
-                'Description', 'Status'
+                'excel_no', 'date', 'invoice_no', 'type', 'supplier_tin', 'supplier_name', 
+                'total_amount', 'exclude_vat', 'non_vat_purchase', 'vat_0', 
+                'purchase', 'import', 'non_creditable_vat', 'state_charge', 'non_state_charge', 
+                'description', 'status'
             ]
             df = df.iloc[:, :17]; df.columns = target_cols
-            df = df[df['Date'].notna()]
-            df['No'] = range(1, len(df) + 1); df['No'] = df['No'].astype(str)
+            df = df[df['date'].notna()]
+            df['no'] = range(1, len(df) + 1); df['no'] = df['no'].astype(str)
 
-            for col in ['Total_Amount', 'Exclude_VAT', 'Non_VAT_Purchase', 'VAT_0', 'Purchase', 'Import', 'Non_Creditable_VAT', 'State_Charge', 'Non_State_Charge']:
+            for col in ['total_amount', 'exclude_vat', 'non_vat_purchase', 'vat_0', 'purchase', 'import', 'non_creditable_vat', 'state_charge', 'non_state_charge']:
                 df[col] = df[col].apply(clean_currency)
 
-            df['OVATR'] = body['ovatr']
+            df['ovatr'] = ovatr_val
             
             con = get_db_connection()
             con.execute("DROP TABLE IF EXISTS purchase")
-            con.execute("CREATE TABLE purchase (OVATR VARCHAR, No VARCHAR, Date VARCHAR, Invoice_No VARCHAR, Type VARCHAR, Supplier_TIN VARCHAR, Supplier_Name VARCHAR, Total_Amount DOUBLE, Exclude_VAT DOUBLE, Non_VAT_Purchase DOUBLE, VAT_0 DOUBLE, Purchase DOUBLE, Import DOUBLE, Non_Creditable_VAT DOUBLE, State_Charge DOUBLE, Non_State_Charge DOUBLE, Description VARCHAR, Status VARCHAR, PRIMARY KEY (OVATR, No))")
+            # Lowercase columns in CREATE TABLE
+            con.execute("CREATE TABLE purchase (ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, type VARCHAR, supplier_tin VARCHAR, supplier_name VARCHAR, total_amount DOUBLE, exclude_vat DOUBLE, non_vat_purchase DOUBLE, vat_0 DOUBLE, purchase DOUBLE, import DOUBLE, non_creditable_vat DOUBLE, state_charge DOUBLE, non_state_charge DOUBLE, description VARCHAR, status VARCHAR, PRIMARY KEY (ovatr, no))")
             con.register('df_purchase', df)
-            con.execute("INSERT INTO purchase SELECT OVATR, No, Date, Invoice_No, Type, Supplier_TIN, Supplier_Name, Total_Amount, Exclude_VAT, Non_VAT_Purchase, VAT_0, Purchase, Import, Non_Creditable_VAT, State_Charge, Non_State_Charge, Description, Status FROM df_purchase")
+            con.execute("INSERT INTO purchase SELECT ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, import, non_creditable_vat, state_charge, non_state_charge, description, status FROM df_purchase")
             con.close()
             return JsonResponse({'status': 'success', 'message': f'Saved {len(df)} Purchase Invoices.'})
         except Exception as e:
@@ -299,6 +313,8 @@ def save_sale(request):
     if request.method == 'POST':
         try:
             body = json.loads(request.body)
+            ovatr_val = body.get('ovatr') or body.get('OVATR')
+
             fs = FileSystemStorage()
             try:
                 df = pd.read_excel(fs.path(body['temp_path']), sheet_name='SALE', header=None)
@@ -309,51 +325,52 @@ def save_sale(request):
             if len(df.columns) < 23:
                  return JsonResponse({'status': 'error', 'message': f'Format Mismatch: Expected 23+ columns (A-W), found {len(df.columns)}'})
 
+            # Lowercase target columns
             target_cols = [
-                'Excel_No', 'Date', 'Invoice_No', 'Credit_Note_No', 'Buyer_Type', 'Tax_Registration_ID', 
-                'Buyer_Name', 'Total_Invoice_Amount', 'Amount_Exclude_VAT', 'Non_VAT_Sales', 
-                'VAT_Zero_Rate', 'VAT_Local_Sale', 'VAT_Export', 'VAT_Local_Sale_State_Burden', 
-                'VAT_Withheld_By_National_Treasury', 'PLT', 'Special_Tax_On_Goods', 
-                'Special_Tax_On_Services', 'Accommodation_Tax', 'Income_Tax_Redemption_Rate', 
-                'Notes', 'Description', 'Tax_Declaration_Status'
+                'excel_no', 'date', 'invoice_no', 'credit_note_no', 'buyer_type', 'tax_registration_id', 
+                'buyer_name', 'total_invoice_amount', 'amount_exclude_vat', 'non_vat_sales', 
+                'vat_zero_rate', 'vat_local_sale', 'vat_export', 'vat_local_sale_state_burden', 
+                'vat_withheld_by_national_treasury', 'plt', 'special_tax_on_goods', 
+                'special_tax_on_services', 'accommodation_tax', 'income_tax_redemption_rate', 
+                'notes', 'description', 'tax_declaration_status'
             ]
             df = df.iloc[:, :23]; df.columns = target_cols
-            df = df[df['Date'].notna()]
-            df['No'] = range(1, len(df) + 1); df['No'] = df['No'].astype(str)
+            df = df[df['date'].notna()]
+            df['no'] = range(1, len(df) + 1); df['no'] = df['no'].astype(str)
 
             numeric_cols = [
-                'Total_Invoice_Amount', 'Amount_Exclude_VAT', 'Non_VAT_Sales', 'VAT_Zero_Rate', 
-                'VAT_Local_Sale', 'VAT_Export', 'VAT_Local_Sale_State_Burden', 
-                'VAT_Withheld_By_National_Treasury', 'PLT', 'Special_Tax_On_Goods', 
-                'Special_Tax_On_Services', 'Accommodation_Tax', 'Income_Tax_Redemption_Rate'
+                'total_invoice_amount', 'amount_exclude_vat', 'non_vat_sales', 'vat_zero_rate', 
+                'vat_local_sale', 'vat_export', 'vat_local_sale_state_burden', 
+                'vat_withheld_by_national_treasury', 'plt', 'special_tax_on_goods', 
+                'special_tax_on_services', 'accommodation_tax', 'income_tax_redemption_rate'
             ]
             for col in numeric_cols:
                 df[col] = df[col].apply(clean_currency)
 
-            df['OVATR'] = body['ovatr']
+            df['ovatr'] = ovatr_val
             
             con = get_db_connection()
             con.execute("DROP TABLE IF EXISTS sale")
             con.execute("""
                 CREATE TABLE sale (
-                    OVATR VARCHAR, No VARCHAR, Date VARCHAR, Invoice_No VARCHAR, Credit_Note_No VARCHAR,
-                    Buyer_Type VARCHAR, Tax_Registration_ID VARCHAR, Buyer_Name VARCHAR,
-                    Total_Invoice_Amount DOUBLE, Amount_Exclude_VAT DOUBLE, Non_VAT_Sales DOUBLE,
-                    VAT_Zero_Rate DOUBLE, VAT_Local_Sale DOUBLE, VAT_Export DOUBLE,
-                    VAT_Local_Sale_State_Burden DOUBLE, VAT_Withheld_By_National_Treasury DOUBLE, PLT DOUBLE,
-                    Special_Tax_On_Goods DOUBLE, Special_Tax_On_Services DOUBLE, Accommodation_Tax DOUBLE,
-                    Income_Tax_Redemption_Rate DOUBLE, Notes VARCHAR, Description VARCHAR,
-                    Tax_Declaration_Status VARCHAR, PRIMARY KEY (OVATR, No)
+                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, credit_note_no VARCHAR,
+                    buyer_type VARCHAR, tax_registration_id VARCHAR, buyer_name VARCHAR,
+                    total_invoice_amount DOUBLE, amount_exclude_vat DOUBLE, non_vat_sales DOUBLE,
+                    vat_zero_rate DOUBLE, vat_local_sale DOUBLE, vat_export DOUBLE,
+                    vat_local_sale_state_burden DOUBLE, vat_withheld_by_national_treasury DOUBLE, plt DOUBLE,
+                    special_tax_on_goods DOUBLE, special_tax_on_services DOUBLE, accommodation_tax DOUBLE,
+                    income_tax_redemption_rate DOUBLE, notes VARCHAR, description VARCHAR,
+                    tax_declaration_status VARCHAR, PRIMARY KEY (ovatr, no)
                 )
             """)
             con.register('df_sale', df)
             con.execute("""
                 INSERT INTO sale SELECT 
-                    OVATR, No, Date, Invoice_No, Credit_Note_No, Buyer_Type, Tax_Registration_ID, Buyer_Name,
-                    Total_Invoice_Amount, Amount_Exclude_VAT, Non_VAT_Sales, VAT_Zero_Rate, VAT_Local_Sale,
-                    VAT_Export, VAT_Local_Sale_State_Burden, VAT_Withheld_By_National_Treasury, PLT,
-                    Special_Tax_On_Goods, Special_Tax_On_Services, Accommodation_Tax, Income_Tax_Redemption_Rate,
-                    Notes, Description, Tax_Declaration_Status
+                    ovatr, no, date, invoice_no, credit_note_no, buyer_type, tax_registration_id, buyer_name,
+                    total_invoice_amount, amount_exclude_vat, non_vat_sales, vat_zero_rate, vat_local_sale,
+                    vat_export, vat_local_sale_state_burden, vat_withheld_by_national_treasury, plt,
+                    special_tax_on_goods, special_tax_on_services, accommodation_tax, income_tax_redemption_rate,
+                    notes, description, tax_declaration_status
                 FROM df_sale
             """)
             con.close()
@@ -367,6 +384,8 @@ def save_reverse_charge(request):
     if request.method == 'POST':
         try:
             body = json.loads(request.body)
+            ovatr_val = body.get('ovatr') or body.get('OVATR')
+
             fs = FileSystemStorage()
             try:
                 try: df = pd.read_excel(fs.path(body['temp_path']), sheet_name='REVERSE_CHARGE', header=None)
@@ -378,32 +397,33 @@ def save_reverse_charge(request):
             if len(df.columns) < 14:
                  return JsonResponse({'status': 'error', 'message': f'Format Mismatch: Expected 14+ columns, found {len(df.columns)}'})
 
+            # Lowercase target columns
             target_cols = [
-                'Excel_No', 'Date', 'Invoice_No', 'Supplier_Non_Resident', 'Supplier_TIN', 
-                'Supplier_Name', 'Address', 'Email', 'Non_VAT_Supply', 'Exclude_VAT', 
-                'VAT', 'Description', 'Status', 'Declaration_Status'
+                'excel_no', 'date', 'invoice_no', 'supplier_non_resident', 'supplier_tin', 
+                'supplier_name', 'address', 'email', 'non_vat_supply', 'exclude_vat', 
+                'vat', 'description', 'status', 'declaration_status'
             ]
             df = df.iloc[:, :14]; df.columns = target_cols
-            df = df[df['Date'].notna()]
-            df['No'] = range(1, len(df) + 1); df['No'] = df['No'].astype(str)
+            df = df[df['date'].notna()]
+            df['no'] = range(1, len(df) + 1); df['no'] = df['no'].astype(str)
 
-            for col in ['Non_VAT_Supply', 'Exclude_VAT', 'VAT']:
+            for col in ['non_vat_supply', 'exclude_vat', 'vat']:
                 df[col] = df[col].apply(clean_currency)
 
-            df['OVATR'] = body['ovatr']
+            df['ovatr'] = ovatr_val
             
             con = get_db_connection()
             con.execute("DROP TABLE IF EXISTS reverse_charge")
             con.execute("""
                 CREATE TABLE reverse_charge (
-                    OVATR VARCHAR, No VARCHAR, Date VARCHAR, Invoice_No VARCHAR, Supplier_Non_Resident VARCHAR,
-                    Supplier_TIN VARCHAR, Supplier_Name VARCHAR, Address VARCHAR, Email VARCHAR,
-                    Non_VAT_Supply DOUBLE, Exclude_VAT DOUBLE, VAT DOUBLE, Description VARCHAR,
-                    Status VARCHAR, Declaration_Status VARCHAR, PRIMARY KEY (OVATR, No)
+                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, supplier_non_resident VARCHAR,
+                    supplier_tin VARCHAR, supplier_name VARCHAR, address VARCHAR, email VARCHAR,
+                    non_vat_supply DOUBLE, exclude_vat DOUBLE, vat DOUBLE, description VARCHAR,
+                    status VARCHAR, declaration_status VARCHAR, PRIMARY KEY (ovatr, no)
                 )
             """)
             con.register('df_rc', df)
-            con.execute("INSERT INTO reverse_charge SELECT OVATR, No, Date, Invoice_No, Supplier_Non_Resident, Supplier_TIN, Supplier_Name, Address, Email, Non_VAT_Supply, Exclude_VAT, VAT, Description, Status, Declaration_Status FROM df_rc")
+            con.execute("INSERT INTO reverse_charge SELECT ovatr, no, date, invoice_no, supplier_non_resident, supplier_tin, supplier_name, address, email, non_vat_supply, exclude_vat, vat, description, status, declaration_status FROM df_rc")
             con.close()
             return JsonResponse({'status': 'success', 'message': f'Saved {len(df)} Reverse Charge Records.'})
         except Exception as e:
