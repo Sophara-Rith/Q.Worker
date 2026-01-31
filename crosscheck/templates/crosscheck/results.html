@@ -1,0 +1,222 @@
+{% extends 'base.html' %} {% load static %} {% block title %}Session Results{% endblock %} {% block content %}
+<div x-data="resultsDashboard()" x-init="init()" class="h-full flex flex-col p-6">
+    <div class="flex flex-col md:flex-row justify-between items-center mb-6 flex-shrink-0">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Session Results</h1>
+            <p class="text-sm text-gray-500 mt-1">SESSION-{{ ovatr_code }} • Full Data View</p>
+        </div>
+        <div class="flex gap-3 mt-4 md:mt-0">
+            <button class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Export Excel
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 flex-shrink-0">
+        <div class="bg-white dark:bg-gray-800 p-5 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700">
+            <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Rows</div>
+            <div class="text-3xl font-bold text-gray-900 dark:text-white mt-1" x-text="formatNumber(stats.total)">0</div>
+        </div>
+        <div class="bg-green-50 dark:bg-green-900/20 p-5 rounded-2xl shadow-lg border border-green-100 dark:border-green-800">
+            <div class="text-xs font-bold text-green-600 uppercase tracking-wider">Matched</div>
+            <div class="text-3xl font-bold text-green-700 dark:text-green-400 mt-1" x-text="formatNumber(stats.matched)">0</div>
+        </div>
+        <div class="bg-red-50 dark:bg-red-900/20 p-5 rounded-2xl shadow-lg border border-red-100 dark:border-red-800">
+            <div class="text-xs font-bold text-red-600 uppercase tracking-wider">Not Found</div>
+            <div class="text-3xl font-bold text-red-700 dark:text-red-400 mt-1" x-text="formatNumber(stats.not_found)">0</div>
+        </div>
+        <div class="bg-orange-50 dark:bg-orange-900/20 p-5 rounded-2xl shadow-lg border border-orange-100 dark:border-orange-800">
+            <div class="text-xs font-bold text-orange-600 uppercase tracking-wider">Mismatches</div>
+            <div class="text-3xl font-bold text-orange-700 dark:text-orange-400 mt-1" x-text="formatNumber(stats.mismatch)">0</div>
+        </div>
+    </div>
+
+    <div class="flex-1 bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden h-[calc(100vh-280px)]">
+        <div class="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center bg-gray-50 dark:bg-gray-900/50 flex-shrink-0">
+            <div class="relative w-80">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400"
+                    ><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg
+                ></span>
+                <input type="text" x-model="search" placeholder="Search..." class="pl-10 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm py-2 shadow-sm focus:ring-brand-500" />
+            </div>
+            <div class="flex gap-2 text-xs font-bold">
+                <button class="px-3 py-1.5 rounded-lg border transition-all" :class="filter === 'ALL' ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50'" @click="filter = 'ALL'">All</button>
+                <button class="px-3 py-1.5 rounded-lg border transition-all text-green-700 border-green-200" :class="filter === 'MATCHED' ? 'bg-green-100' : 'bg-white hover:bg-green-50'" @click="filter = 'MATCHED'">Matched</button>
+                <button class="px-3 py-1.5 rounded-lg border transition-all text-orange-700 border-orange-200" :class="filter === 'MISMATCH' ? 'bg-orange-100' : 'bg-white hover:bg-orange-50'" @click="filter = 'MISMATCH'">Mismatch</button>
+            </div>
+        </div>
+
+        <div class="flex-1 overflow-auto w-full relative scroll-smooth" @scroll.debounce.50ms="checkScroll">
+            <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 border-separate border-spacing-0">
+                <thead class="text-xs text-gray-700 uppercase sticky top-0 z-20 shadow-md">
+                    <tr class="h-8">
+                        <th class="sticky left-0 z-30 bg-gray-100 dark:bg-gray-800 border-b border-r border-gray-300 dark:border-gray-600"></th>
+
+                        <th colspan="5" class="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 text-center border-b border-r border-blue-200 dark:border-blue-800 py-1">Purchase Record</th>
+
+                        <th colspan="2" class="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 text-center border-b border-r border-yellow-200 dark:border-yellow-800 py-1">Cleanup (Backend)</th>
+
+                        <th class="bg-gray-100 dark:bg-gray-800 border-b border-r border-gray-300 dark:border-gray-600"></th>
+                        <th colspan="4" class="bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 text-center border-b border-r border-orange-200 dark:border-orange-800 py-1">Validation</th>
+
+                        <th colspan="5" class="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 text-center border-b border-purple-200 dark:border-purple-800 py-1">Tax Declaration</th>
+                    </tr>
+
+                    <tr class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
+                        <th class="px-4 py-3 sticky left-0 z-30 bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-16 text-center">No</th>
+
+                        <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Description</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Supplier</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Invoice #</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Date</th>
+                        <th class="px-4 py-3 whitespace-nowrap text-right bg-blue-50/50 dark:bg-blue-900/10 border-r border-gray-200 dark:border-gray-600 font-bold">Amount</th>
+
+                        <th class="px-4 py-3 whitespace-nowrap bg-yellow-50/50 dark:bg-yellow-900/10 font-mono text-xs text-gray-600">Clean P.Inv</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-yellow-50/50 dark:bg-yellow-900/10 border-r border-gray-200 dark:border-gray-600 font-mono text-xs text-gray-600">Clean S.Inv</th>
+
+                        <th class="px-4 py-3 text-center bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 font-bold w-24">Status</th>
+
+                        <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-xs">Inv Match</th>
+                        <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-xs">Date Match</th>
+                        <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-xs">TIN Match</th>
+                        <th class="px-4 py-3 text-right whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 border-r border-gray-200 dark:border-gray-600 font-bold">Difference</th>
+
+                        <th class="px-4 py-3 whitespace-nowrap text-right bg-purple-50/50 dark:bg-purple-900/10 font-bold">Amount (Dec)</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">Date</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">Invoice #</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">Buyer/Supplier</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">TIN</th>
+                    </tr>
+                </thead>
+
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                    <template x-for="row in filteredRows" :key="row.no">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors group">
+                            <td class="px-4 py-3 font-mono text-xs text-gray-400 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50 border-r border-gray-100 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-center" x-text="row.no"></td>
+
+                            <td class="px-4 py-3 whitespace-nowrap max-w-xs truncate text-gray-600 dark:text-gray-300" x-text="row.p_desc" :title="row.p_desc"></td>
+                            <td class="px-4 py-3 whitespace-nowrap max-w-xs truncate font-medium text-gray-800 dark:text-white" x-text="row.p_supp" :title="row.p_supp"></td>
+                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-blue-600 dark:text-blue-400" x-text="row.p_inv"></td>
+                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-gray-500" x-text="row.p_date"></td>
+                            <td class="px-4 py-3 whitespace-nowrap text-right font-mono font-bold text-gray-700 dark:text-gray-200 border-r border-gray-100 dark:border-gray-700 bg-blue-50/30 dark:bg-blue-900/10" x-text="row.p_amt ? formatNumber(row.p_amt) + ' ៛' : '-'"></td>
+
+                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-yellow-700 bg-yellow-50/20" x-text="row.p_inv_clean"></td>
+                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-yellow-700 bg-yellow-50/20 border-r border-gray-100 dark:border-gray-700" x-text="row.d_inv_clean"></td>
+
+                            <td class="px-4 py-3 text-center border-r border-gray-100 dark:border-gray-700">
+                                <span
+                                    class="px-2 py-1 rounded text-[10px] font-bold uppercase border shadow-sm block w-full"
+                                    :class="{
+                                          'bg-green-50 text-green-700 border-green-200': row.status === 'MATCHED',
+                                          'bg-red-50 text-red-700 border-red-200': row.status === 'NOT FOUND',
+                                          'bg-orange-50 text-orange-700 border-orange-200': row.status === 'MISMATCH'
+                                      }"
+                                    x-text="row.status"
+                                >
+                                </span>
+                            </td>
+
+                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10">
+                                <span x-show="row.v_inv" class="text-green-500 text-lg">●</span>
+                                <span x-show="!row.v_inv" class="text-gray-300 text-lg">●</span>
+                            </td>
+                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10">
+                                <span x-show="row.v_date" class="text-green-500 text-lg">●</span>
+                                <span x-show="!row.v_date" class="text-gray-300 text-lg">●</span>
+                            </td>
+                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10">
+                                <span x-show="row.v_tin" class="text-green-500 text-lg">●</span>
+                                <span x-show="!row.v_tin" class="text-gray-300 text-lg">●</span>
+                            </td>
+                            <td class="px-4 py-3 text-right font-mono text-xs border-r border-gray-100 dark:border-gray-700 bg-orange-50/30 dark:bg-orange-900/10 font-bold" :class="Math.abs(row.v_diff) > 0.05 ? 'text-red-500' : 'text-gray-300'" x-text="Math.abs(row.v_diff) > 0.05 ? formatNumber(row.v_diff) : '-'"></td>
+
+                            <td class="px-4 py-3 whitespace-nowrap text-right font-mono font-bold border-r border-gray-100 dark:border-gray-700 bg-purple-50/30 dark:bg-purple-900/10" :class="row.status === 'MATCHED' ? 'text-green-600' : (row.status === 'MISMATCH' ? 'text-orange-600' : 'text-gray-400')" x-text="row.d_amt ? formatNumber(row.d_amt) + ' ៛' : '-'"></td>
+
+                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-gray-500" x-text="row.d_date"></td>
+                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-purple-600 dark:text-purple-400" x-text="row.d_inv"></td>
+                            <td class="px-4 py-3 whitespace-nowrap max-w-xs truncate text-gray-600" x-text="row.d_name" :title="row.d_name"></td>
+                            <td class="px-4 py-3 whitespace-nowrap font-mono text-xs text-gray-400" x-text="row.d_tin"></td>
+                        </tr>
+                    </template>
+
+                    <tr x-show="loadingMore">
+                        <td colspan="18" class="p-4 text-center">
+                            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 text-sm text-gray-600">
+                                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Loading more records...
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('resultsDashboard', () => ({
+            ovatrCode: '{{ ovatr_code }}',
+            rows: [],
+            stats: {total: 0, matched: 0, not_found: 0, mismatch: 0},
+            search: '',
+            filter: 'ALL',
+            loading: true,
+            loadingMore: false,
+            page: 1,
+            hasMore: true,
+
+            async init() {
+                this.loadData();
+            },
+
+            async loadData(isAppend = false) {
+                if (!this.ovatrCode) return;
+                try {
+                    const res = await fetch(`{% url "crosscheck:get_results_data" %}?ovatr_code=${this.ovatrCode}&page=${this.page}`);
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        if (isAppend) this.rows = [...this.rows, ...data.data];
+                        else {
+                            this.rows = data.data;
+                            this.stats = data.stats;
+                        }
+                        this.hasMore = data.has_more;
+                    }
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    this.loading = false;
+                    this.loadingMore = false;
+                }
+            },
+
+            checkScroll(e) {
+                if (e.target.scrollHeight - e.target.scrollTop - e.target.clientHeight < 100 && this.hasMore && !this.loadingMore) {
+                    this.loadingMore = true;
+                    this.page++;
+                    this.loadData(true);
+                }
+            },
+
+            get filteredRows() {
+                if (!this.search && this.filter === 'ALL') return this.rows;
+                const term = this.search.toLowerCase();
+                return this.rows.filter((row) => {
+                    const matchesSearch = !term || (row.p_desc || '').toLowerCase().includes(term) || (row.p_inv || '').toLowerCase().includes(term) || (row.d_inv || '').toLowerCase().includes(term);
+                    const matchesFilter = this.filter === 'ALL' || row.status === this.filter;
+                    return matchesSearch && matchesFilter;
+                });
+            },
+
+            formatNumber(num) {
+                return new Intl.NumberFormat('en-US').format(num);
+            },
+        }));
+    });
+</script>
+{% endblock %}

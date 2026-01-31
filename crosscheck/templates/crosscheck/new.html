@@ -561,14 +561,12 @@
                     })
                     .then((response) => response.json())
                     .then((rcData) => {
-                        this.isSaving = false;
-
                         if (rcData.status === 'success') {
-                            this.saveMessage = '✅ All Data Saved!';
-                            // alert(`Process Complete!\n\n1. Company Info: Saved\n2. Tax: Processed\n3. Purchase: Saved\n4. Sale: Saved\n5. Reverse Charge: ${rcData.message}`);
-                            // Optional Redirect
-                            // window.location.href = "{% url 'dashboard:index' %}";
+                            this.saveMessage = '✅ All Data Saved! Generating Annex 3...';
+                            // --- AUTO TRIGGER DOWNLOAD ---
+                            this.downloadAnnex3();
                         } else {
+                            this.isSaving = false;
                             alert('Warning during Reverse Charge save: ' + rcData.message);
                         }
                     })
@@ -578,6 +576,16 @@
                         this.saveMessage = '❌ Error';
                         alert('Process Failed: ' + err.message);
                     });
+            },
+
+            // --- STEP 4: Download Annex 3 (Auto-triggered) ---
+            downloadAnnex3() {
+                this.saveMessage = 'Redirecting to processing...';
+
+                // Instead of fetching here, we redirect the browser to the processing page.
+                // The processing page will handle the fetch and show the terminal UI.
+                const url = "{% url 'crosscheck:processing' %}?ovatr_code=" + this.ovatrCode;
+                window.location.href = url;
             },
         }));
     });

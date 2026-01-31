@@ -1,24 +1,30 @@
-from django.conf import settings
-import duckdb
-import pandas as pd
 import os
-import re
+import io
 import json
+import re
+import duckdb
+import warnings
+import pandas as pd
+from datetime import datetime
+from django.conf import settings
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import FileResponse, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
+from openpyxl import load_workbook
 
-# --- Helper: DuckDB Connection ---
+# --- Helpers ---
+
 def get_db_connection():
-    return duckdb.connect(str(settings.BASE_DIR / 'datawarehouse.duckdb'))
+    return duckdb.connect(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
 
-# --- Helper: Currency Cleaner ---
 def clean_currency(val):
     s = str(val).strip()
     if s.lower() in ['nan', 'none', '', 'nat', '-']:
         return 0.0
+    # Remove non-numeric chars except . and -
     clean_s = re.sub(r'[^\d.-]', '', s)
+    # Handle accounting format (100) -> -100
     if '(' in s and ')' in s:
         clean_s = '-' + re.sub(r'[^\d.]', '', s)
     try:
@@ -26,11 +32,45 @@ def clean_currency(val):
     except ValueError:
         return 0.0
 
+def clean_invoice_text(val):    
+    """ 
+    Removes all special characters (dashes, spaces, dots, etc.).
+    Keeps only Alphanumeric characters (A-Z, 0-9).
+    """
+    if not val:
+        return ""
+    # Regex: Replace anything that is NOT a-z, A-Z, or 0-9 with empty string
+    return re.sub(r'[^a-zA-Z0-9]', '', str(val))
+
+# --- Views ---
+
 def new_crosscheck(request):
+    """ Renders the 'New Crosscheck' upload page. """
     return render(request, 'crosscheck/new.html')
+
+def processing_view(request):
+    """ 
+    Renders the 'Processing' page. 
+    Retrieves the OVATR code from URL first, falls back to Session.
+    """
+    code = request.GET.get('ovatr_code') or request.session.get('ovatr_code', '')
+    context = {'ovatr_code': code}
+    return render(request, 'crosscheck/processing.html', context)
+
+def results_view(request):
+    """ 
+    Renders the 'Results' dashboard. 
+    Retrieves the OVATR code from URL first, falls back to Session.
+    """
+    code = request.GET.get('ovatr_code') or request.session.get('ovatr_code', '')
+    context = {'ovatr_code': code}
+    return render(request, 'crosscheck/results.html', context)
+
+# --- Upload & Save APIs ---
 
 @csrf_exempt
 def upload_init(request):
+    """ Handles the initial file upload and reads Company Info for preview. """
     if request.method == 'POST' and request.FILES.get('file'):
         file = request.FILES['file']
         fs = FileSystemStorage()
@@ -39,12 +79,12 @@ def upload_init(request):
         uploaded_file_path = fs.path(filename)
 
         try:
+            # Try specific sheet name, fallback to first sheet
             try:
                 df = pd.read_excel(uploaded_file_path, sheet_name='COMPANY INFO', header=None)
             except:
                 df = pd.read_excel(uploaded_file_path, sheet_name=0, header=None)
             
-            # Map is already lowercase, keeping it as is
             data_map = {
                 'company_name_kh': '', 'company_name_en': '', 'file_barcode': '',
                 'old_vatin': '', 'vatin': '', 'enterprise_id': '',
@@ -173,11 +213,13 @@ def save_company_info(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            # Normalize keys to lowercase
             clean_data = {k.lower(): v for k, v in data.items()}
             
             if 'ovatr' not in clean_data or not clean_data['ovatr']:
                 return JsonResponse({'status': 'error', 'message': 'Missing Critical Field: OVATR'}, status=400)
+
+            # Store OVATR in session
+            request.session['ovatr_code'] = clean_data['ovatr']
 
             con = get_db_connection()
             columns_schema = []
@@ -185,7 +227,6 @@ def save_company_info(request):
                 if key == 'ovatr': columns_schema.append(f'"{key}" VARCHAR PRIMARY KEY')
                 else: columns_schema.append(f'"{key}" VARCHAR')
             
-            # Table name also cleaned up
             con.execute(f"CREATE TABLE IF NOT EXISTS company_info ({', '.join(columns_schema)})")
             
             columns = [f'"{k}"' for k in clean_data.keys()]
@@ -203,7 +244,6 @@ def save_taxpaid(request):
     if request.method == 'POST':
         try:
             body = json.loads(request.body)
-            # Use lowercase key access
             ovatr_val = body.get('ovatr') or body.get('OVATR')
 
             fs = FileSystemStorage()
@@ -251,10 +291,8 @@ def save_taxpaid(request):
 
             if extracted_rows:
                 con = get_db_connection()
-                # Lowercase columns in CREATE TABLE
                 con.execute("CREATE TABLE IF NOT EXISTS tax_paid (ovatr VARCHAR, tax_year VARCHAR, description VARCHAR, jan DOUBLE, feb DOUBLE, mar DOUBLE, apr DOUBLE, may DOUBLE, jun DOUBLE, jul DOUBLE, aug DOUBLE, sep DOUBLE, oct DOUBLE, nov DOUBLE, dec DOUBLE, total DOUBLE, PRIMARY KEY (ovatr, tax_year, description))")
                 con.execute("DELETE FROM tax_paid WHERE ovatr = ?", [ovatr_val])
-                # Insert matches dictionary order
                 con.executemany("INSERT INTO tax_paid VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", [list(d.values()) for d in extracted_rows])
                 con.close()
                 return JsonResponse({'status': 'success', 'message': f'Saved {len(extracted_rows)} records for TaxPaid.'})
@@ -297,11 +335,27 @@ def save_purchase(request):
             df['ovatr'] = ovatr_val
             
             con = get_db_connection()
-            con.execute("DROP TABLE IF EXISTS purchase")
-            # Lowercase columns in CREATE TABLE
-            con.execute("CREATE TABLE purchase (ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, type VARCHAR, supplier_tin VARCHAR, supplier_name VARCHAR, total_amount DOUBLE, exclude_vat DOUBLE, non_vat_purchase DOUBLE, vat_0 DOUBLE, purchase DOUBLE, import DOUBLE, non_creditable_vat DOUBLE, state_charge DOUBLE, non_state_charge DOUBLE, description VARCHAR, status VARCHAR, PRIMARY KEY (ovatr, no))")
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS purchase (
+                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, type VARCHAR, 
+                    supplier_tin VARCHAR, supplier_name VARCHAR, total_amount DOUBLE, 
+                    exclude_vat DOUBLE, non_vat_purchase DOUBLE, vat_0 DOUBLE, purchase DOUBLE, 
+                    import DOUBLE, non_creditable_vat DOUBLE, state_charge DOUBLE, 
+                    non_state_charge DOUBLE, description VARCHAR, status VARCHAR, 
+                    PRIMARY KEY (ovatr, no)
+                )
+            """)
+            con.execute("DELETE FROM purchase WHERE ovatr = ?", [ovatr_val])
             con.register('df_purchase', df)
-            con.execute("INSERT INTO purchase SELECT ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, import, non_creditable_vat, state_charge, non_state_charge, description, status FROM df_purchase")
+            con.execute("""
+                INSERT INTO purchase 
+                SELECT 
+                    ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, 
+                    total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, 
+                    import, non_creditable_vat, state_charge, non_state_charge, 
+                    description, status 
+                FROM df_purchase
+            """)
             con.close()
             return JsonResponse({'status': 'success', 'message': f'Saved {len(df)} Purchase Invoices.'})
         except Exception as e:
@@ -325,7 +379,6 @@ def save_sale(request):
             if len(df.columns) < 23:
                  return JsonResponse({'status': 'error', 'message': f'Format Mismatch: Expected 23+ columns (A-W), found {len(df.columns)}'})
 
-            # Lowercase target columns
             target_cols = [
                 'excel_no', 'date', 'invoice_no', 'credit_note_no', 'buyer_type', 'tax_registration_id', 
                 'buyer_name', 'total_invoice_amount', 'amount_exclude_vat', 'non_vat_sales', 
@@ -350,9 +403,8 @@ def save_sale(request):
             df['ovatr'] = ovatr_val
             
             con = get_db_connection()
-            con.execute("DROP TABLE IF EXISTS sale")
             con.execute("""
-                CREATE TABLE sale (
+                CREATE TABLE IF NOT EXISTS sale (
                     ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, credit_note_no VARCHAR,
                     buyer_type VARCHAR, tax_registration_id VARCHAR, buyer_name VARCHAR,
                     total_invoice_amount DOUBLE, amount_exclude_vat DOUBLE, non_vat_sales DOUBLE,
@@ -363,14 +415,19 @@ def save_sale(request):
                     tax_declaration_status VARCHAR, PRIMARY KEY (ovatr, no)
                 )
             """)
+            con.execute("DELETE FROM sale WHERE ovatr = ?", [ovatr_val])
             con.register('df_sale', df)
             con.execute("""
-                INSERT INTO sale SELECT 
-                    ovatr, no, date, invoice_no, credit_note_no, buyer_type, tax_registration_id, buyer_name,
-                    total_invoice_amount, amount_exclude_vat, non_vat_sales, vat_zero_rate, vat_local_sale,
-                    vat_export, vat_local_sale_state_burden, vat_withheld_by_national_treasury, plt,
-                    special_tax_on_goods, special_tax_on_services, accommodation_tax, income_tax_redemption_rate,
-                    notes, description, tax_declaration_status
+                INSERT INTO sale 
+                SELECT 
+                    ovatr, no, date, invoice_no, credit_note_no, buyer_type, 
+                    tax_registration_id, buyer_name, total_invoice_amount, 
+                    amount_exclude_vat, non_vat_sales, vat_zero_rate, 
+                    vat_local_sale, vat_export, vat_local_sale_state_burden, 
+                    vat_withheld_by_national_treasury, plt, special_tax_on_goods, 
+                    special_tax_on_services, accommodation_tax, 
+                    income_tax_redemption_rate, notes, description, 
+                    tax_declaration_status
                 FROM df_sale
             """)
             con.close()
@@ -397,7 +454,6 @@ def save_reverse_charge(request):
             if len(df.columns) < 14:
                  return JsonResponse({'status': 'error', 'message': f'Format Mismatch: Expected 14+ columns, found {len(df.columns)}'})
 
-            # Lowercase target columns
             target_cols = [
                 'excel_no', 'date', 'invoice_no', 'supplier_non_resident', 'supplier_tin', 
                 'supplier_name', 'address', 'email', 'non_vat_supply', 'exclude_vat', 
@@ -413,19 +469,354 @@ def save_reverse_charge(request):
             df['ovatr'] = ovatr_val
             
             con = get_db_connection()
-            con.execute("DROP TABLE IF EXISTS reverse_charge")
             con.execute("""
-                CREATE TABLE reverse_charge (
-                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, supplier_non_resident VARCHAR,
-                    supplier_tin VARCHAR, supplier_name VARCHAR, address VARCHAR, email VARCHAR,
-                    non_vat_supply DOUBLE, exclude_vat DOUBLE, vat DOUBLE, description VARCHAR,
-                    status VARCHAR, declaration_status VARCHAR, PRIMARY KEY (ovatr, no)
+                CREATE TABLE IF NOT EXISTS reverse_charge (
+                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, 
+                    supplier_non_resident VARCHAR, supplier_tin VARCHAR, supplier_name VARCHAR, 
+                    address VARCHAR, email VARCHAR, non_vat_supply DOUBLE, exclude_vat DOUBLE, 
+                    vat DOUBLE, description VARCHAR, status VARCHAR, declaration_status VARCHAR, 
+                    PRIMARY KEY (ovatr, no)
                 )
             """)
+            con.execute("DELETE FROM reverse_charge WHERE ovatr = ?", [ovatr_val])
             con.register('df_rc', df)
-            con.execute("INSERT INTO reverse_charge SELECT ovatr, no, date, invoice_no, supplier_non_resident, supplier_tin, supplier_name, address, email, non_vat_supply, exclude_vat, vat, description, status, declaration_status FROM df_rc")
+            con.execute("""
+                INSERT INTO reverse_charge 
+                SELECT 
+                    ovatr, no, date, invoice_no, supplier_non_resident, 
+                    supplier_tin, supplier_name, address, email, 
+                    non_vat_supply, exclude_vat, vat, description, 
+                    status, declaration_status 
+                FROM df_rc
+            """)
             con.close()
             return JsonResponse({'status': 'success', 'message': f'Saved {len(df)} Reverse Charge Records.'})
         except Exception as e:
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
+
+# --- Analytics & Reporting ---
+
+def get_crosscheck_stats(request):
+    """ Returns data stats. Fallback to Session if URL param missing. """
+    ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
+    
+    if not ovatr_code:
+        return JsonResponse({'status': 'error', 'message': 'Missing OVATR code'}, status=400)
+
+    db_path = os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb')
+    try:
+        conn = duckdb.connect(db_path, read_only=True)
+        
+        try:
+            res_p = conn.execute("SELECT COUNT(*) FROM purchase WHERE ovatr = ?", [ovatr_code]).fetchone()
+            count_p = res_p[0] if res_p else 0
+        except: count_p = 0
+        
+        try:
+            res_d = conn.execute("""
+                SELECT COUNT(*) 
+                FROM tax_declaration
+                WHERE tax_registration_id IN (
+                    SELECT DISTINCT supplier_tin FROM purchase WHERE ovatr = ?
+                )
+            """, [ovatr_code]).fetchone()
+            count_d = res_d[0] if res_d else 0
+        except: count_d = 0
+        
+        conn.close()
+        
+        total_rows = max(count_p, count_d)
+        
+        # Check if file exists
+        file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
+        is_ready = os.path.exists(file_path)
+        
+        return JsonResponse({
+            'status': 'success',
+            'total_rows': total_rows,
+            'purchase_count': count_p,
+            'declaration_count': count_d,
+            'is_ready': is_ready
+        })
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+def generate_annex_iii(request):
+    """ 
+    Generates Excel. 
+    UPDATED: 
+    1. Writes CLEANED invoice values directly to Cols M (13) and N (14).
+    2. Shifts Validation columns to O-R (15-18).
+    3. Shifts Declaration columns to S-X (19-24).
+    """
+    conn = None
+    try:
+        # 1. Setup
+        template_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'CC - guide.xlsx')
+        if not os.path.exists(template_path):
+            template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
+        
+        ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
+        if not ovatr_code:
+            return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
+
+        # 2. Connect DB
+        db_path = os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb')
+        conn = duckdb.connect(db_path, read_only=True)
+
+        # 3. Query Data
+        purchases = conn.execute("""
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase 
+            FROM purchase WHERE ovatr = ? AND purchase > 0
+        """, [ovatr_code]).fetchall()
+
+        valid_periods = set()
+        for row in purchases:
+            try:
+                dt = pd.to_datetime(row[4], dayfirst=True, errors='coerce')
+                if pd.notna(dt): valid_periods.add((dt.year, dt.month))
+            except: continue
+
+        raw_decs = conn.execute("""
+            SELECT date, invoice_number, tax_registration_id, buyer_name, vat_local_sale, vat_export 
+            FROM tax_declaration 
+            WHERE tax_registration_id IN (SELECT DISTINCT supplier_tin FROM purchase WHERE ovatr = ?)
+        """, [ovatr_code]).fetchall()
+        
+        declarations = []
+        for dec in raw_decs:
+            try:
+                dt = pd.to_datetime(dec[0], dayfirst=True, errors='coerce')
+                if pd.notna(dt) and (dt.year, dt.month) in valid_periods: declarations.append(dec)
+            except: continue
+
+        company_vatin = ""
+        try:
+            res = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ? LIMIT 1", [ovatr_code]).fetchone()
+            if res and res[0]: company_vatin = res[0]
+        except: pass
+
+        # 4. Fill Workbook
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+            wb = load_workbook(template_path)
+        
+        ws = next((wb[s] for s in wb.sheetnames if "Annex" in s), wb.active)
+
+        start_row = 8
+        for r in range(1, 15):
+            val = ws.cell(row=r, column=1).value
+            if val and "ល.រ" in str(val):
+                start_row = r + 1
+                break
+
+        max_rows = max(len(purchases), len(declarations))
+        for i in range(max_rows):
+            r = start_row + i
+            
+            p_inv_val = ""
+            d_inv_val = ""
+
+            # --- LEFT: Purchase Data (Cols 1-7 / A-G) ---
+            if i < len(purchases):
+                row = purchases[i]
+                p_inv_val = row[3] if row[3] else "" 
+                ws.cell(row=r, column=1, value=i+1)
+                ws.cell(row=r, column=2, value=row[0] or "")
+                ws.cell(row=r, column=3, value=row[1] or "")
+                ws.cell(row=r, column=4, value=row[2] or "")
+                ws.cell(row=r, column=5, value=p_inv_val)
+                ws.cell(row=r, column=6, value=row[4] or "")
+                ws.cell(row=r, column=7, value=row[5] if row[5] else 0)
+
+            # --- MIDDLE: Helper Formulas (I, K) ---
+            ws.cell(row=r, column=9, value=f"=G{r}")        # Col I
+            ws.cell(row=r, column=11, value=f"=I{r}-G{r}")  # Col K
+
+            # --- RIGHT: Declaration Data (SHIFTED TO COLS 19-24 / S-X) ---
+            if i < len(declarations):
+                dec = declarations[i]
+                d_inv_val = dec[1] if dec[1] else "" 
+                ws.cell(row=r, column=19, value=dec[0] or "")  # S: Date
+                ws.cell(row=r, column=20, value=d_inv_val)     # T: Invoice
+                ws.cell(row=r, column=21, value=dec[2] or "")  # U: TIN
+                ws.cell(row=r, column=22, value=dec[3] or "")  # V: Name
+                ws.cell(row=r, column=23, value=dec[4] or 0)   # W: Amount
+                ws.cell(row=r, column=24, value=dec[5] or 0)   # X: VAT
+
+            # --- NEW CLEANUP COLUMNS (Backend Logic) ---
+            # Col 13 (M): P.invoice cleanup
+            ws.cell(row=r, column=13, value=clean_invoice_text(p_inv_val))
+            
+            # Col 14 (N): S.invoice cleanup
+            ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
+
+            # --- VALIDATION FORMULAS (SHIFTED TO O-R) ---
+            # O (15): Var Invoice (Compare Cleaned Cols M vs N)
+            ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
+            
+            # P (16): Var Date (Compare Pur Date F vs Dec Date S)
+            ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
+            
+            # Q (17): Var Supplier (Compare Company TIN vs Dec TIN U)
+            ws.cell(row=r, column=17, value=f'="{company_vatin}"=U{r}')
+            
+            # R (18): Difference (Pur Amt G - Dec Amt W)
+            ws.cell(row=r, column=18, value=f"=G{r}-W{r}")
+
+        # 5. Save
+        save_dir = os.path.join(settings.MEDIA_ROOT, 'temp_reports')
+        os.makedirs(save_dir, exist_ok=True)
+        filename = f"AnnexIII_{ovatr_code}.xlsx"
+        file_path = os.path.join(save_dir, filename)
+        wb.save(file_path)
+        
+        return JsonResponse({
+            'status': 'success',
+            'message': 'Report generated successfully.',
+            'redirect_url': f"/crosscheck/results/?ovatr_code={ovatr_code}"
+        })
+
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    finally:
+        if conn: conn.close()
+
+def get_results_data(request):
+    """ 
+    API to read the Excel file.
+    UPDATED: 
+    - Reads from shifted columns (Dec starts at 19/T).
+    - Includes 'Cleanup' data for table display.
+    """
+    ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
+    page = int(request.GET.get('page', 1))
+    page_size = 100
+    
+    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
+    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report not found.'}, status=404)
+
+    try:
+        df = pd.read_excel(file_path, sheet_name='AnnexIII-Local Pur', header=None, skiprows=8)
+        
+        # --- 1. Global Stats ---
+        # Purchase: E=4, G=6
+        # Declaration: Inv=T(19), Amt=W(22) (Because Cols 13,14 added)
+        p_inv = df[4].fillna('').astype(str).str.strip()
+        d_inv = df[19].fillna('').astype(str).str.strip() # Index 19 = Col T
+        p_amt = df[6].apply(clean_currency) 
+        d_amt = df[22].apply(clean_currency)              # Index 22 = Col W
+        
+        has_p = (p_inv != '') | (p_amt != 0)
+        has_d = (d_inv != '') | (d_amt != 0)
+        valid_mask = has_p | has_d
+        
+        status_series = pd.Series('UNKNOWN', index=df.index)
+        cond_match = has_p & has_d & (abs(p_amt - d_amt) < 0.05)
+        cond_mismatch = has_p & has_d & (abs(p_amt - d_amt) >= 0.05)
+        status_series[(has_p & ~has_d) | (~has_p & has_d)] = 'NOT FOUND'
+        status_series[cond_match] = 'MATCHED'
+        status_series[cond_mismatch] = 'MISMATCH'
+        
+        counts = status_series[valid_mask].value_counts()
+        stats = {
+            'total': int(valid_mask.sum()),
+            'matched': int(counts.get('MATCHED', 0)),
+            'not_found': int(counts.get('NOT FOUND', 0)),
+            'mismatch': int(counts.get('MISMATCH', 0))
+        }
+
+        # --- 2. Pagination ---
+        df_display = df[valid_mask]
+        status_display = status_series[valid_mask]
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        
+        df_page = df_display.iloc[start_idx:end_idx]
+        status_page = status_display.iloc[start_idx:end_idx]
+        
+        results = []
+        for (idx, row), status in zip(df_page.iterrows(), status_page):
+            def val(c): return str(row[c]).strip() if pd.notna(row[c]) else ""
+            def num(c): return clean_currency(row[c])
+            
+            # --- Cleanup Logic (Backend) ---
+            p_inv_clean = clean_invoice_text(val(4))
+            d_inv_clean = clean_invoice_text(val(19)) # Col T
+            p_tin_clean = clean_invoice_text(val(3))
+            d_tin_clean = clean_invoice_text(val(20)) # Col U
+
+            # --- Validation ---
+            v_inv_match = (p_inv_clean == d_inv_clean) if (p_inv_clean and d_inv_clean) else False
+            v_tin_match = (p_tin_clean == d_tin_clean) if (p_tin_clean and d_tin_clean) else False
+            
+            v_date_match = False
+            try:
+                pd_dt = pd.to_datetime(row[5], dayfirst=True)
+                dd_dt = pd.to_datetime(row[18], dayfirst=True) # Col S (Index 18)
+                if pd.notna(pd_dt) and pd.notna(dd_dt):
+                    v_date_match = (pd_dt.month == dd_dt.month) and (pd_dt.year == dd_dt.year)
+            except: pass
+
+            v_diff = num(6) - num(22) # Col G - Col W
+
+            def clean_date(v):
+                if pd.isna(v) or str(v).strip() == "": return ""
+                try: return pd.to_datetime(v, dayfirst=True).strftime('%d-%m-%Y')
+                except: return str(v).split(' ')[0]
+
+            results.append({
+                'no': idx + 1,
+                'status': status,
+                # Cleaned Data
+                'p_inv_clean': p_inv_clean, 
+                'd_inv_clean': d_inv_clean,
+                # Validation
+                'v_inv': v_inv_match, 'v_date': v_date_match, 'v_tin': v_tin_match, 'v_diff': v_diff,
+                # Purchase
+                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3),
+                'p_inv': val(4), 'p_date': clean_date(row[5]), 'p_amt': num(6),
+                # Declaration
+                'd_date': clean_date(row[18]), 'd_inv': val(19), 'd_tin': val(20),
+                'd_name': val(21), 'd_amt': num(22)
+            })
+            
+        return JsonResponse({
+            'status': 'success', 'data': results, 'stats': stats, 'has_more': end_idx < stats['total']
+        })
+
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+def download_report(request):
+    """
+    Serves the generated Excel file for download.
+    """
+    ovatr_code = request.GET.get('ovatr_code')
+    if not ovatr_code:
+        return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    
+    file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
+    
+    if os.path.exists(file_path):
+        response = FileResponse(open(file_path, 'rb'), as_attachment=True, filename=f"AnnexIII_{ovatr_code}.xlsx")
+        return response
+    else:
+        return JsonResponse({'status': 'error', 'message': 'File not found'}, status=404)
+    """
+    Serves the generated Excel file for download.
+    """
+    ovatr_code = request.GET.get('ovatr_code')
+    if not ovatr_code:
+        return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    
+    file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
+    
+    if os.path.exists(file_path):
+        response = FileResponse(open(file_path, 'rb'), as_attachment=True, filename=f"AnnexIII_{ovatr_code}.xlsx")
+        return response
+    else:
+        return JsonResponse({'status': 'error', 'message': 'File not found'}, status=404)
