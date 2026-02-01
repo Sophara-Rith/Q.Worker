@@ -1,7 +1,9 @@
+import glob
 import os
 import io
 import json
 import re
+import time
 import duckdb
 import warnings
 import pandas as pd
@@ -42,6 +44,20 @@ def clean_invoice_text(val):
     # Regex: Replace anything that is NOT a-z, A-Z, or 0-9 with empty string
     return re.sub(r'[^a-zA-Z0-9]', '', str(val))
 
+def cleanup_old_files():
+    """ Deletes files in temp_uploads/reports older than 24 hours. """
+    directories = [
+        os.path.join(settings.MEDIA_ROOT, 'temp_uploads'),
+        os.path.join(settings.MEDIA_ROOT, 'temp_reports')
+    ]
+    current_time = time.time()
+    for folder in directories:
+        if not os.path.exists(folder): continue
+        for f in glob.glob(os.path.join(folder, '*')):
+            try:
+                if current_time - os.path.getctime(f) > 86400: os.remove(f)
+            except: pass
+
 # --- Views ---
 
 def new_crosscheck(request):
@@ -71,6 +87,7 @@ def results_view(request):
 @csrf_exempt
 def upload_init(request):
     """ Handles the initial file upload and reads Company Info for preview. """
+    cleanup_old_files()
     if request.method == 'POST' and request.FILES.get('file'):
         file = request.FILES['file']
         fs = FileSystemStorage()
@@ -498,62 +515,57 @@ def save_reverse_charge(request):
 # --- Analytics & Reporting ---
 
 def get_crosscheck_stats(request):
-    """ Returns data stats. Fallback to Session if URL param missing. """
+    """ Returns data stats including both Local and Import counts. """
     ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-    
-    if not ovatr_code:
-        return JsonResponse({'status': 'error', 'message': 'Missing OVATR code'}, status=400)
+    if not ovatr_code: return JsonResponse({'status': 'error'}, status=400)
 
-    db_path = os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb')
     try:
-        conn = duckdb.connect(db_path, read_only=True)
+        conn = get_db_connection()
         
-        try:
-            res_p = conn.execute("SELECT COUNT(*) FROM purchase WHERE ovatr = ?", [ovatr_code]).fetchone()
-            count_p = res_p[0] if res_p else 0
-        except: count_p = 0
+        # Count Local Purchase (>0) and Import (>0)
+        res_p = conn.execute("""
+            SELECT 
+                COUNT(CASE WHEN purchase > 0 THEN 1 END),
+                COUNT(CASE WHEN "import" > 0 THEN 1 END)
+            FROM purchase WHERE ovatr = ?
+        """, [ovatr_code]).fetchone()
         
-        try:
-            res_d = conn.execute("""
-                SELECT COUNT(*) 
-                FROM tax_declaration
-                WHERE tax_registration_id IN (
-                    SELECT DISTINCT supplier_tin FROM purchase WHERE ovatr = ?
-                )
-            """, [ovatr_code]).fetchone()
-            count_d = res_d[0] if res_d else 0
-        except: count_d = 0
+        count_local = res_p[0] if res_p else 0
+        count_import = res_p[1] if res_p else 0
+        
+        # Declarations (Matched via Strict Logic)
+        res_d = conn.execute("""
+            SELECT COUNT(DISTINCT d.invoice_number)
+            FROM tax_declaration d
+            JOIN purchase p ON d.invoice_number = p.invoice_no
+            WHERE p.ovatr = ?
+            AND d.tax_registration_id = p.supplier_tin
+            AND month(d.date) = month(strptime(p.date, '%d-%m-%Y'))
+            AND year(d.date) = year(strptime(p.date, '%d-%m-%Y'))
+        """, [ovatr_code]).fetchone()
+        count_d = res_d[0] if res_d else 0
         
         conn.close()
-        
-        total_rows = max(count_p, count_d)
-        
-        # Check if file exists
         file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-        is_ready = os.path.exists(file_path)
         
         return JsonResponse({
             'status': 'success',
-            'total_rows': total_rows,
-            'purchase_count': count_p,
+            'total_rows': max(count_local + count_import, count_d),
+            'local_count': count_local,
+            'import_count': count_import,
             'declaration_count': count_d,
-            'is_ready': is_ready
+            'is_ready': os.path.exists(file_path)
         })
-        
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def generate_annex_iii(request):
     """ 
-    Generates Excel. 
-    UPDATED: 
-    1. Writes CLEANED invoice values directly to Cols M (13) and N (14).
-    2. Shifts Validation columns to O-R (15-18).
-    3. Shifts Declaration columns to S-X (19-24).
+    Generates Excel with TWO sheets:
+    1. 'AnnexIII-Local Pur' (purchase > 0)
+    2. 'AnnexIII-Import' (import > 0)
     """
     conn = None
     try:
-        # 1. Setup
         template_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'CC - guide.xlsx')
         if not os.path.exists(template_path):
             template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
@@ -562,35 +574,37 @@ def generate_annex_iii(request):
         if not ovatr_code:
             return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
 
-        # 2. Connect DB
-        db_path = os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb')
-        conn = duckdb.connect(db_path, read_only=True)
+        conn = get_db_connection()
 
-        # 3. Query Data
-        purchases = conn.execute("""
+        # --- DATA FETCHING ---
+        
+        # 1. Local Purchases
+        local_purchases = conn.execute("""
             SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase 
             FROM purchase WHERE ovatr = ? AND purchase > 0
         """, [ovatr_code]).fetchall()
 
-        valid_periods = set()
-        for row in purchases:
-            try:
-                dt = pd.to_datetime(row[4], dayfirst=True, errors='coerce')
-                if pd.notna(dt): valid_periods.add((dt.year, dt.month))
-            except: continue
+        # 2. Import Purchases (using "import" column)
+        import_purchases = conn.execute("""
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, "import"
+            FROM purchase WHERE ovatr = ? AND "import" > 0
+        """, [ovatr_code]).fetchall()
 
+        # 3. Declarations (Strict Match)
         raw_decs = conn.execute("""
-            SELECT date, invoice_number, tax_registration_id, buyer_name, vat_local_sale, vat_export 
-            FROM tax_declaration 
-            WHERE tax_registration_id IN (SELECT DISTINCT supplier_tin FROM purchase WHERE ovatr = ?)
+            SELECT d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.vat_local_sale, d.vat_export 
+            FROM tax_declaration d
+            JOIN purchase p ON d.invoice_number = p.invoice_no
+            WHERE p.ovatr = ?
+            AND d.tax_registration_id = p.supplier_tin
+            AND month(d.date) = month(strptime(p.date, '%d-%m-%Y'))
+            AND year(d.date) = year(strptime(p.date, '%d-%m-%Y'))
         """, [ovatr_code]).fetchall()
         
-        declarations = []
+        dec_map = {}
         for dec in raw_decs:
-            try:
-                dt = pd.to_datetime(dec[0], dayfirst=True, errors='coerce')
-                if pd.notna(dt) and (dt.year, dt.month) in valid_periods: declarations.append(dec)
-            except: continue
+            clean_inv_key = clean_invoice_text(dec[1]) 
+            if clean_inv_key: dec_map[clean_inv_key] = dec
 
         company_vatin = ""
         try:
@@ -598,100 +612,91 @@ def generate_annex_iii(request):
             if res and res[0]: company_vatin = res[0]
         except: pass
 
-        # 4. Fill Workbook
+        # --- EXCEL GENERATION ---
+        
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
             wb = load_workbook(template_path)
         
-        ws = next((wb[s] for s in wb.sheetnames if "Annex" in s), wb.active)
-
-        start_row = 8
-        for r in range(1, 15):
-            val = ws.cell(row=r, column=1).value
-            if val and "ល.រ" in str(val):
-                start_row = r + 1
-                break
-
-        max_rows = max(len(purchases), len(declarations))
-        for i in range(max_rows):
-            r = start_row + i
+        # Helper to process a sheet
+        def process_sheet(sheet_name, data_rows):
+            if sheet_name not in wb.sheetnames: return # Skip if template missing sheet
+            ws = wb[sheet_name]
             
-            p_inv_val = ""
-            d_inv_val = ""
+            # Find header start
+            start_row = 8
+            for r in range(1, 15):
+                if ws.cell(row=r, column=1).value and "ល.រ" in str(ws.cell(row=r, column=1).value):
+                    start_row = r + 1
+                    break
 
-            # --- LEFT: Purchase Data (Cols 1-7 / A-G) ---
-            if i < len(purchases):
-                row = purchases[i]
-                p_inv_val = row[3] if row[3] else "" 
+            for i, p_row in enumerate(data_rows):
+                r = start_row + i
+                p_inv_val = p_row[3] if p_row[3] else ""
+                p_inv_clean = clean_invoice_text(p_inv_val)
+
+                # Purchase Data
                 ws.cell(row=r, column=1, value=i+1)
-                ws.cell(row=r, column=2, value=row[0] or "")
-                ws.cell(row=r, column=3, value=row[1] or "")
-                ws.cell(row=r, column=4, value=row[2] or "")
+                ws.cell(row=r, column=2, value=p_row[0] or "")
+                ws.cell(row=r, column=3, value=p_row[1] or "")
+                ws.cell(row=r, column=4, value=p_row[2] or "")
                 ws.cell(row=r, column=5, value=p_inv_val)
-                ws.cell(row=r, column=6, value=row[4] or "")
-                ws.cell(row=r, column=7, value=row[5] if row[5] else 0)
+                ws.cell(row=r, column=6, value=p_row[4] or "")
+                ws.cell(row=r, column=7, value=p_row[5] if p_row[5] else 0)
 
-            # --- MIDDLE: Helper Formulas (I, K) ---
-            ws.cell(row=r, column=9, value=f"=G{r}")        # Col I
-            ws.cell(row=r, column=11, value=f"=I{r}-G{r}")  # Col K
+                ws.cell(row=r, column=9, value=f"=G{r}")
+                ws.cell(row=r, column=11, value=f"=I{r}-G{r}")
 
-            # --- RIGHT: Declaration Data (SHIFTED TO COLS 19-24 / S-X) ---
-            if i < len(declarations):
-                dec = declarations[i]
-                d_inv_val = dec[1] if dec[1] else "" 
-                ws.cell(row=r, column=19, value=dec[0] or "")  # S: Date
-                ws.cell(row=r, column=20, value=d_inv_val)     # T: Invoice
-                ws.cell(row=r, column=21, value=dec[2] or "")  # U: TIN
-                ws.cell(row=r, column=22, value=dec[3] or "")  # V: Name
-                ws.cell(row=r, column=23, value=dec[4] or 0)   # W: Amount
-                ws.cell(row=r, column=24, value=dec[5] or 0)   # X: VAT
+                # Dec Match
+                d_row = dec_map.get(p_inv_clean)
+                d_inv_val = ""
+                if d_row:
+                    d_inv_val = d_row[1]
+                    ws.cell(row=r, column=19, value=d_row[0] or "")
+                    ws.cell(row=r, column=20, value=d_inv_val)
+                    ws.cell(row=r, column=21, value=d_row[2] or "")
+                    ws.cell(row=r, column=22, value=d_row[3] or "")
+                    ws.cell(row=r, column=23, value=d_row[4] or 0)
+                    ws.cell(row=r, column=24, value=d_row[5] or 0)
 
-            # --- NEW CLEANUP COLUMNS (Backend Logic) ---
-            # Col 13 (M): P.invoice cleanup
-            ws.cell(row=r, column=13, value=clean_invoice_text(p_inv_val))
-            
-            # Col 14 (N): S.invoice cleanup
-            ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
+                ws.cell(row=r, column=13, value=p_inv_clean)
+                ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
+                ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
+                ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
+                ws.cell(row=r, column=17, value=f'=C{r}=U{r}')
+                ws.cell(row=r, column=18, value=f"=G{r}-W{r}")
 
-            # --- VALIDATION FORMULAS (SHIFTED TO O-R) ---
-            # O (15): Var Invoice (Compare Cleaned Cols M vs N)
-            ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
-            
-            # P (16): Var Date (Compare Pur Date F vs Dec Date S)
-            ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
-            
-            # Q (17): Var Supplier (Compare Company TIN vs Dec TIN U)
-            ws.cell(row=r, column=17, value=f'="{company_vatin}"=U{r}')
-            
-            # R (18): Difference (Pur Amt G - Dec Amt W)
-            ws.cell(row=r, column=18, value=f"=G{r}-W{r}")
+        # Process Both Sheets
+        process_sheet('AnnexIII-Local Pur', local_purchases)
+        
+        # Attempt to process Imports (Check if sheet exists, fallback to creating or using 2nd sheet)
+        import_sheet_name = 'AnnexIII-Import'
+        if import_sheet_name not in wb.sheetnames:
+            # Fallback: Copy Local Pur sheet logic if Import sheet missing in template
+            if 'AnnexIII-Local Pur' in wb.sheetnames:
+                target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
+                target.title = import_sheet_name
+        
+        process_sheet(import_sheet_name, import_purchases)
 
-        # 5. Save
         save_dir = os.path.join(settings.MEDIA_ROOT, 'temp_reports')
         os.makedirs(save_dir, exist_ok=True)
         filename = f"AnnexIII_{ovatr_code}.xlsx"
-        file_path = os.path.join(save_dir, filename)
-        wb.save(file_path)
+        wb.save(os.path.join(save_dir, filename))
         
-        return JsonResponse({
-            'status': 'success',
-            'message': 'Report generated successfully.',
-            'redirect_url': f"/crosscheck/results/?ovatr_code={ovatr_code}"
-        })
+        return JsonResponse({'status': 'success', 'redirect_url': f"/crosscheck/results/?ovatr_code={ovatr_code}"})
 
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     finally:
         if conn: conn.close()
 
 def get_results_data(request):
     """ 
-    API to read the Excel file.
-    UPDATED: 
-    - Reads from shifted columns (Dec starts at 19/T).
-    - Includes 'Cleanup' data for table display.
+    API to read the Excel file. 
+    Supports 'table_type' param: 'local' (default) or 'import'.
     """
     ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
+    table_type = request.GET.get('table_type', 'local') # 'local' or 'import'
     page = int(request.GET.get('page', 1))
     page_size = 100
     
@@ -700,15 +705,22 @@ def get_results_data(request):
     if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report not found.'}, status=404)
 
     try:
-        df = pd.read_excel(file_path, sheet_name='AnnexIII-Local Pur', header=None, skiprows=8)
+        # Determine Sheet
+        sheet_name = 'AnnexIII-Import' if table_type == 'import' else 'AnnexIII-Local Pur'
         
-        # --- 1. Global Stats ---
-        # Purchase: E=4, G=6
-        # Declaration: Inv=T(19), Amt=W(22) (Because Cols 13,14 added)
+        # Read Excel
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
+        except ValueError:
+            # Sheet might not exist if 0 imports
+            return JsonResponse({'status': 'success', 'data': [], 'stats': {'total': 0}, 'has_more': False})
+
+        if df.shape[1] < 23: return JsonResponse({'status': 'error', 'message': 'Format mismatch'}, status=500)
+
         p_inv = df[4].fillna('').astype(str).str.strip()
-        d_inv = df[19].fillna('').astype(str).str.strip() # Index 19 = Col T
+        d_inv = df[19].fillna('').astype(str).str.strip()
         p_amt = df[6].apply(clean_currency) 
-        d_amt = df[22].apply(clean_currency)              # Index 22 = Col W
+        d_amt = df[22].apply(clean_currency)
         
         has_p = (p_inv != '') | (p_amt != 0)
         has_d = (d_inv != '') | (d_amt != 0)
@@ -717,19 +729,16 @@ def get_results_data(request):
         status_series = pd.Series('UNKNOWN', index=df.index)
         cond_match = has_p & has_d & (abs(p_amt - d_amt) < 0.05)
         cond_mismatch = has_p & has_d & (abs(p_amt - d_amt) >= 0.05)
-        status_series[(has_p & ~has_d) | (~has_p & has_d)] = 'NOT FOUND'
+        status_series[has_p & ~has_d] = 'NOT FOUND'
         status_series[cond_match] = 'MATCHED'
         status_series[cond_mismatch] = 'MISMATCH'
         
         counts = status_series[valid_mask].value_counts()
         stats = {
-            'total': int(valid_mask.sum()),
-            'matched': int(counts.get('MATCHED', 0)),
-            'not_found': int(counts.get('NOT FOUND', 0)),
-            'mismatch': int(counts.get('MISMATCH', 0))
+            'total': int(valid_mask.sum()), 'matched': int(counts.get('MATCHED', 0)),
+            'not_found': int(counts.get('NOT FOUND', 0)), 'mismatch': int(counts.get('MISMATCH', 0))
         }
 
-        # --- 2. Pagination ---
         df_display = df[valid_mask]
         status_display = status_series[valid_mask]
         start_idx = (page - 1) * page_size
@@ -740,56 +749,42 @@ def get_results_data(request):
         
         results = []
         for (idx, row), status in zip(df_page.iterrows(), status_page):
-            def val(c): return str(row[c]).strip() if pd.notna(row[c]) else ""
-            def num(c): return clean_currency(row[c])
+            def val(c): return str(row[c]).strip() if (c < len(row) and pd.notna(row[c])) else ""
+            def num(c): return clean_currency(row[c]) if c < len(row) else 0.0
             
-            # --- Cleanup Logic (Backend) ---
             p_inv_clean = clean_invoice_text(val(4))
-            d_inv_clean = clean_invoice_text(val(19)) # Col T
+            d_inv_clean = clean_invoice_text(val(19))
             p_tin_clean = clean_invoice_text(val(3))
-            d_tin_clean = clean_invoice_text(val(20)) # Col U
+            d_tin_clean = clean_invoice_text(val(20))
 
-            # --- Validation ---
             v_inv_match = (p_inv_clean == d_inv_clean) if (p_inv_clean and d_inv_clean) else False
             v_tin_match = (p_tin_clean == d_tin_clean) if (p_tin_clean and d_tin_clean) else False
             
             v_date_match = False
             try:
                 pd_dt = pd.to_datetime(row[5], dayfirst=True)
-                dd_dt = pd.to_datetime(row[18], dayfirst=True) # Col S (Index 18)
+                dd_dt = pd.to_datetime(row[18], dayfirst=True)
                 if pd.notna(pd_dt) and pd.notna(dd_dt):
                     v_date_match = (pd_dt.month == dd_dt.month) and (pd_dt.year == dd_dt.year)
             except: pass
 
-            v_diff = num(6) - num(22) # Col G - Col W
-
+            v_diff = num(6) - num(22)
             def clean_date(v):
                 if pd.isna(v) or str(v).strip() == "": return ""
                 try: return pd.to_datetime(v, dayfirst=True).strftime('%d-%m-%Y')
                 except: return str(v).split(' ')[0]
 
             results.append({
-                'no': idx + 1,
-                'status': status,
-                # Cleaned Data
-                'p_inv_clean': p_inv_clean, 
-                'd_inv_clean': d_inv_clean,
-                # Validation
+                'no': idx + 1, 'status': status,
+                'p_inv_clean': p_inv_clean, 'd_inv_clean': d_inv_clean,
                 'v_inv': v_inv_match, 'v_date': v_date_match, 'v_tin': v_tin_match, 'v_diff': v_diff,
-                # Purchase
-                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3),
-                'p_inv': val(4), 'p_date': clean_date(row[5]), 'p_amt': num(6),
-                # Declaration
-                'd_date': clean_date(row[18]), 'd_inv': val(19), 'd_tin': val(20),
-                'd_name': val(21), 'd_amt': num(22)
+                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 'p_date': clean_date(row[5]), 'p_amt': num(6),
+                'd_date': clean_date(row[18]), 'd_inv': val(19), 'd_tin': val(20), 'd_name': val(21), 'd_amt': num(22)
             })
             
-        return JsonResponse({
-            'status': 'success', 'data': results, 'stats': stats, 'has_more': end_idx < stats['total']
-        })
+        return JsonResponse({'status': 'success', 'data': results, 'stats': stats, 'has_more': end_idx < stats['total']})
 
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def download_report(request):
     """
