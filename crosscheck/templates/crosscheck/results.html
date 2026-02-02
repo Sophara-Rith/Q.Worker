@@ -1,14 +1,80 @@
 {% extends 'base.html' %} {% load static %} {% block title %}Session Results{% endblock %} {% block content %}
-<div x-data="resultsDashboard()" x-init="init()" class="h-full flex flex-col p-6">
+<div x-data="resultsDashboard()" x-init="init()" class="h-full flex flex-col p-6 relative">
+    <div x-show="showHistoryModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style="display: none" x-transition>
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-3xl p-6 relative">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Edit History - Row <span x-text="historyRowId"></span></h3>
+
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <span class="text-sm text-gray-500">Filter:</span>
+                        <select x-model="historyFilter" class="text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                            <option value="">All Fields</option>
+                            <template x-for="field in uniqueHistoryFields" :key="field">
+                                <option :value="field" x-text="field"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <button @click="showHistoryModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-y-auto max-h-96 border rounded-lg">
+                <template x-if="historyLoading">
+                    <div class="text-center py-10 text-gray-500">Loading history...</div>
+                </template>
+                <template x-if="!historyLoading && filteredHistoryLogs.length === 0">
+                    <div class="text-center py-10 text-gray-500">No edits recorded matching filter.</div>
+                </template>
+
+                <table x-show="!historyLoading && filteredHistoryLogs.length > 0" class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
+                        <tr>
+                            <th class="px-4 py-3 w-32">Time</th>
+                            <th class="px-4 py-3 w-32">Modified Field</th>
+                            <th class="px-4 py-3 text-red-600">Old Value</th>
+                            <th class="px-4 py-3 text-green-600">New Value</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        <template x-for="log in filteredHistoryLogs" :key="log.timestamp + log.field">
+                            <tr class="bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700">
+                                <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-400" x-text="log.timestamp"></td>
+                                <td class="px-4 py-2 font-mono font-medium text-gray-700 dark:text-gray-300" x-text="log.field"></td>
+                                <td class="px-4 py-2 text-red-500 line-through" x-text="log.old_value"></td>
+                                <td class="px-4 py-2 text-green-600 font-medium" x-text="log.new_value"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <div class="flex flex-col md:flex-row justify-between items-center mb-6 flex-shrink-0">
         <div>
             <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Session Results</h1>
             <p class="text-sm text-gray-500 mt-1">SESSION-{{ ovatr_code }} • Full Data View</p>
         </div>
-        <div class="flex gap-3 mt-4 md:mt-0">
+        <div class="flex gap-2 mt-4 md:mt-0 items-center">
+            <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1 mr-4">
+                <button @click="undo()" :disabled="historyIndex < 0" class="p-2 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all">
+                    <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                </button>
+                <button @click="redo()" :disabled="historyIndex >= history.length - 1" class="p-2 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all">
+                    <svg class="w-5 h-5 text-gray-700 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>
+                </button>
+            </div>
+            <button @click="saveChanges()" :disabled="!hasUnsavedChanges" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold rounded-lg shadow transition-all flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg><span x-text="hasUnsavedChanges ? 'Save Changes' : 'Saved'"></span>
+            </button>
+            <a href="{% url 'dashboard:index' %}" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2"
+                >Report Module<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg
+            ></a>
             <button @click="downloadFile()" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                Export Excel
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>Export Excel
             </button>
         </div>
     </div>
@@ -18,8 +84,7 @@
             <div class="text-md font-bold text-gray-400 uppercase tracking-wider">Total Rows</div>
             <div class="text-3xl font-bold text-gray-900 dark:text-white mt-1" x-text="formatNumber(stats.total)">0</div>
             <div class="flex gap-3 mt-2 text-[10px] font-mono text-gray-400">
-                <span>Local: <span x-text="stats.local_count || 0"></span></span>
-                <span>Import: <span x-text="stats.import_count || 0"></span></span>
+                <span>Local: <span x-text="stats.local_count || 0"></span></span><span>Import: <span x-text="stats.import_count || 0"></span></span>
             </div>
         </div>
         <div class="bg-green-50 dark:bg-green-900/20 p-5 rounded-2xl shadow-lg border border-green-100 dark:border-green-800">
@@ -41,17 +106,14 @@
             <div class="flex flex-col md:flex-row gap-4 w-full md:w-auto">
                 <div class="relative w-full md:w-64">
                     <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400"
-                        ><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg
-                    ></span>
-                    <input type="text" x-model="search" placeholder="Search invoices..." class="pl-10 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm py-2 shadow-sm focus:ring-brand-500" />
+                        ><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></span
+                    ><input type="text" x-model="search" placeholder="Search invoices..." class="pl-10 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm py-2 shadow-sm focus:ring-brand-500" />
                 </div>
-
                 <div class="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-1">
                     <button @click="switchTable('local')" class="px-4 py-1.5 rounded-md text-md font-bold transition-all" :class="tableType === 'local' ? 'bg-white dark:bg-gray-600 shadow text-brand-700 dark:text-white' : 'text-gray-500 hover:text-gray-700'">Local Purchase</button>
                     <button @click="switchTable('import')" class="px-4 py-1.5 rounded-md text-md font-bold transition-all" :class="tableType === 'import' ? 'bg-white dark:bg-gray-600 shadow text-brand-700 dark:text-white' : 'text-gray-500 hover:text-gray-700'">Import</button>
                 </div>
             </div>
-
             <div class="flex gap-2 text-md font-bold">
                 <button class="px-3 py-1.5 rounded-lg border transition-all" :class="filter === 'ALL' ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50'" @click="filter = 'ALL'">All</button>
                 <button class="px-3 py-1.5 rounded-lg border transition-all text-green-700 border-green-200" :class="filter === 'MATCHED' ? 'bg-green-100' : 'bg-white hover:bg-green-50'" @click="filter = 'MATCHED'">Matched</button>
@@ -64,43 +126,32 @@
                 <thead class="text-md text-gray-700 uppercase sticky top-0 z-20 shadow-md">
                     <tr class="h-8">
                         <th class="sticky left-0 z-30 bg-gray-100 dark:bg-gray-800 border-b border-r border-gray-300 dark:border-gray-600"></th>
-
-                        <th colspan="5" class="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 text-center border-b border-r border-blue-200 dark:border-blue-800 py-1">
-                            <span x-text="tableType === 'local' ? 'Local Purchase Record' : 'Import Record'"></span>
-                        </th>
-
-                        <th class="bg-gray-100 dark:bg-gray-800 border-b border-r border-gray-300 dark:border-gray-600"></th>
-
-                        <th colspan="4" class="bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 text-center border-b border-r border-orange-200 dark:border-orange-800 py-1">Validation</th>
-
-                        <th colspan="2" class="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 text-center border-b border-r border-yellow-200 dark:border-yellow-800 py-1">Cleanup (Backend)</th>
-
+                        <th colspan="7" class="bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 text-center border-b border-r border-blue-200 dark:border-blue-800 py-1"><span x-text="tableType === 'local' ? 'Local Purchase Record' : 'Import Record'"></span></th>
+                        <th colspan="4" class="bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-200 text-center border-b border-r border-orange-200 dark:border-orange-800 py-1">Validation (Real-time)</th>
+                        <th colspan="2" class="bg-yellow-100 dark:bg-yellow-900/40 text-yellow-800 dark:text-yellow-200 text-center border-b border-r border-yellow-200 dark:border-yellow-800 py-1">Cleanup</th>
                         <th colspan="5" class="bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-200 text-center border-b border-purple-200 dark:border-purple-800 py-1">Tax Declaration</th>
                     </tr>
-
                     <tr class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                        <th class="px-4 py-3 sticky left-0 z-30 bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-16 text-center">No</th>
+                        <th class="px-4 py-3 sticky left-0 z-30 bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-24 text-center">No</th>
 
                         <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Description</th>
                         <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Supplier</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">TIN</th>
                         <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Invoice #</th>
                         <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Date</th>
                         <th class="px-4 py-3 whitespace-nowrap text-right bg-blue-50/50 dark:bg-blue-900/10 border-r border-gray-200 dark:border-gray-600 font-bold">Amount</th>
-
-                        <th class="px-4 py-3 text-center bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 font-bold w-24">Status</th>
+                        <th class="px-4 py-3 text-center bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 font-bold w-40 min-w-[150px]">Status</th>
 
                         <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-md">Inv Match</th>
                         <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-md">Date Match</th>
                         <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-md">TIN Match</th>
-                        <th class="px-4 py-3 text-right whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 border-r border-gray-200 dark:border-gray-600 font-bold">Difference</th>
-
-                        <th class="px-4 py-3 whitespace-nowrap bg-yellow-50/50 dark:bg-yellow-900/10 font-mono text-md text-gray-600">Clean P.Inv</th>
-                        <th class="px-4 py-3 whitespace-nowrap bg-yellow-50/50 dark:bg-yellow-900/10 border-r border-gray-200 dark:border-gray-600 font-mono text-md text-gray-600">Clean S.Inv</th>
-
+                        <th class="px-4 py-3 text-right whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 border-r border-gray-200 dark:border-gray-600 font-bold">Amt Difference</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-yellow-50/50 dark:bg-yellow-900/10 text-md">Clean P.Inv</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-yellow-50/50 dark:bg-yellow-900/10 border-r border-gray-200 dark:border-gray-600 text-md">Clean S.Inv</th>
                         <th class="px-4 py-3 whitespace-nowrap text-right bg-purple-50/50 dark:bg-purple-900/10 font-bold">Amount (Dec)</th>
                         <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">Date</th>
                         <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">Invoice #</th>
-                        <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">Buyer/Supplier</th>
+                        <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">Supplier</th>
                         <th class="px-4 py-3 whitespace-nowrap bg-purple-50/50 dark:bg-purple-900/10">TIN</th>
                     </tr>
                 </thead>
@@ -108,63 +159,114 @@
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
                     <template x-for="row in filteredRows" :key="row.no">
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors group">
-                            <td class="px-4 py-3 font-mono text-md text-gray-400 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50 border-r border-gray-100 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-center" x-text="row.no"></td>
+                            <td class="px-2 py-3 font-mono text-md text-gray-400 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50 border-r border-gray-100 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-center flex items-center justify-between">
+                                <span x-text="row.no"></span>
+                                <button x-show="row.has_history" @click="viewHistory(row.no)" class="text-blue-300 hover:text-blue-600 transition-colors ml-1" title="View History">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </button>
+                            </td>
 
-                            <td class="px-4 py-3 whitespace-nowrap max-w-xs truncate text-gray-600 dark:text-gray-300" x-text="row.p_desc" :title="row.p_desc"></td>
-                            <td class="px-4 py-3 whitespace-nowrap max-w-xs truncate font-medium text-gray-800 dark:text-white" x-text="row.p_supp" :title="row.p_supp"></td>
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-md text-blue-600 dark:text-blue-400" x-text="row.p_inv"></td>
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-500" x-text="row.p_date"></td>
-                            <td class="px-4 py-3 whitespace-nowrap text-right font-mono font-bold text-gray-700 dark:text-gray-200 border-r border-gray-100 dark:border-gray-700 bg-blue-50/30 dark:bg-blue-900/10" x-text="row.p_amt ? formatNumber(row.p_amt) + ' ៛' : '-'"></td>
+                            <td @dblclick="editCell(row, 'p_desc')" class="px-4 py-3 whitespace-nowrap max-w-xs truncate text-gray-600 dark:text-gray-300 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'p_desc'"><input type="text" x-model="row.p_desc" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'p_desc')"><span x-text="row.p_desc"></span></template>
+                            </td>
+                            <td @dblclick="editCell(row, 'p_supp')" class="px-4 py-3 whitespace-nowrap max-w-xs truncate font-medium text-gray-800 dark:text-white cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'p_supp'"><input type="text" x-model="row.p_supp" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'p_supp')"><span x-text="row.p_supp"></span></template>
+                            </td>
+
+                            <td
+                                x-data="{ showCopy: false }"
+                                @click="if(!(editing.id === row.no && editing.field === 'p_tin')) { 
+                                    navigator.clipboard.writeText(row.p_tin || ''); 
+                                    showCopy = true; 
+                                    setTimeout(() => showCopy = false, 1500); 
+                                }"
+                                @dblclick="editCell(row, 'p_tin')"
+                                class="px-4 py-3 whitespace-nowrap font-mono text-md text-blue-500 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30 relative"
+                            >
+                                <template x-if="editing.id === row.no && editing.field === 'p_tin'">
+                                    <input type="text" x-model="row.p_tin" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus />
+                                </template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'p_tin')">
+                                    <span x-text="row.p_tin" title="Click to copy"></span>
+                                </template>
+                                <div x-show="showCopy" x-transition.opacity.duration.300ms class="absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 text-xs font-bold text-white bg-black rounded shadow-lg pointer-events-none" style="display: none">Copied!</div>
+                            </td>
+
+                            <td
+                                x-data="{ showCopy: false }"
+                                @click="if(!(editing.id === row.no && editing.field === 'p_inv')) { 
+                                    navigator.clipboard.writeText(row.p_inv || ''); 
+                                    showCopy = true; 
+                                    setTimeout(() => showCopy = false, 1500); 
+                                }"
+                                @dblclick="editCell(row, 'p_inv')"
+                                class="px-4 py-3 whitespace-nowrap font-mono text-md text-blue-600 dark:text-blue-400 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30 relative"
+                            >
+                                <template x-if="editing.id === row.no && editing.field === 'p_inv'">
+                                    <input type="text" x-model="row.p_inv" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus />
+                                </template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'p_inv')">
+                                    <span x-text="row.p_inv" title="Click to copy"></span>
+                                </template>
+                                <div x-show="showCopy" x-transition.opacity.duration.300ms class="absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-1 px-2 py-1 text-xs font-bold text-white bg-black rounded shadow-lg pointer-events-none" style="display: none">Copied!</div>
+                            </td>
+
+                            <td @dblclick="editCell(row, 'p_date')" class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-500 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'p_date'"><input type="text" x-model="row.p_date" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'p_date')"><span x-text="row.p_date"></span></template>
+                            </td>
+                            <td @dblclick="editCell(row, 'p_amt')" class="px-4 py-3 whitespace-nowrap text-right font-mono font-bold text-gray-700 dark:text-gray-200 border-r border-gray-100 dark:border-gray-700 bg-blue-50/30 dark:bg-blue-900/10 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'p_amt'"><input type="number" step="0.01" x-model="row.p_amt" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono text-right" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'p_amt')"><span x-text="row.p_amt ? formatNumber(row.p_amt) + ' ៛' : '-'"></span></template>
+                            </td>
 
                             <td class="px-4 py-3 text-center border-r border-gray-100 dark:border-gray-700">
-                                <span
-                                    class="px-2 py-1 rounded text-[10px] font-bold uppercase border shadow-sm block w-full"
-                                    :class="{
-                                          'bg-green-50 text-green-700 border-green-200': row.status === 'MATCHED',
-                                          'bg-red-50 text-red-700 border-red-200': row.status === 'NOT FOUND',
-                                          'bg-orange-50 text-orange-700 border-orange-200': row.status === 'MISMATCH'
-                                      }"
-                                    x-text="row.status"
-                                >
-                                </span>
+                                <span class="px-2 py-1 rounded text-[10px] font-bold uppercase border shadow-sm block w-full" :class="{'bg-green-50 text-green-700 border-green-200': row.status === 'MATCHED', 'bg-red-50 text-red-700 border-red-200': row.status === 'NOT FOUND', 'bg-orange-50 text-orange-700 border-orange-200': row.status === 'MISMATCH'}" x-text="row.status"></span>
                             </td>
 
-                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10">
-                                <span x-show="row.v_inv" class="text-green-500 text-lg">●</span>
-                                <span x-show="!row.v_inv" class="text-gray-300 text-lg">●</span>
+                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_inv" class="text-green-500 text-lg">●</span><span x-show="!row.v_inv" class="text-gray-300 text-lg">●</span></td>
+                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_date" class="text-green-500 text-lg">●</span><span x-show="!row.v_date" class="text-gray-300 text-lg">●</span></td>
+                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_tin" class="text-green-500 text-lg">●</span><span x-show="!row.v_tin" class="text-gray-300 text-lg">●</span></td>
+                            <td @dblclick="editCell(row, 'v_diff')" class="px-4 py-3 text-right font-mono text-md border-r border-gray-100 dark:border-gray-700 bg-orange-50/30 dark:bg-orange-900/10 font-bold cursor-pointer" :class="Math.abs(row.v_diff) > 0.05 ? 'text-red-500' : 'text-gray-300'">
+                                <template x-if="editing.id === row.no && editing.field === 'v_diff'"><input type="number" step="0.01" x-model="row.v_diff" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono text-right" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'v_diff')"><span x-text="Math.abs(row.v_diff) > 0.05 ? formatNumber(row.v_diff) : '-'"></span></template>
                             </td>
-                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10">
-                                <span x-show="row.v_date" class="text-green-500 text-lg">●</span>
-                                <span x-show="!row.v_date" class="text-gray-300 text-lg">●</span>
+
+                            <td @dblclick="editCell(row, 'p_inv_clean')" class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'p_inv_clean'"><input type="text" x-model="row.p_inv_clean" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'p_inv_clean')"><span x-text="row.p_inv_clean"></span></template>
                             </td>
-                            <td class="px-4 py-3 text-center bg-orange-50/30 dark:bg-orange-900/10">
-                                <span x-show="row.v_tin" class="text-green-500 text-lg">●</span>
-                                <span x-show="!row.v_tin" class="text-gray-300 text-lg">●</span>
+                            <td @dblclick="editCell(row, 'd_inv_clean')" class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border-r border-gray-100 dark:border-gray-700 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'd_inv_clean'"><input type="text" x-model="row.d_inv_clean" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'd_inv_clean')"><span x-text="row.d_inv_clean"></span></template>
                             </td>
-                            <td class="px-4 py-3 text-right font-mono text-md border-r border-gray-100 dark:border-gray-700 bg-orange-50/30 dark:bg-orange-900/10 font-bold" :class="Math.abs(row.v_diff) > 0.05 ? 'text-red-500' : 'text-gray-300'" x-text="Math.abs(row.v_diff) > 0.05 ? formatNumber(row.v_diff) : '-'"></td>
 
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20" x-text="row.p_inv_clean"></td>
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 border-r border-gray-100 dark:border-gray-700" x-text="row.d_inv_clean"></td>
-
-                            <td class="px-4 py-3 whitespace-nowrap text-right font-mono font-bold border-r border-gray-100 dark:border-gray-700 bg-purple-50/30 dark:bg-purple-900/10" :class="row.status === 'MATCHED' ? 'text-green-600' : (row.status === 'MISMATCH' ? 'text-orange-600' : 'text-gray-400')" x-text="row.d_amt ? formatNumber(row.d_amt) + ' ៛' : '-'"></td>
-
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-500" x-text="row.d_date"></td>
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-md text-purple-600 dark:text-purple-400" x-text="row.d_inv"></td>
-                            <td class="px-4 py-3 whitespace-nowrap max-w-xs truncate text-gray-600" x-text="row.d_name" :title="row.d_name"></td>
-                            <td class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-400" x-text="row.d_tin"></td>
+                            <td @dblclick="editCell(row, 'd_amt')" class="px-4 py-3 whitespace-nowrap text-right font-mono font-bold border-r border-gray-100 dark:border-gray-700 bg-purple-50/30 dark:bg-purple-900/10 cursor-pointer" :class="row.status === 'MATCHED' ? 'text-green-600' : (row.status === 'MISMATCH' ? 'text-orange-600' : 'text-gray-400')">
+                                <template x-if="editing.id === row.no && editing.field === 'd_amt'"><input type="number" step="0.01" x-model="row.d_amt" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono text-right" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'd_amt')"><span x-text="row.d_amt ? formatNumber(row.d_amt) + ' ៛' : '-'"></span></template>
+                            </td>
+                            <td @dblclick="editCell(row, 'd_date')" class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-500 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'd_date'"><input type="text" x-model="row.d_date" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'd_date')"><span x-text="row.d_date"></span></template>
+                            </td>
+                            <td @dblclick="editCell(row, 'd_inv')" class="px-4 py-3 whitespace-nowrap font-mono text-md text-purple-600 dark:text-purple-400 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'd_inv'"><input type="text" x-model="row.d_inv" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'd_inv')"><span x-text="row.d_inv"></span></template>
+                            </td>
+                            <td @dblclick="editCell(row, 'd_name')" class="px-4 py-3 whitespace-nowrap max-w-xs truncate text-gray-600 cursor-pointer" :title="row.d_name">
+                                <template x-if="editing.id === row.no && editing.field === 'd_name'"><input type="text" x-model="row.d_name" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'd_name')"><span x-text="row.d_name"></span></template>
+                            </td>
+                            <td @dblclick="editCell(row, 'd_tin')" class="px-4 py-3 whitespace-nowrap font-mono text-md text-gray-400 cursor-pointer">
+                                <template x-if="editing.id === row.no && editing.field === 'd_tin'"><input type="text" x-model="row.d_tin" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-sm border rounded font-mono" autofocus /></template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'd_tin')"><span x-text="row.d_tin"></span></template>
+                            </td>
                         </tr>
                     </template>
-
                     <tr x-show="loadingMore">
-                        <td colspan="18" class="p-4 text-center">
-                            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 text-sm text-gray-600">
-                                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Loading more records...
-                            </div>
-                        </td>
+                        <td colspan="18" class="p-4 text-center">Loading more records...</td>
                     </tr>
                 </tbody>
             </table>
@@ -180,15 +282,27 @@
             stats: {total: 0, matched: 0, not_found: 0, mismatch: 0, local_count: 0, import_count: 0},
             search: '',
             filter: 'ALL',
-            tableType: 'local', // 'local' or 'import'
+            tableType: 'local',
             loading: true,
             loadingMore: false,
             page: 1,
             hasMore: true,
 
+            editing: {id: null, field: null},
+            history: [],
+            historyIndex: -1,
+            unsavedChanges: new Set(),
+
+            // HISTORY MODAL STATE
+            showHistoryModal: false,
+            historyRowId: null,
+            historyLogs: [],
+            historyLoading: false,
+            historyFilter: '',
+
             async init() {
                 this.loadStats();
-                this.loadData();
+                await this.loadData();
             },
 
             async loadStats() {
@@ -211,12 +325,19 @@
                     const url = `{% url "crosscheck:get_results_data" %}?ovatr_code=${this.ovatrCode}&page=${this.page}&table_type=${this.tableType}`;
                     const res = await fetch(url);
                     const data = await res.json();
-
                     if (data.status === 'success') {
+                        const newRows = data.data.map((r) => ({
+                            ...r,
+                            _orig_d_inv: r.d_inv,
+                            _orig_d_tin: r.d_tin,
+                            _orig_d_date: r.d_date,
+                            _session_history: {},
+                        }));
+
                         if (isAppend) {
-                            this.rows = [...this.rows, ...data.data];
+                            this.rows = [...this.rows, ...newRows];
                         } else {
-                            this.rows = data.data;
+                            this.rows = newRows;
                             this.stats.total = data.stats.total;
                             this.stats.matched = data.stats.matched;
                             this.stats.not_found = data.stats.not_found;
@@ -232,11 +353,185 @@
                 }
             },
 
+            // Computed property for unique fields in history logs
+            get uniqueHistoryFields() {
+                const fields = new Set(this.historyLogs.map((log) => log.field));
+                return Array.from(fields).sort();
+            },
+
+            // Computed property for filtered logs
+            get filteredHistoryLogs() {
+                if (!this.historyFilter) return this.historyLogs;
+                return this.historyLogs.filter((log) => log.field === this.historyFilter);
+            },
+
+            pushHistoryAction(rowId, field, oldValue, newValue) {
+                if (this.historyIndex < this.history.length - 1) {
+                    this.history = this.history.slice(0, this.historyIndex + 1);
+                }
+                this.history.push({rowId, field, oldValue, newValue});
+                this.historyIndex++;
+
+                const row = this.rows.find((r) => r.no === rowId);
+                if (row) {
+                    if (!row._session_history[field]) {
+                        row._session_history[field] = {old: oldValue, new: newValue};
+                    } else {
+                        row._session_history[field].new = newValue;
+                    }
+                }
+            },
+
+            undo() {
+                if (this.historyIndex < 0) return;
+                const action = this.history[this.historyIndex];
+                const row = this.rows.find((r) => r.no === action.rowId);
+                if (row) {
+                    row[action.field] = action.oldValue;
+                    this.recalculate(row);
+                }
+                this.historyIndex--;
+                this.unsavedChanges.add(action.rowId);
+            },
+
+            redo() {
+                if (this.historyIndex >= this.history.length - 1) return;
+                this.historyIndex++;
+                const action = this.history[this.historyIndex];
+                const row = this.rows.find((r) => r.no === action.rowId);
+                if (row) {
+                    row[action.field] = action.newValue;
+                    this.recalculate(row);
+                }
+                this.unsavedChanges.add(action.rowId);
+            },
+
+            editCell(row, field) {
+                this.editing = {id: row.no, field: field};
+                row._originalValue = row[field];
+                this.$nextTick(() => {
+                    const input = this.$el.querySelector('input');
+                    if (input) input.focus();
+                });
+            },
+
+            stopEdit(row) {
+                if (this.editing.id === null) return;
+                const field = this.editing.field;
+                const newValue = row[field];
+                const oldValue = row._originalValue;
+
+                if (newValue != oldValue) {
+                    this.pushHistoryAction(row.no, field, oldValue, newValue);
+                    this.recalculate(row);
+                    this.unsavedChanges.add(row.no);
+                }
+                this.editing = {id: null, field: null};
+            },
+
+            cleanInvoice(val) {
+                if (!val) return '';
+                return String(val).replace(/[^a-zA-Z0-9]/g, '');
+            },
+
+            recalculate(row) {
+                if (this.editing.field !== 'p_inv_clean') row.p_inv_clean = this.cleanInvoice(row.p_inv);
+                const p_amt = parseFloat(row.p_amt) || 0;
+                const d_amt = parseFloat(row.d_amt) || 0;
+                const diff = p_amt - d_amt;
+                row.v_diff = diff;
+
+                row.v_inv = row.p_inv_clean && row.d_inv_clean && row.p_inv_clean === row.d_inv_clean;
+
+                const hasP = row.p_inv_clean !== '' || p_amt !== 0;
+                const hasD = row.d_inv_clean !== '' || d_amt !== 0;
+
+                if (hasP && !hasD) row.status = 'NOT FOUND';
+                else if (hasP && hasD && Math.abs(diff) < 0.05) row.status = 'MATCHED';
+                else if (hasP && hasD) row.status = 'MISMATCH';
+                else row.status = 'UNKNOWN';
+            },
+
+            get hasUnsavedChanges() {
+                return this.unsavedChanges.size > 0;
+            },
+
+            async saveChanges() {
+                if (!this.hasUnsavedChanges) return;
+
+                const dirtyRows = this.rows.filter((r) => this.unsavedChanges.has(r.no));
+                for (const row of dirtyRows) {
+                    try {
+                        const payload = {
+                            ovatr: this.ovatrCode,
+                            type: this.tableType,
+                            no: row.no,
+                            updates: {
+                                p_desc: row.p_desc,
+                                p_supp: row.p_supp,
+                                p_inv: row.p_inv,
+                                p_date: row.p_date,
+                                p_amt: row.p_amt,
+                                p_tin: row.p_tin,
+
+                                d_inv: row.d_inv,
+                                d_tin: row.d_tin,
+                                d_name: row.d_name,
+                                d_date: row.d_date,
+                                d_amt: row.d_amt,
+
+                                original_d_inv: row._orig_d_inv,
+                                original_d_tin: row._orig_d_tin,
+                                original_d_date: row._orig_d_date,
+                            },
+                            history: row._session_history,
+                        };
+
+                        await fetch('{% url "crosscheck:update_result_row" %}', {
+                            method: 'POST',
+                            body: JSON.stringify(payload),
+                        });
+
+                        this.unsavedChanges.delete(row.no);
+                        row._session_history = {};
+                    } catch (e) {
+                        console.error('Failed to save row', row.no, e);
+                        break;
+                    }
+                }
+                await fetch(`{% url "crosscheck:generate_annex3" %}?ovatr_code=${this.ovatrCode}`);
+                this.loadStats();
+                this.loadData(); // Reload to refresh 'has_history' status
+            },
+
+            async viewHistory(rowId) {
+                this.historyRowId = rowId;
+                this.historyLogs = [];
+                this.historyFilter = ''; // Reset filter
+                this.historyLoading = true;
+                this.showHistoryModal = true;
+
+                try {
+                    const res = await fetch(`{% url "crosscheck:get_row_history" %}?ovatr=${this.ovatrCode}&no=${rowId}`);
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        this.historyLogs = data.data;
+                    }
+                } catch (e) {
+                    console.error(e);
+                } finally {
+                    this.historyLoading = false;
+                }
+            },
+
             switchTable(type) {
                 if (this.tableType === type) return;
                 this.tableType = type;
                 this.page = 1;
                 this.rows = [];
+                this.history = [];
+                this.historyIndex = -1;
+                this.unsavedChanges = new Set();
                 this.loading = true;
                 this.loadData();
             },

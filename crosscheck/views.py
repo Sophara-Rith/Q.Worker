@@ -514,6 +514,137 @@ def save_reverse_charge(request):
 
 # --- Analytics & Reporting ---
 
+@csrf_exempt
+def update_result_row(request):
+    """
+    Updates a specific row in the DuckDB 'purchase' table based on edits in the Results UI.
+    Receives: { ovatr: str, type: 'local'|'import', no: str, updates: { field: value } }
+    
+    UPDATED: Now also handles 'tax_declaration' updates if d_* fields are present.
+    """
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            ovatr = body.get('ovatr')
+            row_no = body.get('no') 
+            updates = body.get('updates', {})
+            # Extract history object sent from frontend
+            history_data = body.get('history', {}) 
+            
+            # 1. Update Purchase Table
+            db_updates = {}
+            if 'p_desc' in updates: db_updates['description'] = updates['p_desc']
+            if 'p_supp' in updates: db_updates['supplier_name'] = updates['p_supp']
+            if 'p_tin' in updates: db_updates['supplier_tin'] = updates['p_tin']
+            if 'p_inv' in updates: db_updates['invoice_no'] = updates['p_inv']
+            if 'p_date' in updates: db_updates['date'] = updates['p_date']
+            
+            if 'p_amt' in updates:
+                amt = clean_currency(updates['p_amt'])
+                table_type = body.get('type', 'local')
+                if table_type == 'import':
+                    db_updates['"import"'] = amt
+                else:
+                    db_updates['purchase'] = amt
+
+            con = get_db_connection()
+            
+            # --- HISTORY LOGGING ---
+            # Create Table if not exists
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS change_history (
+                    timestamp TIMESTAMP,
+                    ovatr VARCHAR,
+                    row_no VARCHAR,
+                    table_type VARCHAR,
+                    field VARCHAR,
+                    old_value VARCHAR,
+                    new_value VARCHAR
+                )
+            """)
+
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            table_type = body.get('type', 'local')
+            
+            # Log changes
+            for field, vals in history_data.items():
+                old_v = str(vals.get('old', ''))
+                new_v = str(vals.get('new', ''))
+                # Only log if actually different (frontend should handle this but safety check)
+                if old_v != new_v:
+                    con.execute("INSERT INTO change_history VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                                [current_time, ovatr, str(row_no), table_type, field, old_v, new_v])
+
+            # --- PERFORM UPDATE ---
+            if db_updates:
+                set_clause = ", ".join([f"{k} = ?" for k in db_updates.keys()])
+                params = list(db_updates.values())
+                params.extend([ovatr, str(row_no)]) 
+                query = f"UPDATE purchase SET {set_clause} WHERE ovatr = ? AND no = ?"
+                con.execute(query, params)
+
+            # 2. Update Tax Declaration Table (if fields provided)
+            d_updates = {}
+            if 'd_inv' in updates: d_updates['invoice_number'] = updates['d_inv']
+            if 'd_tin' in updates: d_updates['tax_registration_id'] = updates['d_tin']
+            if 'd_name' in updates: d_updates['buyer_name'] = updates['d_name']
+            if 'd_date' in updates: d_updates['date'] = updates['d_date']
+            
+            if 'original_d_inv' in updates and 'original_d_tin' in updates and d_updates:
+                d_set_clause = [f"{k} = ?" for k in d_updates.keys()]
+                d_params = list(d_updates.values())
+                d_params.append(updates['original_d_inv'])
+                d_params.append(updates['original_d_tin'])
+                q_dec = f"UPDATE tax_declaration SET {', '.join(d_set_clause)} WHERE invoice_number = ? AND tax_registration_id = ?"
+                con.execute(q_dec, d_params)
+
+            con.close()
+            
+            return JsonResponse({'status': 'success', 'message': 'Row updated'})
+
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
+
+def get_row_history(request):
+    """
+    Fetches the history for a specific row.
+    """
+    try:
+        ovatr = request.GET.get('ovatr')
+        row_no = request.GET.get('no')
+        if not ovatr or not row_no:
+            return JsonResponse({'status': 'error', 'message': 'Missing params'}, status=400)
+
+        con = get_db_connection()
+        # Check if table exists
+        try:
+            con.execute("SELECT 1 FROM change_history LIMIT 1")
+        except:
+            con.close()
+            return JsonResponse({'status': 'success', 'data': []}) # No history yet
+
+        data = con.execute("""
+            SELECT timestamp, field, old_value, new_value 
+            FROM change_history 
+            WHERE ovatr = ? AND row_no = ? 
+            ORDER BY timestamp DESC
+        """, [ovatr, row_no]).fetchall()
+        con.close()
+
+        history = []
+        for row in data:
+            history.append({
+                'timestamp': str(row[0]),
+                'field': row[1],
+                'old_value': row[2],
+                'new_value': row[3]
+            })
+            
+        return JsonResponse({'status': 'success', 'data': history})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
 def get_crosscheck_stats(request):
     """ Returns data stats including both Local and Import counts. """
     ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
@@ -577,20 +708,20 @@ def generate_annex_iii(request):
         conn = get_db_connection()
 
         # --- DATA FETCHING ---
-        
-        # 1. Local Purchases
+        # ADDED ORDER BY CAST(no AS INTEGER) ASC
         local_purchases = conn.execute("""
-            SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase 
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no 
             FROM purchase WHERE ovatr = ? AND purchase > 0
+            ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
-        # 2. Import Purchases (using "import" column)
         import_purchases = conn.execute("""
-            SELECT description, supplier_name, supplier_tin, invoice_no, date, "import"
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, "import", no
             FROM purchase WHERE ovatr = ? AND "import" > 0
+            ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
-        # 3. Declarations (Strict Match)
+        # Declarations (Strict Match)
         raw_decs = conn.execute("""
             SELECT d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.vat_local_sale, d.vat_export 
             FROM tax_declaration d
@@ -606,12 +737,6 @@ def generate_annex_iii(request):
             clean_inv_key = clean_invoice_text(dec[1]) 
             if clean_inv_key: dec_map[clean_inv_key] = dec
 
-        company_vatin = ""
-        try:
-            res = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ? LIMIT 1", [ovatr_code]).fetchone()
-            if res and res[0]: company_vatin = res[0]
-        except: pass
-
         # --- EXCEL GENERATION ---
         
         with warnings.catch_warnings():
@@ -620,10 +745,9 @@ def generate_annex_iii(request):
         
         # Helper to process a sheet
         def process_sheet(sheet_name, data_rows):
-            if sheet_name not in wb.sheetnames: return # Skip if template missing sheet
+            if sheet_name not in wb.sheetnames: return
             ws = wb[sheet_name]
             
-            # Find header start
             start_row = 8
             for r in range(1, 15):
                 if ws.cell(row=r, column=1).value and "ល.រ" in str(ws.cell(row=r, column=1).value):
@@ -635,8 +759,10 @@ def generate_annex_iii(request):
                 p_inv_val = p_row[3] if p_row[3] else ""
                 p_inv_clean = clean_invoice_text(p_inv_val)
 
+                # Col 1: DB ID 'no' (Important for updates)
+                ws.cell(row=r, column=1, value=p_row[6]) 
+                
                 # Purchase Data
-                ws.cell(row=r, column=1, value=i+1)
                 ws.cell(row=r, column=2, value=p_row[0] or "")
                 ws.cell(row=r, column=3, value=p_row[1] or "")
                 ws.cell(row=r, column=4, value=p_row[2] or "")
@@ -659,20 +785,20 @@ def generate_annex_iii(request):
                     ws.cell(row=r, column=23, value=d_row[4] or 0)
                     ws.cell(row=r, column=24, value=d_row[5] or 0)
 
+                # Cleanup Columns
                 ws.cell(row=r, column=13, value=p_inv_clean)
                 ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
+                
+                # Validation Formulas
                 ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
                 ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
                 ws.cell(row=r, column=17, value=f'=C{r}=U{r}')
                 ws.cell(row=r, column=18, value=f"=G{r}-W{r}")
 
-        # Process Both Sheets
         process_sheet('AnnexIII-Local Pur', local_purchases)
         
-        # Attempt to process Imports (Check if sheet exists, fallback to creating or using 2nd sheet)
         import_sheet_name = 'AnnexIII-Import'
         if import_sheet_name not in wb.sheetnames:
-            # Fallback: Copy Local Pur sheet logic if Import sheet missing in template
             if 'AnnexIII-Local Pur' in wb.sheetnames:
                 target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
                 target.title = import_sheet_name
@@ -694,9 +820,10 @@ def get_results_data(request):
     """ 
     API to read the Excel file. 
     Supports 'table_type' param: 'local' (default) or 'import'.
+    Includes 'has_history' check from DB.
     """
     ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-    table_type = request.GET.get('table_type', 'local') # 'local' or 'import'
+    table_type = request.GET.get('table_type', 'local') 
     page = int(request.GET.get('page', 1))
     page_size = 100
     
@@ -705,15 +832,28 @@ def get_results_data(request):
     if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report not found.'}, status=404)
 
     try:
-        # Determine Sheet
+        # 1. Fetch History Status Map from DB
+        history_map = set()
+        try:
+            conn = get_db_connection()
+            # If table doesn't exist, this might fail or return empty
+            # Query: Get row numbers that have entries in change_history for this session
+            rows_with_history = conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()
+            history_map = {r[0] for r in rows_with_history}
+            conn.close()
+        except:
+            pass # Table likely doesn't exist yet, no history to show
+
+        # 2. Read Data
         sheet_name = 'AnnexIII-Import' if table_type == 'import' else 'AnnexIII-Local Pur'
-        
-        # Read Excel
         try:
             df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
         except ValueError:
-            # Sheet might not exist if 0 imports
             return JsonResponse({'status': 'success', 'data': [], 'stats': {'total': 0}, 'has_more': False})
+
+        if not df.empty:
+            df[0] = pd.to_numeric(df[0], errors='coerce') 
+            df = df.sort_values(by=0) 
 
         if df.shape[1] < 23: return JsonResponse({'status': 'error', 'message': 'Format mismatch'}, status=500)
 
@@ -774,8 +914,12 @@ def get_results_data(request):
                 try: return pd.to_datetime(v, dayfirst=True).strftime('%d-%m-%Y')
                 except: return str(v).split(' ')[0]
 
+            row_no_str = val(0) # The DB ID
+
             results.append({
-                'no': idx + 1, 'status': status,
+                'no': row_no_str,
+                'has_history': row_no_str in history_map, # Flag for UI
+                'status': status,
                 'p_inv_clean': p_inv_clean, 'd_inv_clean': d_inv_clean,
                 'v_inv': v_inv_match, 'v_date': v_date_match, 'v_tin': v_tin_match, 'v_diff': v_diff,
                 'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 'p_date': clean_date(row[5]), 'p_amt': num(6),
@@ -787,20 +931,6 @@ def get_results_data(request):
     except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def download_report(request):
-    """
-    Serves the generated Excel file for download.
-    """
-    ovatr_code = request.GET.get('ovatr_code')
-    if not ovatr_code:
-        return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
-    
-    file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-    
-    if os.path.exists(file_path):
-        response = FileResponse(open(file_path, 'rb'), as_attachment=True, filename=f"AnnexIII_{ovatr_code}.xlsx")
-        return response
-    else:
-        return JsonResponse({'status': 'error', 'message': 'File not found'}, status=404)
     """
     Serves the generated Excel file for download.
     """

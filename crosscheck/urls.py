@@ -9,6 +9,10 @@ urlpatterns = [
 
     path('results/', views.results_view, name='results'),
     path('api/get-results-data/', views.get_results_data, name='get_results_data'),
+    path('api/update-row/', views.update_result_row, name='update_result_row'),
+    
+    # NEW: API to fetch history
+    path('api/get-row-history/', views.get_row_history, name='get_row_history'),
 
     path('api/upload-init/', views.upload_init, name='upload_init'),
     path('save-company-info/', views.save_company_info, name='save_company_info'),
