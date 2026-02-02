@@ -9,7 +9,7 @@ env/
 
 # --- Database (CRITICAL) ---
 *.sqlite3
-#*.duckdb
+*.duckdb
 *.db
 
 # Exclude the specific consolidation DB if it exists
