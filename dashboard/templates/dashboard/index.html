@@ -1,29 +1,96 @@
-{% extends 'base.html' %} {% block title %}Overview{% endblock %} {% block content %}
-<div class="mb-8">
-    <h2 class="text-3xl font-bold text-gray-800">Welcome back, Admin! 👋</h2>
-    <p class="text-gray-600 mt-2">Here is your crosscheck performance overview.</p>
-</div>
-
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-    <div class="bg-white p-6 rounded-2xl border border-gray-100 professional-shadow">
-        <div class="flex items-center justify-between mb-4">
-            <div class="p-3 bg-blue-100 rounded-xl text-blue-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-            </div>
-            <span class="text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded">+12%</span>
+{% extends 'base.html' %} {% block content %}
+<div class="office-bg min-h-screen">
+    <div class="mb-8 flex justify-between items-center">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800">Dashboard</h1>
+            <p class="text-gray-600 mt-1">Welcome back, {{ user.username|default:"Admin" }}</p>
         </div>
-        <h3 class="text-gray-500 text-sm font-medium">Total Sessions</h3>
-        <p class="text-3xl font-bold text-gray-800 mt-1">{{ total_sessions }}</p>
+        <div>
+            <a href="{% url 'crosscheck:new' %}" class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg shadow-lg transition-all transform hover:-translate-y-0.5 font-semibold text-sm">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                New Crosscheck
+            </a>
+        </div>
     </div>
 
-    <div class="bg-white p-6 rounded-2xl border border-gray-100 professional-shadow">
-        <div class="flex items-center justify-between mb-4">
-            <div class="p-3 bg-green-100 rounded-xl text-green-600">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-6 flex items-center justify-between group hover:border-blue-300 transition-all">
+            <div>
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total Sessions</p>
+                <h3 class="text-3xl font-bold text-gray-800">{{ total_sessions }}</h3>
+            </div>
+            <div class="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
             </div>
         </div>
-        <h3 class="text-gray-500 text-sm font-medium">Average Match Rate</h3>
-        <p class="text-3xl font-bold text-gray-800 mt-1">{{ match_rate }}%</p>
+
+        <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-6 flex items-center justify-between group hover:border-green-300 transition-all">
+            <div>
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Rows Processed</p>
+                <h3 class="text-3xl font-bold text-gray-800">{{ total_rows|default:"0" }}</h3>
+            </div>
+            <div class="w-12 h-12 rounded-full bg-green-50 text-green-600 flex items-center justify-center group-hover:bg-green-600 group-hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path></svg>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-lg border border-gray-100 p-6 flex items-center justify-between group hover:border-orange-300 transition-all">
+            <div>
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Avg Match Rate</p>
+                <h3 class="text-3xl font-bold text-gray-800">{{ avg_match_rate }}%</h3>
+            </div>
+            <div class="w-12 h-12 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <h3 class="font-bold text-gray-700">Recent Activity</h3>
+            <a href="{% url 'crosscheck:history' %}" class="text-sm text-blue-600 hover:text-blue-800 font-medium">View All History &rarr;</a>
+        </div>
+
+        <div class="p-0">
+            {% if recent_activity %}
+            <div class="divide-y divide-gray-100">
+                {% for session in recent_activity %}
+                <div class="p-4 hover:bg-gray-50 transition-colors flex items-center justify-between group">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                        </div>
+
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-gray-800">{{ session.company_name }}</span>
+                                <span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">TIN: {{ session.tin }}</span>
+                            </div>
+                            <div class="text-xs text-gray-500 mt-0.5"><span class="font-mono text-blue-600">{{ session.ovatr }}</span> • {{ session.time_ago }}</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <div class="text-right">
+                            <span class="block text-xs font-bold {% if session.match_rate > 90 %}text-green-600{% else %}text-orange-500{% endif %}"> {{ session.match_rate }}% Match </span>
+                            <span class="text-[10px] text-gray-400 uppercase">{{ session.status }}</span>
+                        </div>
+
+                        <a href="{% url 'crosscheck:results' %}?ovatr_code={{ session.ovatr }}" class="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-400 flex items-center justify-center hover:bg-blue-600 hover:text-white hover:border-transparent transition-all shadow-sm">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="p-10 text-center text-gray-500">
+                <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                <p>No activity yet. Start your first crosscheck!</p>
+                <a href="{% url 'crosscheck:new' %}" class="inline-block mt-3 text-blue-600 font-semibold text-sm hover:underline">Start Now</a>
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}

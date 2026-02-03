@@ -14,4 +14,6 @@ urlpatterns = [
     path('api/notifications/read-all/', views.mark_all_read, name='mark_all_read'),
 
     path('api/notifications/clear-all/', views.clear_all_notifications, name='clear_all_notifications'),
+
+    path('api/system-stats/', views.get_system_stats, name='system_stats'),
 ]

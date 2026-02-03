@@ -1,5 +1,5 @@
 {% extends 'base.html' %} {% load static %} {% block title %}Session Results{% endblock %} {% block content %}
-<div x-data="resultsDashboard()" x-init="init()" class="h-full flex flex-col p-6 relative">
+<div x-data="resultsDashboard()" x-init="init()" class="h-full flex flex-col relative">
     <div x-show="showHistoryModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style="display: none" x-transition>
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-3xl p-6 relative">
             <div class="flex justify-between items-center mb-4">
@@ -140,7 +140,7 @@
                         <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Invoice #</th>
                         <th class="px-4 py-3 whitespace-nowrap bg-blue-50/50 dark:bg-blue-900/10">Date</th>
                         <th class="px-4 py-3 whitespace-nowrap text-right bg-blue-50/50 dark:bg-blue-900/10 border-r border-gray-200 dark:border-gray-600 font-bold">Amount</th>
-                        <th class="px-4 py-3 text-center bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 font-bold w-40 min-w-[150px]">Status</th>
+                        <th class="px-4 py-3 text-center bg-blue-50/50 dark:bg-blue-900/10 border-r border-gray-200 dark:border-gray-600 font-bold w-40 min-w-[150px]">Status</th>
 
                         <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-md">Inv Match</th>
                         <th class="px-4 py-3 text-center whitespace-nowrap bg-orange-50/50 dark:bg-orange-900/10 text-md">Date Match</th>

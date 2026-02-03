@@ -5,6 +5,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.views.decorators.http import require_POST
+import psutil
 from .models import Notification, UserSettings
 import json
 import os
@@ -136,3 +137,34 @@ def mark_all_read(request):
     """Mark ALL notifications as read"""
     Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
     return JsonResponse({'status': 'success'})
+
+@login_required
+def get_system_stats(request):
+    """
+    Returns system statistics for the live monitor.
+    """
+    # 1. CPU Usage (interval=0.1 ensures we get a fresh reading without blocking too long)
+    cpu_usage = psutil.cpu_percent(interval=0.1)
+    
+    # 2. RAM Usage
+    memory = psutil.virtual_memory()
+    ram_usage = memory.percent
+    ram_total_gb = round(memory.total / (1024**3), 1)
+    ram_used_gb = round(memory.used / (1024**3), 1)
+    
+    # 3. Processing Speed (CPU Frequency)
+    # Note: cpu_freq() can be None on some systems (e.g. some M1 Macs or restricted environments)
+    freq = psutil.cpu_freq()
+    if freq:
+        speed_val = round(freq.current / 1000, 2) # Convert MHz to GHz
+        speed_text = f"{speed_val} GHz"
+    else:
+        # Fallback if frequency is unavailable
+        speed_text = "N/A"
+
+    return JsonResponse({
+        'cpu': cpu_usage,
+        'ram_percent': ram_usage,
+        'ram_text': f"{ram_used_gb}/{ram_total_gb} GB",
+        'speed': speed_text
+    })
