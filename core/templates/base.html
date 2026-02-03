@@ -149,12 +149,11 @@
                     <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0"> New Crosscheck </span>
                 </a>
 
-                <a href="#" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all group justify-between">
-                    <div class="flex items-center gap-3">
-                        <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                        <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">History</span>
-                    </div>
-                    <span class="bg-brand-100 text-brand-700 text-xxs font-bold px-2 py-0.5 rounded-full leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[50px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">24</span>
+                <a href="{% url 'crosscheck:history' %}" class="group flex items-center px-2 py-2 text-sm font-medium rounded-md {% if 'history' in request.path %}bg-gray-100 text-gray-900{% else %}text-gray-600 hover:bg-gray-50 hover:text-gray-900{% endif %}">
+                    <svg class="mr-3 h-6 w-6 text-gray-400 group-hover:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    History
                 </a>
 
                 <a href="{% url 'crosscheck:processing' %}" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg transition-all group {% if request.resolver_match.view_name == 'crosscheck:processing' %} bg-brand-50 text-brand-600 {% else %} text-gray-600 hover:bg-gray-50 hover:text-gray-900 {% endif %}">

@@ -16,6 +16,13 @@ def login_view(request):
         form = AuthenticationForm(request, data=request.POST)
         if form.is_valid():
             auth_login(request, form.get_user())
+            
+            # --- FIX: Clear old session context on fresh login ---
+            # This ensures Processing/Result pages are empty until a new file is uploaded
+            # or a history item is selected.
+            if 'ovatr_code' in request.session:
+                del request.session['ovatr_code']
+            
             return redirect('dashboard:index')
         else:
             messages.error(request, "Invalid username or password.")
@@ -47,6 +54,7 @@ def activation_view(request):
     return render(request, 'accounts/activation.html', context)
 
 def logout_view(request):
+    # Standard logout flushes the session data automatically
     logout(request)
     return redirect('accounts:login')
 

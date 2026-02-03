@@ -18,7 +18,61 @@ from openpyxl import load_workbook
 # --- Helpers ---
 
 def get_db_connection():
-    return duckdb.connect(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
+    con = duckdb.connect(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
+    
+    # Ensure Sessions Table Exists (Keep it simple, no TIN column needed here now)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            ovatr VARCHAR PRIMARY KEY,
+            company_name VARCHAR,
+            status VARCHAR,
+            total_rows INTEGER,
+            match_rate DOUBLE,
+            created_at TIMESTAMP,
+            last_modified TIMESTAMP
+        )
+    """)
+    return con
+
+def update_session_metadata(con, ovatr, company_name=None, tin=None, status=None, total_rows=None, match_rate=None):
+    """ Helper to upsert session metadata into DuckDB """
+    if not ovatr: return
+    now = datetime.now()
+    
+    # Check if exists
+    exists = con.execute("SELECT 1 FROM sessions WHERE ovatr = ?", [ovatr]).fetchone()
+    
+    if not exists:
+        # Insert new with TIN
+        con.execute("""
+            INSERT INTO sessions (ovatr, company_name, tin, status, total_rows, match_rate, created_at, last_modified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, [ovatr, company_name or 'Unknown', tin or '', status or 'Processing', 0, 0.0, now, now])
+    else:
+        # Build dynamic update query
+        updates = ["last_modified = ?"]
+        params = [now]
+        
+        if company_name: 
+            updates.append("company_name = ?")
+            params.append(company_name)
+        if tin:
+            updates.append("tin = ?")
+            params.append(tin)
+        if status:
+            updates.append("status = ?")
+            params.append(status)
+        if total_rows is not None:
+            updates.append("total_rows = ?")
+            params.append(total_rows)
+        if match_rate is not None:
+            updates.append("match_rate = ?")
+            params.append(match_rate)
+            
+        params.append(ovatr) # For WHERE clause
+        
+        query = f"UPDATE sessions SET {', '.join(updates)} WHERE ovatr = ?"
+        con.execute(query, params)
 
 def clean_currency(val):
     s = str(val).strip()
@@ -81,6 +135,77 @@ def results_view(request):
     code = request.GET.get('ovatr_code') or request.session.get('ovatr_code', '')
     context = {'ovatr_code': code}
     return render(request, 'crosscheck/results.html', context)
+
+def history_view(request):
+    """ Renders the History UI """
+    return render(request, 'crosscheck/history.html')
+
+# --- API: History Data ---
+
+def get_history_api(request):
+    """ 
+    Returns list of sessions from DuckDB.
+    UPDATED: Performs a LEFT JOIN with 'company_info' to get the real 'vatin' (TIN).
+    """
+    try:
+        query = request.GET.get('q', '').strip()
+        conn = get_db_connection()
+        
+        # SQL with JOIN to fetch TIN from company_info.vatin
+        # We use COALESCE to handle cases where company_info might be missing or vatin is empty
+        sql = """
+            SELECT 
+                s.ovatr, 
+                s.company_name, 
+                s.status, 
+                s.total_rows, 
+                s.match_rate, 
+                s.last_modified,
+                c."vatin" as tin
+            FROM sessions s
+            LEFT JOIN company_info c ON s.ovatr = c."ovatr"
+        """
+        
+        params = []
+        where_clauses = []
+
+        if query:
+            where_clauses.append("(s.ovatr ILIKE ? OR s.company_name ILIKE ? OR c.\"vatin\" ILIKE ?)")
+            params = [f'%{query}%', f'%{query}%', f'%{query}%']
+            
+        if where_clauses:
+            sql += " WHERE " + " AND ".join(where_clauses)
+            
+        sql += " ORDER BY s.last_modified DESC LIMIT 50"
+        
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+        
+        data = []
+        for r in rows:
+            last_mod = r[5]
+            time_ago = "Just now"
+            if last_mod:
+                diff = datetime.now() - last_mod
+                if diff.days > 0: time_ago = f"{diff.days} days ago"
+                elif diff.seconds > 3600: time_ago = f"{diff.seconds // 3600} hours ago"
+                elif diff.seconds > 60: time_ago = f"{diff.seconds // 60} mins ago"
+
+            data.append({
+                'ovatr': r[0],
+                'company_name': r[1],
+                'status': r[2],
+                'total_rows': r[3],
+                'match_rate': round(r[4], 1),
+                'last_modified': last_mod.strftime('%Y-%m-%d %H:%M') if last_mod else '',
+                'tin': r[6] or 'N/A', # The joined TIN value
+                'time_ago': time_ago
+            })
+            
+        return JsonResponse({'status': 'success', 'data': data})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 # --- Upload & Save APIs ---
 
@@ -235,21 +360,27 @@ def save_company_info(request):
             if 'ovatr' not in clean_data or not clean_data['ovatr']:
                 return JsonResponse({'status': 'error', 'message': 'Missing Critical Field: OVATR'}, status=400)
 
-            # Store OVATR in session
-            request.session['ovatr_code'] = clean_data['ovatr']
+            ovatr = clean_data['ovatr']
+            comp_name = clean_data.get('company_name_kh') or clean_data.get('company_name_en') or 'Unknown Company'
+
+            request.session['ovatr_code'] = ovatr
 
             con = get_db_connection()
+            
+            # 1. Save to Company Info Table
             columns_schema = []
             for key in clean_data.keys():
                 if key == 'ovatr': columns_schema.append(f'"{key}" VARCHAR PRIMARY KEY')
                 else: columns_schema.append(f'"{key}" VARCHAR')
-            
             con.execute(f"CREATE TABLE IF NOT EXISTS company_info ({', '.join(columns_schema)})")
-            
             columns = [f'"{k}"' for k in clean_data.keys()]
             placeholders = ['?'] * len(clean_data)
             values = list(clean_data.values())
             con.execute(f"INSERT OR REPLACE INTO company_info ({', '.join(columns)}) VALUES ({', '.join(placeholders)})", values)
+            
+            # 2. Update Session History (No need to pass TIN manually anymore, fetching via JOIN)
+            update_session_metadata(con, ovatr, company_name=comp_name, status="Processing")
+
             con.close()
             return JsonResponse({'status': 'success', 'message': 'Company Info saved successfully'})
         except Exception as e:
@@ -598,6 +729,9 @@ def update_result_row(request):
                 q_dec = f"UPDATE tax_declaration SET {', '.join(d_set_clause)} WHERE invoice_number = ? AND tax_registration_id = ?"
                 con.execute(q_dec, d_params)
 
+            # --- UPDATE SESSION TIMESTAMP ---
+            update_session_metadata(con, ovatr)
+
             con.close()
             
             return JsonResponse({'status': 'success', 'message': 'Row updated'})
@@ -663,6 +797,7 @@ def get_crosscheck_stats(request):
         
         count_local = res_p[0] if res_p else 0
         count_import = res_p[1] if res_p else 0
+        total_rows = count_local + count_import
         
         # Declarations (Matched via Strict Logic)
         res_d = conn.execute("""
@@ -676,12 +811,24 @@ def get_crosscheck_stats(request):
         """, [ovatr_code]).fetchone()
         count_d = res_d[0] if res_d else 0
         
+        # Calculate rough match rate for history
+        match_rate = (count_d / total_rows * 100) if total_rows > 0 else 0.0
+        
+        # --- UPDATE SESSION STATS ---
+        update_session_metadata(
+            conn, 
+            ovatr_code, 
+            total_rows=total_rows, 
+            match_rate=match_rate,
+            status="Completed"
+        )
+        
         conn.close()
         file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
         
         return JsonResponse({
             'status': 'success',
-            'total_rows': max(count_local + count_import, count_d),
+            'total_rows': max(total_rows, count_d),
             'local_count': count_local,
             'import_count': count_import,
             'declaration_count': count_d,
@@ -836,7 +983,6 @@ def get_results_data(request):
         history_map = set()
         try:
             conn = get_db_connection()
-            # If table doesn't exist, this might fail or return empty
             # Query: Get row numbers that have entries in change_history for this session
             rows_with_history = conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()
             history_map = {r[0] for r in rows_with_history}

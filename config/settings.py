@@ -142,6 +142,24 @@ TEMPLATES = [
     },
 ]
 
+# ==========================================
+# SESSION & SECURITY SETTINGS (ADD THIS)
+# ==========================================
+
+# 1. Force logout when browser is closed
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# 2. Auto-logout after 30 minutes of inactivity (30 * 60 seconds)
+SESSION_COOKIE_AGE = 1800  
+
+# 3. Reset the 30-minute timer every time the user clicks a link (stays logged in if active)
+SESSION_SAVE_EVERY_REQUEST = True
+
+# 4. Security hardening for cookies
+# (Set to True only if you are using HTTPS. For local/offline http://127.0.0.1, keep False)
+SESSION_COOKIE_SECURE = False  
+CSRF_COOKIE_SECURE = False
+
 # Configure Database (DuckDB)
 # Django doesn't support DuckDB natively as a primary DB easily without 3rd party drivers.
 # Strategy: We use SQLite for Django's Auth/Session (User management)

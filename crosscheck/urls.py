@@ -8,6 +8,10 @@ urlpatterns = [
     path('processing/', views.processing_view, name='processing'),
 
     path('results/', views.results_view, name='results'),
+    path('history/', views.history_view, name='history'),  # NEW
+
+    # APIs
+    path('api/get-history/', views.get_history_api, name='get_history_api'), # NEW
     path('api/get-results-data/', views.get_results_data, name='get_results_data'),
     path('api/update-row/', views.update_result_row, name='update_result_row'),
     
