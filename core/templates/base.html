@@ -118,6 +118,7 @@
                 localStorage.setItem('sidebarOpen', !isClosed);
             }
         }"
+        @keydown.escape.window="settingsOpen = false"
     >
         <aside class="relative bg-white flex flex-col transition-all duration-300 ease-in-out z-30 shadow-xl shadow-gray-200/50 w-64 [.sidebar-closed_&]:w-20">
             <div class="h-16 flex items-center px-6 mb-2 flex-shrink-0">
@@ -193,7 +194,7 @@
             <nav class="flex-1 overflow-y-auto overflow-x-hidden px-4 space-y-1 no-scrollbar">
                 <a href="{% url 'dashboard:index' %}" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg transition-all group relative overflow-hidden {% if request.resolver_match.view_name == 'dashboard:index' %} bg-brand-50 text-brand-600 {% else %} text-gray-600 hover:bg-gray-50 hover:text-gray-900 {% endif %}">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
                     </svg>
                     <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Dashboard</span>
                 </a>
@@ -316,14 +317,112 @@
                         </div>
                     </div>
 
-                    <div class="relative" x-data="{ open: false, count: 0, notifications: [], init() { this.fetchNotifications(); }, fetchNotifications() { fetch('{% url 'core:api_notifications' %}').then(r=>r.json()).then(d=>{this.count=d.unread_count;this.notifications=d.notifications;}) } }" @click.outside="open = false">
+                    <div class="relative" 
+                         x-data="{ 
+                            open: false, 
+                            count: 0, 
+                            notifications: [], 
+                            init() { 
+                                this.requestPermission();
+                                this.pollNotifications();
+                                setInterval(() => this.pollNotifications(), 5000);
+                            }, 
+                            requestPermission() {
+                                if ('Notification' in window && Notification.permission !== 'granted') {
+                                    Notification.requestPermission();
+                                }
+                            },
+                            pollNotifications() { 
+                                fetch('{% url 'core:api_notifications' %}')
+                                .then(r => r.json())
+                                .then(d => {
+                                    if (d.unread_count > this.count) {
+                                        this.playAlert();
+                                        if (d.notifications.length > 0) {
+                                            this.showPush(d.notifications[0]);
+                                        }
+                                    }
+                                    this.count = d.unread_count;
+                                    this.notifications = d.notifications;
+                                }) 
+                            },
+                            async markAllRead() {
+                                await fetch('{% url "core:mark_all_read" %}', {
+                                    method: 'POST', 
+                                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                                });
+                                this.count = 0;
+                                this.notifications.forEach(n => n.is_read = true);
+                            },
+                            async clearAll() {
+                                await fetch('{% url "core:clear_all_notifications" %}', {
+                                    method: 'POST', 
+                                    headers: {'X-CSRFToken': '{{ csrf_token }}'}
+                                });
+                                this.notifications = [];
+                                this.count = 0;
+                            },
+                            showPush(note) {
+                                if ('Notification' in window && Notification.permission === 'granted') {
+                                    new Notification(note.title || 'New Notification', {
+                                        body: note.message,
+                                        icon: '{% static 'img/favicon.svg' %}'
+                                    });
+                                }
+                            },
+                            playAlert() {
+                                const audio = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU');
+                                audio.play().catch(e => console.log('Audio blocked:', e));
+                            }
+                         }" 
+                         @click.outside="open = false">
+                        
                         <button @click="open = !open" class="relative p-2 text-gray-400 hover:text-gray-600 transition rounded-full hover:bg-gray-50 focus:outline-none">
                             <span x-show="count > 0" x-transition.scale class="absolute top-2 right-2.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white"></span>
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                         </button>
+                        
                         <div x-show="open" x-transition.origin.top.right style="display: none" class="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden">
-                            <div class="px-4 py-2 border-b border-gray-50"><h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Notifications</h3></div>
-                            <div class="max-h-80 overflow-y-auto px-4 py-4 text-center text-sm text-gray-500" x-text="notifications.length ? '' : 'No notifications'"></div>
+                            <div class="px-4 py-2 border-b border-gray-50 flex justify-between items-center bg-gray-50">
+                                <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Notifications</h3>
+                                <span class="text-[10px] text-gray-400" x-text="count + ' Unread'"></span>
+                            </div>
+                            
+                            <div class="max-h-80 overflow-y-auto bg-white">
+                                <template x-for="note in notifications" :key="note.id">
+                                    <div class="px-4 py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors text-left cursor-pointer"
+                                         :class="!note.is_read ? 'bg-white' : 'bg-gray-50 opacity-75'">
+                                        <div class="flex items-start gap-3">
+                                            <div class="mt-1">
+                                                <div x-show="note.type === 'SUCCESS'" class="w-2 h-2 rounded-full bg-green-500 shadow-sm shadow-green-200"></div>
+                                                <div x-show="note.type === 'ERROR'" class="w-2 h-2 rounded-full bg-red-500 shadow-sm shadow-red-200"></div>
+                                                <div x-show="note.type === 'INFO'" class="w-2 h-2 rounded-full bg-blue-500 shadow-sm shadow-blue-200"></div>
+                                            </div>
+                                            <div>
+                                                <p class="text-sm text-gray-800 leading-tight" :class="!note.is_read ? 'font-bold' : 'font-medium'" x-text="note.title"></p>
+                                                <p class="text-xs text-gray-500 mt-1 leading-snug line-clamp-2" x-text="note.message"></p>
+                                                <p class="text-[10px] text-gray-400 mt-1" x-text="note.created_at"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                                
+                                <div x-show="notifications.length === 0" class="px-4 py-8 text-center text-sm text-gray-500">
+                                    <svg class="w-8 h-8 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                                    No notifications
+                                </div>
+                            </div>
+
+                            <div class="px-2 py-2 border-t border-gray-100 bg-gray-50 flex justify-between gap-2">
+                                <button @click="markAllRead()" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide text-brand-600 hover:bg-brand-50 hover:text-brand-700 transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                                    Mark Read
+                                </button>
+                                <button @click="clearAll()" class="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide text-gray-500 hover:bg-red-50 hover:text-red-600 transition">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    Clear All
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -423,11 +522,74 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div x-show="activeTab === 'profile'" class="text-center py-10"><p class="text-sm text-gray-500">User Profile settings coming soon.</p></div>
-                                <div x-show="activeTab === 'about'" class="space-y-4">
-                                    <div class="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                                        <p class="text-sm font-semibold">Q.Worker Pro</p>
-                                        <p class="text-xs text-gray-500">v1.0.2</p>
+                                
+                                <div x-show="activeTab === 'profile'" class="space-y-6">
+                                    <div class="max-w-md mx-auto">
+                                        <h4 class="text-sm font-bold text-gray-700 dark:text-gray-200 mb-4">Change Password</h4>
+                                        <div class="space-y-4">
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Current Password</label>
+                                                <input type="password" x-model="passData.current" class="w-full mt-1 rounded-lg border border-gray-300 bg-gray-50 dark:bg-gray-900 dark:border-gray-600 px-3 py-2 text-sm focus:ring-brand-500 focus:border-brand-500">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">New Password</label>
+                                                <input type="password" x-model="passData.new" class="w-full mt-1 rounded-lg border border-gray-300 bg-gray-50 dark:bg-gray-900 dark:border-gray-600 px-3 py-2 text-sm focus:ring-brand-500 focus:border-brand-500">
+                                            </div>
+                                            <div>
+                                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Re-enter New Password</label>
+                                                <input type="password" x-model="passData.reNew" class="w-full mt-1 rounded-lg border border-gray-300 bg-gray-50 dark:bg-gray-900 dark:border-gray-600 px-3 py-2 text-sm focus:ring-brand-500 focus:border-brand-500">
+                                            </div>
+                                            <button @click="changePassword" class="w-full py-2 bg-brand-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-brand-700 transition" :disabled="passLoading">
+                                                <span x-show="!passLoading">Update Password</span>
+                                                <span x-show="passLoading">Updating...</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div x-show="activeTab === 'about'" class="space-y-6">
+                                    <div class="relative overflow-hidden rounded-xl bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm p-8">
+                                        <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-brand-500/10 rounded-full blur-2xl"></div>
+                                        
+                                        <div class="relative z-10 flex flex-col items-center text-center">
+                                            <div class="mb-4 p-3 bg-brand-50 dark:bg-gray-900 rounded-2xl shadow-inner text-brand-600">
+                                                <svg width="48" height="48" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                                                    <rect x="20" y="20" width="160" height="160" rx="30" fill="currentColor" fill-opacity="0.1" stroke="currentColor" stroke-width="2" />
+                                                    <path d="M85 105 L 100 120 L 140 70" stroke="currentColor" stroke-width="12" fill="none" stroke-linecap="round" />
+                                                </svg>
+                                            </div>
+
+                                            <h3 class="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">AutoCrosscheck</h3>
+                                            <div class="flex items-center gap-2 mt-1">
+                                                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-green-100 text-green-700 border border-green-200 uppercase tracking-wide">Quantum Worker Pro</span>
+                                                <span class="text-xs text-gray-400">|</span>
+                                                <span class="text-xs text-gray-500 dark:text-gray-400 font-mono">v1.0.2 • Build 2024.Q4</span>
+                                            </div>
+
+                                            <p class="mt-6 text-sm text-gray-600 dark:text-gray-300 leading-relaxed max-w-lg mx-auto">
+                                                Engineered for high-performance offline data verification, <span class="font-semibold text-brand-600 dark:text-brand-400">Quantum Worker</span> utilizes a localized OLAP DuckDB engine to process millions of records with industrial-grade precision and zero latency. This locally-hosted powerhouse executes complex cross-check algorithms and formula evaluations instantly, ensuring absolute data sovereignty by eliminating cloud dependencies. Designed for auditors demanding speed, security, and unlimited scale.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div class="mt-4">
+                                        <div class="rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-700 p-5 flex items-center gap-4 justify-center">
+                                             <div class="w-10 h-10 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center font-bold text-lg">
+                                                RS
+                                             </div>
+                                             <div class="text-left">
+                                                 <p class="text-[10px] uppercase tracking-wider text-gray-400 font-bold mb-0.5">Designed & Built By</p>
+                                                 <p class="text-sm font-bold text-gray-900 dark:text-white">RITH SOPHARA</p>
+                                                 <p class="text-xs text-gray-500">Lead Full-Stack Architect</p>
+                                             </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="text-center pt-2">
+                                        <p class="text-[10px] text-gray-300 dark:text-gray-600">
+                                            &copy; 2024 Quantum Worker Solutions. All rights reserved.<br>
+                                            Licensed to Hardware ID: <span class="font-mono">{{ request.user.username }}</span>
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -448,13 +610,15 @@
             function settingsForm() {
                 return {
                     activeTab: 'general',
-                    tabTitles: {general: 'General Settings', profile: 'User Profile', about: 'About Q.Worker'},
+                    tabTitles: {general: 'General Settings', profile: 'User Profile', about: 'About AutoCrosscheck'},
                     outputDir: '',
                     darkMode: document.documentElement.classList.contains('dark'),
                     browsing: false,
                     saving: false,
                     msg: '',
                     msgType: '',
+                    passLoading: false,
+                    passData: { current: '', new: '', reNew: '' },
                     init() {
                         this.loadSettings();
                         this.$watch('darkMode', (val) => {
@@ -507,6 +671,37 @@
                             this.saving = false;
                         }
                     },
+                    async changePassword() {
+                        if(!this.passData.current || !this.passData.new || !this.passData.reNew) {
+                            alert('Please fill all password fields');
+                            return;
+                        }
+                        if(this.passData.new !== this.passData.reNew) {
+                            alert('New passwords do not match');
+                            return;
+                        }
+                        
+                        this.passLoading = true;
+                        try {
+                            let payload = {
+                                old: this.passData.current,
+                                new: this.passData.new
+                            };
+                            
+                            let res = await fetch("{% url 'accounts:change_password' %}", {
+                                method: 'POST',
+                                body: JSON.stringify(payload),
+                                headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'}
+                            });
+                            let data = await res.json();
+                            alert(data.message || (data.success ? 'Password updated!' : 'Failed to update'));
+                            if(data.success) this.passData = { current: '', new: '', reNew: '' };
+                        } catch(e) {
+                            alert('An error occurred. Please try again.');
+                        } finally {
+                            this.passLoading = false;
+                        }
+                    }
                 };
             }
 
@@ -519,9 +714,7 @@
                         speed: '0 GHz',
                     },
                     initMonitor() {
-                        // Fetch immediately
                         this.fetchStats();
-                        // Then fetch every 2 seconds
                         setInterval(() => {
                             this.fetchStats();
                         }, 2000);

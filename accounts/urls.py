@@ -8,4 +8,5 @@ urlpatterns = [
     path('activate/', views.activation_view, name='activate'),
     path('logout/', views.logout_view, name='logout'),
     path('password-reset/', views.password_reset_view, name='password_reset'),
+    path('api/change-password/', views.change_password_ajax, name='change_password'),
 ]

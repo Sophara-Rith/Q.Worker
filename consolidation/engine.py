@@ -3,6 +3,7 @@ import duckdb
 import os
 from django.conf import settings
 from django.core.files import File
+from core.models import Notification  # Import Notification
 
 def run_consolidation_process(task_instance):
     """
@@ -50,8 +51,26 @@ def run_consolidation_process(task_instance):
         if os.path.exists(output_path):
             os.remove(output_path)
             
+        # --- SUCCESS NOTIFICATION ---
+        if task_instance.user:
+            Notification.objects.create(
+                user=task_instance.user,
+                title="Consolidation Task Complete",
+                message=f"Task {task_instance.id} processed successfully.",
+                notification_type='SUCCESS'
+            )
+            
     except Exception as e:
         task_instance.status = 'FAILED'
         task_instance.log_message = str(e)
         task_instance.save()
         print(f"Error in engine: {e}")
+        
+        # --- FAILURE NOTIFICATION ---
+        if task_instance.user:
+            Notification.objects.create(
+                user=task_instance.user,
+                title="Consolidation Task Failed",
+                message=f"Task {task_instance.id} failed: {str(e)}",
+                notification_type='ERROR'
+            )

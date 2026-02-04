@@ -1,9 +1,13 @@
+import json
 from django.shortcuts import render, redirect
-from django.contrib.auth import login as auth_login, logout, authenticate
+from django.contrib.auth import login as auth_login, logout, update_session_auth_hash
 from django.contrib import messages
 from .hardware_id import get_hardware_id
 from .license_validator import is_license_valid, generate_license_key, activate_license
 from django.contrib.auth.forms import AuthenticationForm, PasswordResetForm
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 
 def login_view(request):
     # 1. Check License First
@@ -72,3 +76,28 @@ def password_reset_view(request):
             messages.error(request, "Please enter a valid email address.")
             
     return render(request, 'accounts/password_reset.html')
+
+@login_required
+@require_POST
+def change_password_ajax(request):
+    try:
+        data = json.loads(request.body)
+        old_password = data.get('old')
+        new_password = data.get('new')
+
+        user = request.user
+        if not user.check_password(old_password):
+            return JsonResponse({'success': False, 'message': 'Incorrect current password.'}, status=400)
+
+        if len(new_password) < 8:
+            return JsonResponse({'success': False, 'message': 'New password must be at least 8 characters.'}, status=400)
+
+        user.set_password(new_password)
+        user.save()
+        
+        # Keep the user logged in after password change
+        update_session_auth_hash(request, user)
+        
+        return JsonResponse({'success': True, 'message': 'Password successfully updated.'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)

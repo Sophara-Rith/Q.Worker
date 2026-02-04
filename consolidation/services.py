@@ -12,7 +12,7 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 from django.conf import settings
-from core.models import UserSettings
+from core.models import UserSettings, Notification # Imported Notification
 
 logger = logging.getLogger(__name__)
 
@@ -231,9 +231,6 @@ class ConsolidationService:
                     """
 
                     # Execute Insert with EXCEPT logic to skip duplicates
-                    # 1. Select cleaned data from the uploaded file (df_view)
-                    # 2. EXCEPT (subtract) rows that already exist in the database (matching core fields)
-                    # 3. Insert the remaining (unique) rows, adding the new metadata (timestamp, user, etc.)
                     self.con.execute(f"""
                         INSERT INTO tax_declaration 
                         (
@@ -302,7 +299,6 @@ class ConsolidationService:
                 df_all['month'] = df_all['date'].dt.month
                 
                 # --- STATS COLLECTION ---
-                # Group by year to get counts and months
                 stats_grouped = df_all.groupby('year').agg(
                     count=('id', 'count'),
                     months=('month', lambda x: list(x.unique()))
@@ -324,7 +320,6 @@ class ConsolidationService:
                 min_year = int(df_all['year'].min())
                 max_year = int(df_all['year'].max())
 
-                # Special Case Logic
                 if tin in TINS_SPLIT_BY_YEAR:
                     chunk_size = 1
                     logger.info(f"Special TIN {tin}: Splitting by 1 year.")
@@ -361,10 +356,27 @@ class ConsolidationService:
 
             shutil.rmtree(os.path.join(BASE_DIR, 'temp_extract'), ignore_errors=True)
             self.log(100, "Completed", f"Saved to {self.output_dir}")
+            
+            # --- NOTIFICATION INTEGRATION ---
+            if self.user:
+                Notification.objects.create(
+                    user=self.user,
+                    title="Consolidation Finished",
+                    message="Data consolidation task completed successfully.",
+                    notification_type='SUCCESS'
+                )
 
         except Exception as e:
             logger.error(traceback.format_exc())
             self.log(100, "Failed", str(e))
+            # Error Notification
+            if self.user:
+                Notification.objects.create(
+                    user=self.user,
+                    title="Consolidation Failed",
+                    message=f"Task failed: {str(e)}",
+                    notification_type='ERROR'
+                )
         finally:
             self.con.close()
 
