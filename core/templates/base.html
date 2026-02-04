@@ -122,24 +122,21 @@
         <aside class="relative bg-white flex flex-col transition-all duration-300 ease-in-out z-30 shadow-xl shadow-gray-200/50 w-64 [.sidebar-closed_&]:w-20">
             <div class="h-16 flex items-center px-6 mb-2 flex-shrink-0">
                 <div class="flex items-center gap-3 overflow-hidden whitespace-nowrap">
-                    <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-white shadow-md shadow-brand-500/20">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-white shadow-md shadow-brand-500/20">
                         <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
                             <defs>
-                                <!-- Deep Tech Background Gradient -->
                                 <linearGradient id="chipGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                                     <stop offset="0%" stop-color="#0f172a" />
                                     <stop offset="50%" stop-color="#1e293b" />
                                     <stop offset="100%" stop-color="#334155" />
                                 </linearGradient>
 
-                                <!-- Circuit Trace Gradient -->
                                 <linearGradient id="traceGradient" x1="0%" y1="0%" x2="100%" y2="0%">
                                     <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.1" />
                                     <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.8" />
                                     <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.1" />
                                 </linearGradient>
 
-                                <!-- Glow Filter for the Core -->
                                 <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
                                     <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
                                     <feMerge>
@@ -149,10 +146,8 @@
                                 </filter>
                             </defs>
 
-                            <!-- Main Processor Chip Base -->
                             <rect x="20" y="20" width="160" height="160" rx="30" fill="url(#chipGradient)" stroke="#475569" stroke-width="2" />
 
-                            <!-- Background Circuit Traces (Data Flow) -->
                             <g stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.3">
                                 <path d="M20 60 H 50 L 70 80" />
                                 <path d="M180 140 H 150 L 130 120" />
@@ -162,12 +157,9 @@
                                 <circle cx="150" cy="140" r="2" fill="#38bdf8" />
                             </g>
 
-                            <!-- The "Q" - Formed by connected Data Nodes (Neural Network style) -->
                             <g transform="translate(100, 100)">
-                                <!-- The Ring of the Q -->
                                 <circle cx="0" cy="0" r="45" stroke="#94a3b8" stroke-width="2" fill="none" opacity="0.3" />
 
-                                <!-- Rotating Data Segments -->
                                 <path d="M-45 0 A 45 45 0 0 1 45 0" stroke="#38bdf8" stroke-width="4" fill="none" stroke-linecap="round" filter="url(#neonGlow)">
                                     <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="10s" repeatCount="indefinite" />
                                 </path>
@@ -175,27 +167,21 @@
                                     <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="7s" repeatCount="indefinite" />
                                 </path>
 
-                                <!-- Central Node (Quantum Core) -->
                                 <circle cx="0" cy="0" r="6" fill="#f8fafc">
                                     <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" />
                                 </circle>
                             </g>
 
-                            <!-- The Checkmark (Validation) - Cutting through like a laser -->
                             <path d="M85 105 L 100 120 L 140 70" stroke="#10b981" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)">
                                 <animate attributeName="stroke-dasharray" from="0,100" to="100,0" dur="1.2s" fill="freeze" />
                             </path>
 
-                            <!-- The Tail of the Q (Integrated with Circuitry) -->
                             <path d="M125 125 L 145 145" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" opacity="0.8" />
-
-                            <!-- App Name -->
-                            <text x="100" y="165" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="600" font-size="14" fill="#cbd5e1" text-anchor="middle" letter-spacing="3" opacity="0.8">Q.WORKER</text>
                         </svg>
                     </div>
                     <div class="overflow-hidden transition-all duration-300 ease-in-out max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">
-                        <h1 class="font-bold text-gray-900 text-base leading-none">Q.Worker</h1>
-                        <p class="text-[10px] text-brand-600 font-bold uppercase tracking-wider mt-0.5 whitespace-nowrap">{% block sidebar_subtitle %}PROFESSIONAL EDITION{% endblock %}</p>
+                        <h1 class="font-bold text-gray-900 text-base leading-none">Quantum Worker</h1>
+                        <p class="text-[10px] text-brand-600 font-bold uppercase tracking-wider mt-0.5 pt-1 whitespace-nowrap">{% block sidebar_subtitle %}PROFESSIONAL EDITION{% endblock %}</p>
                     </div>
                 </div>
             </div>
@@ -290,7 +276,13 @@
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
                             </div>
                             <div class="flex flex-col">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">CPU: <span class="text-xs font-mono font-bold text-gray-700" x-text="stats.cpu + '%'">0%</span></span>
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                    CPU:
+                                    <div class="w-10 text-right inline-block">
+                                        <span class="text-xs font-mono font-bold text-gray-700 tabular-nums" x-text="stats.cpu">0</span>
+                                        <span class="text-xs font-mono font-bold text-gray-700">%</span>
+                                    </div>
+                                </span>
                             </div>
                         </div>
 
@@ -299,7 +291,13 @@
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                             </div>
                             <div class="flex flex-col">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">RAM: <span class="text-xs font-mono font-bold text-gray-700" x-text="stats.ram_percent + '%'">0%</span></span>
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                    RAM:
+                                    <div class="w-10 text-right inline-block">
+                                        <span class="text-xs font-mono font-bold text-gray-700 tabular-nums" x-text="stats.ram_percent">0</span>
+                                        <span class="text-xs font-mono font-bold text-gray-700">%</span>
+                                    </div>
+                                </span>
                             </div>
                         </div>
 
@@ -308,7 +306,12 @@
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                             </div>
                             <div class="flex flex-col">
-                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Speed: <span class="text-xs font-mono font-bold text-gray-700" x-text="stats.speed">0 GHz</span></span>
+                                <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                                    Speed:
+                                    <div class="w-16 text-right inline-block">
+                                        <span class="text-xs font-mono font-bold text-gray-700 tabular-nums" x-text="stats.speed">0 GHz</span>
+                                    </div>
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -336,7 +339,7 @@
                             <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
                         </button>
                         <div x-show="userMenuOpen" x-transition.origin.top.right class="absolute left-4 mt-3 w-36 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-50 overflow-hidden" style="display: none">
-                            <a href="{% url 'accounts:logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:text-red-100 flex items-center gap-2">Sign Out</a>
+                            <a href="{% url 'accounts:logout' %}" class="block px-4 py-2 text-sm text-red-600 hover:text-red-800 flex items-center gap-2">Sign Out</a>
                         </div>
                     </div>
                 </div>
