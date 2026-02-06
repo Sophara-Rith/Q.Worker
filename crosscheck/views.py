@@ -28,6 +28,7 @@ def get_db_connection():
         CREATE TABLE IF NOT EXISTS sessions (
             ovatr VARCHAR PRIMARY KEY,
             company_name VARCHAR,
+            tin VARCHAR,
             status VARCHAR,
             total_rows INTEGER,
             match_rate DOUBLE,
