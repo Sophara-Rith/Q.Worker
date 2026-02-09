@@ -2,6 +2,7 @@ import os
 import platform
 import subprocess
 import uuid
+import threading
 from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render, redirect, get_object_or_404
@@ -12,7 +13,6 @@ from consolidation.services import ProgressTracker, run_task
 from core.models import UserSettings
 from .models import ConsolidationTask
 from .engine import run_consolidation_process
-import threading
 
 @login_required
 def index(request):
@@ -61,19 +61,22 @@ def open_output_folder(request):
     """Opens the configured output directory in the OS default file explorer."""
     try:
         # Get user settings safely
-        user_settings = getattr(request.user, 'settings', None)
-        if not user_settings:
-            return JsonResponse({'error': 'Settings not configured'}, status=404)
+        user_settings, _ = UserSettings.objects.get_or_create(user=request.user)
             
         path = user_settings.default_output_dir
         
-        if not os.path.exists(path):
-            return JsonResponse({'error': f'Directory not found: {path}'}, status=404)
+        # Create directory if it doesn't exist
+        if not path or not os.path.exists(path):
+            if not path:
+                path = os.path.join(settings.BASE_DIR, 'output')
+            os.makedirs(path, exist_ok=True)
 
         # OS-specific commands to open folder
         system_platform = platform.system()
+        
         if system_platform == "Windows":
-            os.startfile(path)
+            # subprocess.Popen with 'explorer' often brings window to front better than os.startfile
+            subprocess.Popen(['explorer', os.path.normpath(path)])
         elif system_platform == "Darwin":  # macOS
             subprocess.Popen(["open", path])
         else:  # Linux

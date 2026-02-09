@@ -1,65 +1,71 @@
 {% extends 'base.html' %} {% block content %}
-<div x-data="historyData()" x-init="fetchHistory()" class="office-bg min-h-screen">
+<div x-data="historyData()" x-init="fetchHistory()" class="min-h-screen">
     <div class="mb-6">
-        <h2 class="text-2xl font-bold text-gray-800 mb-1">Session History</h2>
-        <p class="text-sm text-gray-600">View and manage all your crosscheck sessions</p>
+        <h2 class="text-2xl font-bold text-gray-800 dark:text-white mb-1">Session History</h2>
+        <p class="text-sm text-gray-600 dark:text-gray-400">View and manage all your crosscheck sessions</p>
     </div>
 
-    <div class="bg-white rounded-lg shadow-lg border border-gray-100 p-3 mb-4">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-100 dark:border-gray-700 p-3 mb-4 transition-colors">
         <div class="flex items-center gap-3">
             <div class="flex-1 relative">
                 <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <svg class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg class="h-4 w-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
                 </div>
-                <input type="text" x-model="searchQuery" @input.debounce.500ms="fetchHistory()" placeholder="Search by TIN, OVATR or Company..." class="block w-full pl-9 pr-3 py-2 border border-gray-200 rounded text-sm focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition shadow-sm" />
+                <input
+                    type="text"
+                    x-model="searchQuery"
+                    @input.debounce.500ms="fetchHistory()"
+                    placeholder="Search by TIN, OVATR or Company..."
+                    class="block w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition shadow-sm placeholder-gray-400 dark:placeholder-gray-500"
+                />
             </div>
-            <button @click="fetchHistory()" class="px-4 py-2 bg-blue-50 text-blue-600 rounded text-xs font-bold hover:bg-blue-100 transition shadow-sm uppercase tracking-wide">Refresh</button>
+            <button @click="fetchHistory()" class="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-transparent dark:border-blue-800 rounded text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition shadow-sm uppercase tracking-wide">Refresh</button>
         </div>
     </div>
 
-    <div class="bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden">
+    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-100 dark:border-gray-700 overflow-hidden transition-colors">
         <div class="p-4">
             <div x-show="isLoading" class="py-8 text-center">
                 <div class="inline-block animate-spin w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full mb-2"></div>
-                <p class="text-xs text-gray-500">Loading...</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">Loading...</p>
             </div>
 
-            <div x-show="!isLoading && sessions.length === 0" class="py-8 text-center text-gray-500 text-sm">No sessions found.</div>
+            <div x-show="!isLoading && sessions.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400 text-sm">No sessions found.</div>
 
             <div x-show="!isLoading && sessions.length > 0" class="space-y-3">
                 <template x-for="(session, index) in sessions" :key="session.ovatr">
-                    <div @click="openSession(session.ovatr)" class="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-100 hover:border-blue-300 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden">
+                    <div @click="openSession(session.ovatr)" class="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-100 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md transition-all cursor-pointer group relative overflow-hidden">
                         <div class="absolute left-0 top-0 bottom-0 w-1 bg-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
                         <div class="flex items-center gap-4">
-                            <div :class="session.status === 'Completed' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600'" class="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0">
+                            <div :class="session.status === 'Completed' ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400' : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'" class="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm flex-shrink-0 transition-colors">
                                 <svg x-show="session.status === 'Completed'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 <svg x-show="session.status !== 'Completed'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                             </div>
 
                             <div class="flex flex-col gap-1">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-[10px] font-bold text-blue-400 uppercase tracking-wider">OVATR</span>
+                                    <span class="text-[10px] font-bold text-blue-400 dark:text-blue-500 uppercase tracking-wider">OVATR</span>
                                     <div class="relative" x-data="{ showTooltip: false }">
-                                        <h3 @click.stop="copyText(session.ovatr, $el); showTooltip=true; setTimeout(() => showTooltip=false, 1000)" class="font-mono font-bold text-blue-600 text-base hover:text-blue-800 hover:bg-blue-50 px-1 -ml-1 rounded transition cursor-copy" x-text="session.ovatr"></h3>
-                                        <div x-show="showTooltip" x-transition.opacity class="absolute -top-6 left-0 bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded shadow-lg pointer-events-none">Copied!</div>
+                                        <h3 @click.stop="copyText(session.ovatr, $el); showTooltip=true; setTimeout(() => showTooltip=false, 1000)" class="font-mono font-bold text-blue-600 dark:text-blue-400 text-base hover:text-blue-800 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/50 px-1 -ml-1 rounded transition cursor-copy" x-text="session.ovatr"></h3>
+                                        <div x-show="showTooltip" x-transition.opacity class="absolute -top-6 left-0 bg-gray-800 dark:bg-gray-700 text-white text-[10px] px-2 py-0.5 rounded shadow-lg pointer-events-none">Copied!</div>
                                     </div>
                                 </div>
 
                                 <div class="flex items-center gap-3 text-sm">
                                     <div class="relative" x-data="{ showTooltip: false }">
-                                        <span @click.stop="copyText(session.company_name, $el); showTooltip=true; setTimeout(() => showTooltip=false, 1000)" class="font-semibold text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-1 -ml-1 rounded transition cursor-copy" x-text="session.company_name"> </span>
-                                        <div x-show="showTooltip" x-transition.opacity class="absolute -top-6 left-0 bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded shadow-lg pointer-events-none">Copied!</div>
+                                        <span @click.stop="copyText(session.company_name, $el); showTooltip=true; setTimeout(() => showTooltip=false, 1000)" class="font-semibold text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 px-1 -ml-1 rounded transition cursor-copy" x-text="session.company_name"> </span>
+                                        <div x-show="showTooltip" x-transition.opacity class="absolute -top-6 left-0 bg-gray-800 dark:bg-gray-700 text-white text-[10px] px-2 py-0.5 rounded shadow-lg pointer-events-none">Copied!</div>
                                     </div>
 
-                                    <span class="text-gray-300">|</span>
+                                    <span class="text-gray-300 dark:text-gray-600">|</span>
 
                                     <div class="flex items-center gap-1.5 relative" x-data="{ showTooltip: false }">
-                                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">TIN</span>
-                                        <span @click.stop="copyText(session.tin, $el); showTooltip=true; setTimeout(() => showTooltip=false, 1000)" class="font-mono text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-1 rounded transition cursor-copy" x-text="session.tin"> </span>
-                                        <div x-show="showTooltip" x-transition.opacity class="absolute -top-6 left-0 bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded shadow-lg pointer-events-none">Copied!</div>
+                                        <span class="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">TIN</span>
+                                        <span @click.stop="copyText(session.tin, $el); showTooltip=true; setTimeout(() => showTooltip=false, 1000)" class="font-mono text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 px-1 rounded transition cursor-copy" x-text="session.tin"> </span>
+                                        <div x-show="showTooltip" x-transition.opacity class="absolute -top-6 left-0 bg-gray-800 dark:bg-gray-700 text-white text-[10px] px-2 py-0.5 rounded shadow-lg pointer-events-none">Copied!</div>
                                     </div>
                                 </div>
                             </div>
@@ -67,17 +73,17 @@
 
                         <div class="flex items-center gap-6">
                             <div class="text-right hidden sm:block">
-                                <p class="text-xs font-medium text-gray-900" x-text="session.time_ago"></p>
-                                <p class="text-[10px] text-gray-400" x-text="session.last_modified"></p>
+                                <p class="text-xs font-medium text-gray-900 dark:text-gray-200" x-text="session.time_ago"></p>
+                                <p class="text-[10px] text-gray-400 dark:text-gray-500" x-text="session.last_modified"></p>
                             </div>
 
                             <div class="flex items-center gap-3">
                                 <div class="text-right mr-1">
-                                    <div class="text-xs font-bold text-gray-700" x-text="session.total_rows.toLocaleString() + ' rows'"></div>
-                                    <div :class="session.match_rate > 90 ? 'text-green-600' : 'text-orange-500'" class="text-[10px] font-bold" x-text="session.match_rate + '% Match'"></div>
+                                    <div class="text-xs font-bold text-gray-700 dark:text-gray-300" x-text="session.total_rows.toLocaleString() + ' rows'"></div>
+                                    <div :class="session.match_rate > 90 ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'" class="text-[10px] font-bold" x-text="session.match_rate + '% Match'"></div>
                                 </div>
 
-                                <button class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 text-gray-400 group-hover:bg-blue-600 group-hover:text-white transition-colors shadow-sm">
+                                <button class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500 group-hover:bg-blue-600 dark:group-hover:bg-blue-500 group-hover:text-white transition-colors shadow-sm">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                                 </button>
                             </div>
@@ -87,8 +93,8 @@
             </div>
         </div>
 
-        <div class="bg-gray-50 px-4 py-2 border-t border-gray-200">
-            <p class="text-[10px] text-gray-400 uppercase tracking-widest font-bold text-center">End of list</p>
+        <div class="bg-gray-50 dark:bg-gray-900/50 px-4 py-2 border-t border-gray-200 dark:border-gray-700">
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-widest font-bold text-center">End of list</p>
         </div>
     </div>
 </div>
@@ -119,13 +125,10 @@
             },
 
             copyText(text, element) {
-                // Use default Clipboard API
                 if (!text || text === 'N/A') return;
                 navigator.clipboard
                     .writeText(text)
-                    .then(() => {
-                        // Success handled by Alpine x-show tooltip
-                    })
+                    .then(() => {})
                     .catch((err) => {
                         console.error('Failed to copy: ', err);
                     });
