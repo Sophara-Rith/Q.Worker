@@ -7,6 +7,7 @@ import time
 import duckdb
 import warnings
 import pandas as pd
+from copy import copy
 from datetime import datetime
 from django.conf import settings
 from django.shortcuts import render
@@ -805,8 +806,11 @@ def get_crosscheck_stats(request):
 
 def generate_annex_iii(request):
     """
-    UPDATED: Matches d.tax_registration_id with company_info.vatin
-    instead of purchase.supplier_tin.
+    UPDATED:
+    1. Duplicates 'AnnexIII-Import' from 'AnnexIII-Local Pur' BEFORE populating the Local Pur sheet.
+    2. Dynamically copies formatting (fonts, borders, alignment) from the start_row to all new rows.
+    3. CLEANUP STEP: Deletes existing data rows before writing new data to remove dummy/template data.
+    4. FIXED: "No" column now starts at 1 (using i+1 instead of r-1).
     """
     conn = None
     try:
@@ -817,6 +821,11 @@ def generate_annex_iii(request):
         if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
 
         conn = get_db_connection()
+
+        # FETCH USER VATIN
+        vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
+        user_vatin = vatin_row[0] if vatin_row else ""
+        user_vatin_safe = user_vatin.replace('"', '""') 
 
         # Fetch Purchases
         local_purchases = conn.execute("""
@@ -829,7 +838,7 @@ def generate_annex_iii(request):
             FROM purchase WHERE ovatr = ? AND "import" > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
-        # Fetch Matched Declarations (Updated Join Logic)
+        # Fetch Matched Declarations
         raw_decs = conn.execute("""
             SELECT d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.vat_local_sale, d.vat_export, p.invoice_no
             FROM tax_declaration d
@@ -851,20 +860,46 @@ def generate_annex_iii(request):
             warnings.filterwarnings("ignore", category=UserWarning)
             wb = load_workbook(template_path)
         
+        # Create Import sheet BEFORE populating Local sheet to ensure clean template copy
+        if 'AnnexIII-Import' not in wb.sheetnames and 'AnnexIII-Local Pur' in wb.sheetnames:
+            target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
+            target.title = 'AnnexIII-Import'
+
         def process_sheet(sheet_name, data_rows):
             if sheet_name not in wb.sheetnames: return
             ws = wb[sheet_name]
+            
+            # 1. Identify start row
             start_row = 8
             for r in range(1, 15):
                 if ws.cell(row=r, column=1).value and "ល.រ" in str(ws.cell(row=r, column=1).value):
                     start_row = r + 1; break
+            
+            # 2. Capture Styles from the first data row (start_row)
+            style_source = {}
+            for c in range(1, 25): # Columns A to X
+                source_cell = ws.cell(row=start_row, column=c)
+                style_source[c] = {
+                    'font': copy(source_cell.font),
+                    'border': copy(source_cell.border),
+                    'fill': copy(source_cell.fill),
+                    'number_format': source_cell.number_format,
+                    'alignment': copy(source_cell.alignment),
+                    'protection': copy(source_cell.protection)
+                }
 
+            # 3. CLEANUP: Delete existing data to ensure sheet is empty of template garbage
+            if ws.max_row >= start_row:
+                 ws.delete_rows(start_row, ws.max_row - start_row + 1)
+            
+            # 4. Write Data & Apply Styles
             for i, p_row in enumerate(data_rows):
                 r = start_row + i
                 p_inv_val = p_row[3] or ""
                 p_inv_clean = clean_invoice_text(p_inv_val)
 
-                ws.cell(row=r, column=1, value=p_row[6]) # ID
+                # Write values (No Column adjusted to start at 1)
+                ws.cell(row=r, column=1, value=i+1) 
                 ws.cell(row=r, column=2, value=p_row[0] or "")
                 ws.cell(row=r, column=3, value=p_row[1] or "")
                 ws.cell(row=r, column=4, value=p_row[2] or "")
@@ -890,14 +925,21 @@ def generate_annex_iii(request):
                 ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
                 ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
                 ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
-                ws.cell(row=r, column=17, value=f'=C{r}=U{r}')
+                ws.cell(row=r, column=17, value=f'=U{r}="{user_vatin_safe}"')
                 ws.cell(row=r, column=18, value=f"=G{r}-W{r}")
 
+                # Apply Styles to the new row
+                for c in range(1, 25):
+                    cell = ws.cell(row=r, column=c)
+                    s = style_source[c]
+                    cell.font = copy(s['font'])
+                    cell.border = copy(s['border'])
+                    cell.fill = copy(s['fill'])
+                    cell.number_format = s['number_format']
+                    cell.alignment = copy(s['alignment'])
+                    cell.protection = copy(s['protection'])
+
         process_sheet('AnnexIII-Local Pur', local_purchases)
-        
-        if 'AnnexIII-Import' not in wb.sheetnames and 'AnnexIII-Local Pur' in wb.sheetnames:
-            target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
-            target.title = 'AnnexIII-Import'
         process_sheet('AnnexIII-Import', import_purchases)
 
         save_dir = os.path.join(settings.MEDIA_ROOT, 'temp_reports')
@@ -912,116 +954,112 @@ def generate_annex_iii(request):
         if conn: conn.close()
 
 def get_results_data(request):
-    """ 
-    API to read the Excel file. 
-    Supports 'table_type' param: 'local' (default) or 'import'.
-    Includes 'has_history' check from DB.
     """
-    ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-    table_type = request.GET.get('table_type', 'local') 
+    UPDATED:
+    1. Handles 'page_size' parameter (defaults to 500).
+    2. Returns pagination metadata (total pages, current page, total rows).
+    3. Handles date matching logic and TIN matching logic.
+    """
+    ovatr_code = request.GET.get('ovatr_code')
+    table_type = request.GET.get('table_type', 'local')
     page = int(request.GET.get('page', 1))
-    page_size = 100
+    # NEW: Handle dynamic page size
+    page_size = int(request.GET.get('page_size', 500))
     
-    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    if not ovatr_code: return JsonResponse({'status': 'error'}, status=400)
+    
     file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report not found.'}, status=404)
+    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
 
     try:
-        # 1. Fetch History Status Map from DB
-        history_map = set()
-        try:
-            conn = get_db_connection()
-            # Query: Get row numbers that have entries in change_history for this session
-            rows_with_history = conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()
-            history_map = {r[0] for r in rows_with_history}
-            conn.close()
-        except:
-            pass # Table likely doesn't exist yet, no history to show
+        conn = get_db_connection()
+        # Fetch History
+        hist = {r[0] for r in conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()}
+        
+        # Fetch User VATIN for UI Comparison
+        vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
+        user_vatin_clean = clean_invoice_text(vatin_row[0]) if vatin_row else ""
+        conn.close()
 
-        # 2. Read Data
         sheet_name = 'AnnexIII-Import' if table_type == 'import' else 'AnnexIII-Local Pur'
-        try:
-            df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
-        except ValueError:
-            return JsonResponse({'status': 'success', 'data': [], 'stats': {'total': 0}, 'has_more': False})
+        df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
+        
+        if df.empty: return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
+        
+        df[0] = pd.to_numeric(df[0], errors='coerce')
+        df = df.sort_values(by=0)
 
-        if not df.empty:
-            df[0] = pd.to_numeric(df[0], errors='coerce') 
-            df = df.sort_values(by=0) 
-
-        if df.shape[1] < 23: return JsonResponse({'status': 'error', 'message': 'Format mismatch'}, status=500)
-
-        p_inv = df[4].fillna('').astype(str).str.strip()
-        d_inv = df[19].fillna('').astype(str).str.strip()
-        p_amt = df[6].apply(clean_currency) 
+        p_amt = df[6].apply(clean_currency)
         d_amt = df[22].apply(clean_currency)
+        has_p = (df[4].fillna('').astype(str).str.strip() != '') | (p_amt != 0)
+        has_d = (df[19].fillna('').astype(str).str.strip() != '') | (d_amt != 0)
         
-        has_p = (p_inv != '') | (p_amt != 0)
-        has_d = (d_inv != '') | (d_amt != 0)
-        valid_mask = has_p | has_d
+        valid = has_p | has_d
+        status = pd.Series('UNKNOWN', index=df.index)
+        status[has_p & ~has_d] = 'NOT FOUND'
+        status[has_p & has_d & (abs(p_amt - d_amt) < 0.05)] = 'MATCHED'
+        status[has_p & has_d & (abs(p_amt - d_amt) >= 0.05)] = 'MISMATCH'
         
-        status_series = pd.Series('UNKNOWN', index=df.index)
-        cond_match = has_p & has_d & (abs(p_amt - d_amt) < 0.05)
-        cond_mismatch = has_p & has_d & (abs(p_amt - d_amt) >= 0.05)
-        status_series[has_p & ~has_d] = 'NOT FOUND'
-        status_series[cond_match] = 'MATCHED'
-        status_series[cond_mismatch] = 'MISMATCH'
-        
-        counts = status_series[valid_mask].value_counts()
+        total_rows = int(valid.sum())
         stats = {
-            'total': int(valid_mask.sum()), 'matched': int(counts.get('MATCHED', 0)),
-            'not_found': int(counts.get('NOT FOUND', 0)), 'mismatch': int(counts.get('MISMATCH', 0))
+            'total': total_rows, 'matched': int(status[valid].value_counts().get('MATCHED', 0)),
+            'not_found': int(status[valid].value_counts().get('NOT FOUND', 0)), 'mismatch': int(status[valid].value_counts().get('MISMATCH', 0))
         }
 
-        df_display = df[valid_mask]
-        status_display = status_series[valid_mask]
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
+        # Pagination Logic
+        start = (page - 1) * page_size
+        end = start + page_size
+        df_page = df[valid].iloc[start:end]
+        status_page = status[valid].iloc[start:end]
         
-        df_page = df_display.iloc[start_idx:end_idx]
-        status_page = status_display.iloc[start_idx:end_idx]
-        
-        results = []
-        for (idx, row), status in zip(df_page.iterrows(), status_page):
-            def val(c): return str(row[c]).strip() if (c < len(row) and pd.notna(row[c])) else ""
-            def num(c): return clean_currency(row[c]) if c < len(row) else 0.0
-            
-            p_inv_clean = clean_invoice_text(val(4))
-            d_inv_clean = clean_invoice_text(val(19))
-            p_tin_clean = clean_invoice_text(val(3))
-            d_tin_clean = clean_invoice_text(val(20))
+        # Calculate Total Pages
+        total_pages = (total_rows + page_size - 1) // page_size
 
-            v_inv_match = (p_inv_clean == d_inv_clean) if (p_inv_clean and d_inv_clean) else False
-            v_tin_match = (p_tin_clean == d_tin_clean) if (p_tin_clean and d_tin_clean) else False
-            
-            v_date_match = False
+        # Helper for Date Comparison
+        def check_date_match(v1, v2):
             try:
-                pd_dt = pd.to_datetime(row[5], dayfirst=True)
-                dd_dt = pd.to_datetime(row[18], dayfirst=True)
-                if pd.notna(pd_dt) and pd.notna(dd_dt):
-                    v_date_match = (pd_dt.month == dd_dt.month) and (pd_dt.year == dd_dt.year)
-            except: pass
+                if pd.isna(v1) or pd.isna(v2): return False
+                if str(v1).strip() == "" or str(v2).strip() == "": return False
+                dt1 = pd.to_datetime(v1, dayfirst=True, errors='coerce')
+                dt2 = pd.to_datetime(v2, dayfirst=True, errors='coerce')
+                if pd.isna(dt1) or pd.isna(dt2): return False
+                return dt1.month == dt2.month and dt1.year == dt2.year
+            except: return False
 
-            v_diff = num(6) - num(22)
-            def clean_date(v):
+        results = []
+        for (idx, row), st in zip(df_page.iterrows(), status_page):
+            def val(c): return str(row[c]).strip() if pd.notna(row[c]) else ""
+            def num(c): return clean_currency(row[c])
+            def cl_dt(v):
                 if pd.isna(v) or str(v).strip() == "": return ""
                 try: return pd.to_datetime(v, dayfirst=True).strftime('%d-%m-%Y')
                 except: return str(v).split(' ')[0]
-
-            row_no_str = val(0) # The DB ID
-
+            
+            p_clean = clean_invoice_text(val(4))
+            d_clean = clean_invoice_text(val(19))
+            
             results.append({
-                'no': row_no_str,
-                'has_history': row_no_str in history_map, # Flag for UI
-                'status': status,
-                'p_inv_clean': p_inv_clean, 'd_inv_clean': d_inv_clean,
-                'v_inv': v_inv_match, 'v_date': v_date_match, 'v_tin': v_tin_match, 'v_diff': v_diff,
-                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 'p_date': clean_date(row[5]), 'p_amt': num(6),
-                'd_date': clean_date(row[18]), 'd_inv': val(19), 'd_tin': val(20), 'd_name': val(21), 'd_amt': num(22)
+                'no': val(0), 'has_history': val(0) in hist, 'status': st,
+                'p_inv_clean': p_clean, 'd_inv_clean': d_clean,
+                'v_inv': (p_clean == d_clean),
+                'v_tin': (clean_invoice_text(val(20)) == user_vatin_clean),
+                'v_date': check_date_match(row[5], row[18]),
+                'v_diff': num(6) - num(22),
+                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 'p_date': cl_dt(row[5]), 'p_amt': num(6),
+                'd_date': cl_dt(row[18]), 'd_inv': val(19), 'd_tin': val(20), 'd_name': val(21), 'd_amt': num(22)
             })
             
-        return JsonResponse({'status': 'success', 'data': results, 'stats': stats, 'has_more': end_idx < stats['total']})
-
+        return JsonResponse({
+            'status': 'success', 
+            'data': results, 
+            'stats': stats, 
+            'pagination': {
+                'current_page': page,
+                'total_pages': total_pages,
+                'page_size': page_size,
+                'total_rows': total_rows
+            }
+        })
     except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def download_report(request):
