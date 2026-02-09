@@ -205,7 +205,9 @@
 
                     if (data.status === 'success') {
                         this.totalRows = data.total_rows || 1000;
-                        this.addLog(`Data Inventory: ${data.purchase_count} Purchases / ${data.declaration_count} Declarations`);
+                        // FIXED: Now accessing purchase_count safely
+                        const pCount = data.purchase_count || data.local_count + data.import_count;
+                        this.addLog(`Data Inventory: ${pCount} Purchases / ${data.declaration_count} Declarations`);
 
                         if (data.is_ready) {
                             this.processedRows = this.totalRows;
@@ -214,8 +216,6 @@
                             this.title = 'Process Completed';
                             this.subtitle = 'Report is ready';
                             this.addLog('Existing report found. Ready to view.');
-
-                            // FALSE prevents auto-redirect on revisit
                             this.finishSuccess(false);
                         } else {
                             this.startProcessing();
@@ -277,7 +277,6 @@
                 await this.simulateMetrics(estimatedDuration);
 
                 if (this.status === 'processing') {
-                    // TRUE enables auto-redirect after fresh processing
                     this.finishSuccess(true);
                 }
             },
@@ -293,9 +292,6 @@
 
                 this.addLog('File generated successfully.');
 
-                // --- NO Auto-download (Manual Only) ---
-                // this.downloadFile();
-
                 if (shouldRedirect) {
                     this.addLog('Redirecting to Results Dashboard...');
                     setTimeout(() => {
@@ -304,7 +300,7 @@
                         } else {
                             window.location.href = "{% url 'crosscheck:results' %}?ovatr_code=" + this.ovatrCode;
                         }
-                    }, 2000); // 2s delay
+                    }, 2000);
                 }
             },
 
@@ -407,20 +403,17 @@
             checkStopped() {
                 return this.status === 'stopped' || this.status === 'error';
             },
-
             downloadFile() {
                 window.location.href = "{% url 'crosscheck:download_report' %}?ovatr_code=" + this.ovatrCode;
             },
-
             fail(msg) {
                 this.status = 'error';
                 this.addLog('CRITICAL ERROR: ' + msg);
             },
-
             retry() {
                 this.initialize();
             },
         }));
     });
 </script>
-{% endblock %}
+{% endblock %} }

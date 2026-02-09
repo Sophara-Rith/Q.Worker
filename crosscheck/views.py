@@ -20,7 +20,7 @@ from openpyxl import load_workbook
 def get_db_connection():
     con = duckdb.connect(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
     
-    # Ensure Sessions Table Exists (Keep it simple, no TIN column needed here now)
+    # Ensure Sessions Table Exists
     con.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             ovatr VARCHAR PRIMARY KEY,
@@ -40,38 +40,28 @@ def update_session_metadata(con, ovatr, company_name=None, tin=None, status=None
     if not ovatr: return
     now = datetime.now()
     
-    # Check if exists
     exists = con.execute("SELECT 1 FROM sessions WHERE ovatr = ?", [ovatr]).fetchone()
     
     if not exists:
-        # Insert new with TIN
         con.execute("""
             INSERT INTO sessions (ovatr, company_name, tin, status, total_rows, match_rate, created_at, last_modified)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, [ovatr, company_name or 'Unknown', tin or '', status or 'Processing', 0, 0.0, now, now])
     else:
-        # Build dynamic update query
         updates = ["last_modified = ?"]
         params = [now]
-        
         if company_name: 
-            updates.append("company_name = ?")
-            params.append(company_name)
+            updates.append("company_name = ?"); params.append(company_name)
         if tin:
-            updates.append("tin = ?")
-            params.append(tin)
+            updates.append("tin = ?"); params.append(tin)
         if status:
-            updates.append("status = ?")
-            params.append(status)
+            updates.append("status = ?"); params.append(status)
         if total_rows is not None:
-            updates.append("total_rows = ?")
-            params.append(total_rows)
+            updates.append("total_rows = ?"); params.append(total_rows)
         if match_rate is not None:
-            updates.append("match_rate = ?")
-            params.append(match_rate)
+            updates.append("match_rate = ?"); params.append(match_rate)
             
-        params.append(ovatr) # For WHERE clause
-        
+        params.append(ovatr)
         query = f"UPDATE sessions SET {', '.join(updates)} WHERE ovatr = ?"
         con.execute(query, params)
 
@@ -144,29 +134,15 @@ def history_view(request):
 # --- API: History Data ---
 
 def get_history_api(request):
-    """ 
-    Returns list of sessions from DuckDB.
-    UPDATED: Performs a LEFT JOIN with 'company_info' to get the real 'vatin' (TIN).
-    """
     try:
         query = request.GET.get('q', '').strip()
         conn = get_db_connection()
         
-        # SQL with JOIN to fetch TIN from company_info.vatin
-        # We use COALESCE to handle cases where company_info might be missing or vatin is empty
         sql = """
-            SELECT 
-                s.ovatr, 
-                s.company_name, 
-                s.status, 
-                s.total_rows, 
-                s.match_rate, 
-                s.last_modified,
-                c."vatin" as tin
+            SELECT s.ovatr, s.company_name, s.status, s.total_rows, s.match_rate, s.last_modified, c."vatin" as tin
             FROM sessions s
             LEFT JOIN company_info c ON s.ovatr = c."ovatr"
         """
-        
         params = []
         where_clauses = []
 
@@ -174,9 +150,7 @@ def get_history_api(request):
             where_clauses.append("(s.ovatr ILIKE ? OR s.company_name ILIKE ? OR c.\"vatin\" ILIKE ?)")
             params = [f'%{query}%', f'%{query}%', f'%{query}%']
             
-        if where_clauses:
-            sql += " WHERE " + " AND ".join(where_clauses)
-            
+        if where_clauses: sql += " WHERE " + " AND ".join(where_clauses)
         sql += " ORDER BY s.last_modified DESC LIMIT 50"
         
         rows = conn.execute(sql, params).fetchall()
@@ -193,20 +167,13 @@ def get_history_api(request):
                 elif diff.seconds > 60: time_ago = f"{diff.seconds // 60} mins ago"
 
             data.append({
-                'ovatr': r[0],
-                'company_name': r[1],
-                'status': r[2],
-                'total_rows': r[3],
-                'match_rate': round(r[4], 1),
+                'ovatr': r[0], 'company_name': r[1], 'status': r[2],
+                'total_rows': r[3], 'match_rate': round(r[4], 1),
                 'last_modified': last_mod.strftime('%Y-%m-%d %H:%M') if last_mod else '',
-                'tin': r[6] or 'N/A', # The joined TIN value
-                'time_ago': time_ago
+                'tin': r[6] or 'N/A', 'time_ago': time_ago
             })
-            
         return JsonResponse({'status': 'success', 'data': data})
-        
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 # --- Upload & Save APIs ---
 
@@ -781,14 +748,17 @@ def get_row_history(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def get_crosscheck_stats(request):
-    """ Returns data stats including both Local and Import counts. """
+    """
+    UPDATED: Matches d.tax_registration_id with company_info.vatin
+    instead of purchase.supplier_tin.
+    """
     ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
     if not ovatr_code: return JsonResponse({'status': 'error'}, status=400)
 
     try:
         conn = get_db_connection()
         
-        # Count Local Purchase (>0) and Import (>0)
+        # 1. Counts
         res_p = conn.execute("""
             SELECT 
                 COUNT(CASE WHEN purchase > 0 THEN 1 END),
@@ -800,30 +770,24 @@ def get_crosscheck_stats(request):
         count_import = res_p[1] if res_p else 0
         total_rows = count_local + count_import
         
-        # Declarations (Matched via Strict Logic)
+        # 2. Strict Matches (Declarations)
+        # JOIN company_info to get the User's VATIN
         res_d = conn.execute("""
-            SELECT COUNT(DISTINCT d.invoice_number)
+            SELECT COUNT(DISTINCT d.id)
             FROM tax_declaration d
-            JOIN purchase p ON d.invoice_number = p.invoice_no
+            JOIN purchase p ON 
+                regexp_replace(upper(d.invoice_number), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(p.invoice_no), '[^A-Z0-9]', '', 'g')
+            JOIN company_info c ON p.ovatr = c.ovatr
             WHERE p.ovatr = ?
-            AND d.tax_registration_id = p.supplier_tin
-            AND month(d.date) = month(strptime(p.date, '%d-%m-%Y'))
-            AND year(d.date) = year(strptime(p.date, '%d-%m-%Y'))
+            AND regexp_replace(upper(d.tax_registration_id), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(c.vatin), '[^A-Z0-9]', '', 'g')
+            AND month(d.date) = month(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
+            AND year(d.date) = year(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
         """, [ovatr_code]).fetchone()
+        
         count_d = res_d[0] if res_d else 0
         
-        # Calculate rough match rate for history
         match_rate = (count_d / total_rows * 100) if total_rows > 0 else 0.0
-        
-        # --- UPDATE SESSION STATS ---
-        update_session_metadata(
-            conn, 
-            ovatr_code, 
-            total_rows=total_rows, 
-            match_rate=match_rate,
-            status="Completed"
-        )
-        
+        update_session_metadata(conn, ovatr_code, total_rows=total_rows, match_rate=match_rate, status="Completed")
         conn.close()
         
         file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
@@ -831,6 +795,7 @@ def get_crosscheck_stats(request):
         return JsonResponse({
             'status': 'success',
             'total_rows': max(total_rows, count_d),
+            'purchase_count': total_rows, 
             'local_count': count_local,
             'import_count': count_import,
             'declaration_count': count_d,
@@ -839,90 +804,77 @@ def get_crosscheck_stats(request):
     except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def generate_annex_iii(request):
-    """ 
-    Generates Excel with TWO sheets:
-    1. 'AnnexIII-Local Pur' (purchase > 0)
-    2. 'AnnexIII-Import' (import > 0)
+    """
+    UPDATED: Matches d.tax_registration_id with company_info.vatin
+    instead of purchase.supplier_tin.
     """
     conn = None
     try:
         template_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'CC - guide.xlsx')
-        if not os.path.exists(template_path):
-            template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
+        if not os.path.exists(template_path): template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
         
         ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-        if not ovatr_code:
-            return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
+        if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
 
         conn = get_db_connection()
 
-        # --- DATA FETCHING ---
-        # ADDED ORDER BY CAST(no AS INTEGER) ASC
+        # Fetch Purchases
         local_purchases = conn.execute("""
             SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no 
-            FROM purchase WHERE ovatr = ? AND purchase > 0
-            ORDER BY CAST(no AS INTEGER) ASC
+            FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
         import_purchases = conn.execute("""
             SELECT description, supplier_name, supplier_tin, invoice_no, date, "import", no
-            FROM purchase WHERE ovatr = ? AND "import" > 0
-            ORDER BY CAST(no AS INTEGER) ASC
+            FROM purchase WHERE ovatr = ? AND "import" > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
-        # Declarations (Strict Match)
+        # Fetch Matched Declarations (Updated Join Logic)
         raw_decs = conn.execute("""
-            SELECT d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.vat_local_sale, d.vat_export 
+            SELECT d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.vat_local_sale, d.vat_export, p.invoice_no
             FROM tax_declaration d
-            JOIN purchase p ON d.invoice_number = p.invoice_no
+            JOIN purchase p ON 
+                regexp_replace(upper(d.invoice_number), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(p.invoice_no), '[^A-Z0-9]', '', 'g')
+            JOIN company_info c ON p.ovatr = c.ovatr
             WHERE p.ovatr = ?
-            AND d.tax_registration_id = p.supplier_tin
-            AND month(d.date) = month(strptime(p.date, '%d-%m-%Y'))
-            AND year(d.date) = year(strptime(p.date, '%d-%m-%Y'))
+            AND regexp_replace(upper(d.tax_registration_id), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(c.vatin), '[^A-Z0-9]', '', 'g')
+            AND month(d.date) = month(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
+            AND year(d.date) = year(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
         """, [ovatr_code]).fetchall()
         
         dec_map = {}
         for dec in raw_decs:
-            clean_inv_key = clean_invoice_text(dec[1]) 
-            if clean_inv_key: dec_map[clean_inv_key] = dec
+            p_inv_key = clean_invoice_text(dec[6])
+            if p_inv_key: dec_map[p_inv_key] = dec
 
-        # --- EXCEL GENERATION ---
-        
         with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
+            warnings.filterwarnings("ignore", category=UserWarning)
             wb = load_workbook(template_path)
         
-        # Helper to process a sheet
         def process_sheet(sheet_name, data_rows):
             if sheet_name not in wb.sheetnames: return
             ws = wb[sheet_name]
-            
             start_row = 8
             for r in range(1, 15):
                 if ws.cell(row=r, column=1).value and "ល.រ" in str(ws.cell(row=r, column=1).value):
-                    start_row = r + 1
-                    break
+                    start_row = r + 1; break
 
             for i, p_row in enumerate(data_rows):
                 r = start_row + i
-                p_inv_val = p_row[3] if p_row[3] else ""
+                p_inv_val = p_row[3] or ""
                 p_inv_clean = clean_invoice_text(p_inv_val)
 
-                # Col 1: DB ID 'no' (Important for updates)
-                ws.cell(row=r, column=1, value=p_row[6]) 
-                
-                # Purchase Data
+                ws.cell(row=r, column=1, value=p_row[6]) # ID
                 ws.cell(row=r, column=2, value=p_row[0] or "")
                 ws.cell(row=r, column=3, value=p_row[1] or "")
                 ws.cell(row=r, column=4, value=p_row[2] or "")
                 ws.cell(row=r, column=5, value=p_inv_val)
                 ws.cell(row=r, column=6, value=p_row[4] or "")
                 ws.cell(row=r, column=7, value=p_row[5] if p_row[5] else 0)
-
+                
                 ws.cell(row=r, column=9, value=f"=G{r}")
                 ws.cell(row=r, column=11, value=f"=I{r}-G{r}")
 
-                # Dec Match
                 d_row = dec_map.get(p_inv_clean)
                 d_inv_val = ""
                 if d_row:
@@ -934,11 +886,8 @@ def generate_annex_iii(request):
                     ws.cell(row=r, column=23, value=d_row[4] or 0)
                     ws.cell(row=r, column=24, value=d_row[5] or 0)
 
-                # Cleanup Columns
                 ws.cell(row=r, column=13, value=p_inv_clean)
                 ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
-                
-                # Validation Formulas
                 ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
                 ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
                 ws.cell(row=r, column=17, value=f'=C{r}=U{r}')
@@ -946,13 +895,10 @@ def generate_annex_iii(request):
 
         process_sheet('AnnexIII-Local Pur', local_purchases)
         
-        import_sheet_name = 'AnnexIII-Import'
-        if import_sheet_name not in wb.sheetnames:
-            if 'AnnexIII-Local Pur' in wb.sheetnames:
-                target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
-                target.title = import_sheet_name
-        
-        process_sheet(import_sheet_name, import_purchases)
+        if 'AnnexIII-Import' not in wb.sheetnames and 'AnnexIII-Local Pur' in wb.sheetnames:
+            target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
+            target.title = 'AnnexIII-Import'
+        process_sheet('AnnexIII-Import', import_purchases)
 
         save_dir = os.path.join(settings.MEDIA_ROOT, 'temp_reports')
         os.makedirs(save_dir, exist_ok=True)
