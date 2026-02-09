@@ -12,7 +12,7 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 from datetime import datetime
 from django.conf import settings
-from core.models import UserSettings, Notification # Imported Notification
+from core.models import UserSettings
 
 logger = logging.getLogger(__name__)
 
@@ -356,27 +356,11 @@ class ConsolidationService:
 
             shutil.rmtree(os.path.join(BASE_DIR, 'temp_extract'), ignore_errors=True)
             self.log(100, "Completed", f"Saved to {self.output_dir}")
-            
-            # --- NOTIFICATION INTEGRATION ---
-            if self.user:
-                Notification.objects.create(
-                    user=self.user,
-                    title="Consolidation Finished",
-                    message="Data consolidation task completed successfully.",
-                    notification_type='SUCCESS'
-                )
+        
 
         except Exception as e:
             logger.error(traceback.format_exc())
             self.log(100, "Failed", str(e))
-            # Error Notification
-            if self.user:
-                Notification.objects.create(
-                    user=self.user,
-                    title="Consolidation Failed",
-                    message=f"Task failed: {str(e)}",
-                    notification_type='ERROR'
-                )
         finally:
             self.con.close()
 

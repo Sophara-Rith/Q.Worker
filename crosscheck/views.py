@@ -15,9 +15,6 @@ from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
 from openpyxl import load_workbook
 
-# Import Notification Model
-from core.models import Notification 
-
 # --- Helpers ---
 
 def get_db_connection():
@@ -828,15 +825,6 @@ def get_crosscheck_stats(request):
         )
         
         conn.close()
-        
-        # --- NOTIFICATION INTEGRATION ---
-        if request.user.is_authenticated:
-            Notification.objects.create(
-                user=request.user,
-                title="Crosscheck Complete",
-                message=f"Crosscheck for OVATR {ovatr_code} has been processed successfully.",
-                notification_type='SUCCESS'
-            )
         
         file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
         
