@@ -129,7 +129,7 @@ import os
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'], # Point to our global templates folder
+        'DIRS': [BASE_DIR / 'templates'], # Global templates folder
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -137,6 +137,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'core.context_processors.global_settings', # Restored this
             ],
         },
     },
@@ -171,11 +172,8 @@ DATABASES = {
     }
 }
 
-# Static files setup
 STATIC_URL = 'static/'
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, 'static'), 
-    
-    # ADD THIS LINE:
     os.path.join(BASE_DIR, 'core/templates/static'),
 ]

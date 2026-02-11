@@ -1,0 +1,182 @@
+{% extends 'base.html' %} {% block title %}Reporting Module{% endblock %} {% block content %}
+<div x-data="reportModule()" x-init="init()" class="max-w-[1800px] mx-auto p-6">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-800 dark:text-white">Reporting Module</h1>
+            <p class="text-sm text-gray-500">Review and finalize data before export.</p>
+        </div>
+        <div class="flex gap-3 items-center">
+            <div class="relative group">
+                <input type="text" x-model="searchInput" @keydown.enter="searchSession()" placeholder="Search OVATR..." class="pl-3 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-indigo-500 w-48 transition-all focus:w-64" />
+                <button @click="searchSession()" class="absolute right-2 top-2.5 text-gray-400 hover:text-indigo-500">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </button>
+            </div>
+
+            <div x-show="ovatr" class="px-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg text-sm font-mono font-bold text-indigo-600 dark:text-indigo-400">Session: <span x-text="ovatr"></span></div>
+
+            <a :href="'/crosscheck/api/report/download/?ovatr_code=' + ovatr" x-show="ovatr" target="_blank" class="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow font-bold transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                Download Excel
+            </a>
+        </div>
+    </div>
+
+    <div x-show="ovatr" x-transition>
+        <div class="flex gap-2 mb-4 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+            <template x-for="tab in tabs" :key="tab.id">
+                <button @click="currentTab = tab.id; fetchData()" :class="currentTab === tab.id ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'" class="px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap" x-text="tab.label"></button>
+            </template>
+        </div>
+
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[500px] relative">
+            <div x-show="loading" class="absolute inset-0 bg-white/80 dark:bg-gray-900/80 flex items-center justify-center z-10">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+            </div>
+
+            <div class="overflow-x-auto h-[650px]">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="sticky top-0 bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 font-bold uppercase shadow-sm z-10">
+                        <tr>
+                            <template x-for="col in columns" :key="col.key">
+                                <th class="p-3 border-b border-gray-200 dark:border-gray-600 whitespace-nowrap" x-text="col.label"></th>
+                            </template>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        <template x-for="(row, idx) in rows" :key="idx">
+                            <tr class="hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors group">
+                                <template x-for="col in columns" :key="col.key">
+                                    <td class="p-0 border-r border-gray-100 dark:border-gray-700 relative h-8">
+                                        <template x-if="currentTab === 'company' && col.key === 'key'">
+                                            <div class="p-2 font-bold bg-gray-50 dark:bg-gray-800 text-gray-500" x-text="row[col.key]"></div>
+                                        </template>
+
+                                        <template x-if="!(currentTab === 'company' && col.key === 'key')">
+                                            <input type="text" x-model="row[col.key]" @change="updateCell(row, col.key, $event.target.value)" class="w-full h-full p-2 bg-transparent border-none focus:ring-2 focus:ring-inset focus:ring-indigo-500 text-gray-800 dark:text-gray-200" />
+                                        </template>
+                                    </td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div x-show="!loading && rows.length === 0" class="flex flex-col items-center justify-center h-64 text-gray-400">
+                <span>No data available for this sheet</span>
+            </div>
+        </div>
+    </div>
+
+    <div x-show="!ovatr" class="text-center py-20">
+        <div class="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </div>
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white">No Session Loaded</h3>
+        <p class="text-gray-500 dark:text-gray-400">Enter an OVATR code above to load the report.</p>
+    </div>
+
+    <div x-show="toast.show" x-transition class="fixed bottom-5 right-5 px-4 py-2 rounded shadow-lg text-white text-sm font-bold flex items-center gap-2" :class="toast.type === 'error' ? 'bg-red-500' : 'bg-green-600'">
+        <span x-text="toast.message"></span>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('reportModule', () => ({
+            ovatr: '{{ ovatr_code }}',
+            searchInput: '',
+            currentTab: 'company',
+            tabs: [
+                {id: 'company', label: 'Company Info'},
+                {id: 'annex_1', label: 'Annex I (State Charge)'},
+                {id: 'annex_2', label: 'Annex II (Non-State)'},
+                {id: 'annex_3', label: 'Annex III (Local Pur)'},
+                {id: 'annex_4', label: 'Annex IV (Export)'},
+                {id: 'annex_5', label: 'Annex V (Local Sale)'},
+                {id: 'taxpaid', label: 'Taxpaid'},
+            ],
+            rows: [],
+            columns: [],
+            loading: false,
+            toast: {show: false, message: '', type: 'success'},
+
+            init() {
+                if (this.ovatr) {
+                    this.searchInput = this.ovatr;
+                    this.fetchData();
+                }
+            },
+
+            searchSession() {
+                const code = this.searchInput.trim().toUpperCase();
+                if (!code.startsWith('OVATR')) {
+                    this.showToast('Invalid Format. Must start with OVATR', 'error');
+                    return;
+                }
+                // Update URL without reloading page (optional, but good for UX)
+                const url = new URL(window.location);
+                url.searchParams.set('ovatr_code', code);
+                window.history.pushState({}, '', url);
+
+                this.ovatr = code;
+                this.fetchData();
+            },
+
+            fetchData() {
+                if (!this.ovatr) return;
+                this.loading = true;
+                fetch(`/crosscheck/api/report/data/?ovatr_code=${this.ovatr}&sheet=${this.currentTab}`)
+                    .then((r) => r.json())
+                    .then((res) => {
+                        this.loading = false;
+                        if (res.status === 'success') {
+                            this.rows = res.data;
+                            this.columns = res.columns;
+                        } else {
+                            this.showToast(res.message, 'error');
+                            this.rows = [];
+                        }
+                    })
+                    .catch((e) => {
+                        this.loading = false;
+                        this.showToast('Network Error', 'error');
+                    });
+            },
+
+            updateCell(row, field, newValue) {
+                let idVal = null;
+                if (this.currentTab === 'company') idVal = row['key'];
+                else if (this.currentTab === 'taxpaid') idVal = row['description'];
+                else idVal = row['no'];
+
+                fetch('/crosscheck/api/report/update/', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        ovatr: this.ovatr,
+                        sheet: this.currentTab,
+                        id_val: idVal,
+                        field: field,
+                        value: newValue,
+                        old_value: '', // Simplified for now
+                    }),
+                })
+                    .then((r) => r.json())
+                    .then((res) => {
+                        if (res.status === 'success') this.showToast('Saved', 'success');
+                        else this.showToast('Save Failed: ' + res.message, 'error');
+                    });
+            },
+
+            showToast(msg, type) {
+                this.toast.message = msg;
+                this.toast.type = type;
+                this.toast.show = true;
+                setTimeout(() => (this.toast.show = false), 3000);
+            },
+        }));
+    });
+</script>
+{% endblock %}

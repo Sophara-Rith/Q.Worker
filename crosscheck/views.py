@@ -6,6 +6,8 @@ import re
 import time
 import duckdb
 import warnings
+import openpyxl
+import ast
 import pandas as pd
 from copy import copy
 from datetime import datetime
@@ -15,6 +17,7 @@ from django.http import FileResponse, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
 from openpyxl import load_workbook
+from openpyxl.styles import Font
 
 # --- Helpers ---
 
@@ -131,6 +134,11 @@ def results_view(request):
 def history_view(request):
     """ Renders the History UI """
     return render(request, 'crosscheck/history.html')
+
+def report_view(request):
+    """ Renders the main Reporting Module UI """
+    code = request.GET.get('ovatr_code') or request.session.get('ovatr_code', '')
+    return render(request, 'crosscheck/report.html', {'ovatr_code': code})
 
 # --- API: History Data ---
 
@@ -290,10 +298,14 @@ def upload_init(request):
                             'type': get_col(row, 5)
                         })
                     elif current_section == 'enterprise_accounts':
+                        # Mapping: Col 3 = Number, Col 4 = Account Name, Col 2 = Bank
                         data_map['enterprise_accounts'].append({
-                            'no': get_col(row, 1), 'bank': get_col(row, 2), 
-                            'account_name': get_col(row, 3), 'number': get_col(row, 4), 
-                            'currency': get_col(row, 5), 'type': get_col(row, 6)
+                            'no': get_col(row, 1), 
+                            'bank': get_col(row, 2), 
+                            'number': get_col(row, 3), 
+                            'account_name': get_col(row, 4), 
+                            'currency': get_col(row, 5), 
+                            'type': get_col(row, 6)
                         })
                     elif current_section == 'related_institutions':
                         data_map['related_institutions'].append({
@@ -1077,3 +1089,277 @@ def download_report(request):
         return response
     else:
         return JsonResponse({'status': 'error', 'message': 'File not found'}, status=404)
+    
+def get_report_data(request):
+    """
+    Fetches data for the specific sheet requested.
+    Sheets: company, annex_1 (state), annex_2 (non-state), annex_3 (local pur), 
+            annex_4 (export), annex_5 (local sale), taxpaid
+    """
+    try:
+        ovatr = request.GET.get('ovatr_code')
+        sheet = request.GET.get('sheet')
+        
+        if not ovatr or not sheet:
+            return JsonResponse({'status': 'error', 'message': 'Missing parameters'})
+            
+        con = get_db_connection()
+        data = []
+        columns = []
+        
+        if sheet == 'company':
+            # Pivot Company Info for Key-Value editing
+            row = con.execute("SELECT * FROM company_info WHERE ovatr = ?", [ovatr]).fetchone()
+            if row:
+                # Get column names
+                cols = [desc[0] for desc in con.description]
+                for i, col_name in enumerate(cols):
+                    if col_name == 'ovatr': continue
+                    data.append({'key': col_name, 'value': row[i]})
+                columns = [{'key': 'key', 'label': 'Field'}, {'key': 'value', 'label': 'Value'}]
+                
+        elif sheet == 'annex_1': # State Charge (Imports)
+            # Assumption: Type='Import' and state_charge > 0 or specific logic
+            res = con.execute("""
+                SELECT no, date, invoice_no, supplier_name, total_amount, state_charge 
+                FROM purchase 
+                WHERE ovatr = ? AND "import" > 0 AND state_charge <> 0
+                ORDER BY CAST(no AS INTEGER)
+            """, [ovatr])
+            cols = [desc[0] for desc in con.description]
+            data = [dict(zip(cols, r)) for r in res.fetchall()]
+            columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
+            
+        elif sheet == 'annex_2': # Non-State Charge (Imports)
+            res = con.execute("""
+                SELECT no, date, invoice_no, supplier_name, total_amount, non_state_charge 
+                FROM purchase 
+                WHERE ovatr = ? AND "import" > 0 AND non_state_charge <> 0
+                ORDER BY CAST(no AS INTEGER)
+            """, [ovatr])
+            cols = [desc[0] for desc in con.description]
+            data = [dict(zip(cols, r)) for r in res.fetchall()]
+            columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
+            
+        elif sheet == 'annex_3': # Local Purchase
+            res = con.execute("""
+                SELECT no, date, invoice_no, supplier_name, supplier_tin, total_amount, purchase as amount
+                FROM purchase 
+                WHERE ovatr = ? AND purchase > 0
+                ORDER BY CAST(no AS INTEGER)
+            """, [ovatr])
+            cols = [desc[0] for desc in con.description]
+            data = [dict(zip(cols, r)) for r in res.fetchall()]
+            columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
+            
+        elif sheet == 'annex_4': # Export (Sales)
+            res = con.execute("""
+                SELECT no, date, invoice_no, buyer_name, total_invoice_amount, vat_export 
+                FROM sale 
+                WHERE ovatr = ? AND vat_export > 0
+                ORDER BY CAST(no AS INTEGER)
+            """, [ovatr])
+            cols = [desc[0] for desc in con.description]
+            data = [dict(zip(cols, r)) for r in res.fetchall()]
+            columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
+            
+        elif sheet == 'annex_5': # Local Sales
+            res = con.execute("""
+                SELECT no, date, invoice_no, buyer_name, total_invoice_amount, vat_local_sale 
+                FROM sale 
+                WHERE ovatr = ? AND (vat_local_sale > 0 OR non_vat_sales > 0 OR vat_zero_rate > 0)
+                ORDER BY CAST(no AS INTEGER)
+            """, [ovatr])
+            cols = [desc[0] for desc in con.description]
+            data = [dict(zip(cols, r)) for r in res.fetchall()]
+            columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
+            
+        elif sheet == 'taxpaid':
+            res = con.execute("SELECT * FROM tax_paid WHERE ovatr = ?", [ovatr])
+            cols = [desc[0] for desc in con.description]
+            data = [dict(zip(cols, r)) for r in res.fetchall()]
+            columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
+
+        con.close()
+        return JsonResponse({'status': 'success', 'data': data, 'columns': columns})
+        
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@csrf_exempt
+def update_report_cell(request):
+    """
+    Generic update for any cell in the report tables.
+    Payload: { ovatr, sheet, id_field, id_val, field, value, old_value }
+    """
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            ovatr = body.get('ovatr')
+            sheet = body.get('sheet')
+            id_val = body.get('id_val') # Primary Key value (e.g., row 'no' or 'tax_year')
+            field = body.get('field')
+            value = body.get('value')
+            old_value = body.get('old_value')
+            
+            con = get_db_connection()
+            
+            # Identify Table & PK based on Sheet
+            table_map = {
+                'company': {'table': 'company_info', 'pk': 'ovatr'},
+                'annex_1': {'table': 'purchase', 'pk': 'no'},
+                'annex_2': {'table': 'purchase', 'pk': 'no'},
+                'annex_3': {'table': 'purchase', 'pk': 'no'},
+                'annex_4': {'table': 'sale', 'pk': 'no'},
+                'annex_5': {'table': 'sale', 'pk': 'no'},
+                'taxpaid': {'table': 'tax_paid', 'pk': 'description'} # Using description as secondary PK component
+            }
+            
+            config = table_map.get(sheet)
+            if not config:
+                return JsonResponse({'status': 'error', 'message': 'Invalid sheet'})
+                
+            table = config['table']
+            pk_col = config['pk']
+            
+            # Special Handling for Company Info (Key-Value structure in UI, Column structure in DB)
+            if sheet == 'company':
+                # 'id_val' in UI is actually the Field Name (key), 'field' in UI is 'value'
+                # We update the column named `id_val`
+                db_field = id_val 
+                query = f'UPDATE {table} SET "{db_field}" = ? WHERE ovatr = ?'
+                params = [value, ovatr]
+            elif sheet == 'taxpaid':
+                # Composite PK: ovatr + tax_year + description. 
+                # Assuming UI passes the unique description or we handle it. 
+                # Ideally, we should use a stronger ID. For now, we trust the combination.
+                # Taxpaid UI usually sends `id_val` as the 'description' field or a composite.
+                # Let's assume id_val passed is the 'description'
+                query = f'UPDATE {table} SET "{field}" = ? WHERE ovatr = ? AND description = ?'
+                params = [value, ovatr, id_val]
+            else:
+                # Standard ID based update
+                query = f'UPDATE {table} SET "{field}" = ? WHERE ovatr = ? AND "{pk_col}" = ?'
+                params = [value, ovatr, id_val]
+
+            con.execute(query, params)
+            
+            # Log History
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            con.execute("INSERT INTO change_history VALUES (?, ?, ?, ?, ?, ?, ?)", 
+                        [timestamp, ovatr, str(id_val), table, field, str(old_value), str(value)])
+            
+            update_session_metadata(con, ovatr)
+            con.close()
+            
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+def download_full_report(request):
+    """
+    Generates the Full Excel Report.
+    Includes 'Robust Parsing' for malformed DB strings (missing quotes).
+    Fixes Case-Sensitivity issue for Sheet Names.
+    """
+    ovatr_code = request.GET.get('ovatr_code')
+    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    
+    try:
+        con = get_db_connection()
+        row = con.execute("SELECT * FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
+        if not row: return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+        cols = [desc[0] for desc in con.description]
+        data = dict(zip(cols, row))
+        con.close()
+        
+        # --- Helper: Robust List Parser ---
+        def parse_list_field(value):
+            if not value: return []
+            if isinstance(value, list): return value
+            
+            s_val = str(value).strip()
+            if not s_val: return []
+
+            # 1. Try standard JSON
+            try: return json.loads(s_val)
+            except: pass
+
+            # 2. Try standard Python Literal
+            try: return ast.literal_eval(s_val)
+            except: pass
+
+            # 3. Apply Regex Fix for unquoted values
+            try:
+                # Matches keys that are followed by unquoted text up to a comma or closing brace
+                pattern = r"(:\s*)([^'\"\[\{\],\s][^,}]*?)(?=\s*[,}])"
+                fixed_val = re.sub(pattern, r"\1'\2'", s_val)
+                return ast.literal_eval(fixed_val)
+            except Exception as e:
+                print(f"DEBUG: Parsing failed completely for: {s_val[:50]}... Error: {e}")
+                return []
+
+        # Load Template
+        wb = None
+        paths = [
+            os.path.join(settings.BASE_DIR, 'templates', 'Sample-Excel_Report.xlsx'),
+            os.path.join(settings.MEDIA_ROOT, 'templates', 'Sample-Excel_Report.xlsx')
+        ]
+        for p in paths:
+            if os.path.exists(p): wb = load_workbook(p); break
+        
+        if not wb: return JsonResponse({'status': 'error', 'message': 'Template missing'}, status=500)
+
+        # --- FIX: Case-Insensitive Sheet Finding ---
+        ws = None
+        target_name = 'Company Information'
+        
+        # Loop through existing sheets to find a match (ignoring case)
+        for sheet_name in wb.sheetnames:
+            if sheet_name.strip().lower() == target_name.lower():
+                ws = wb[sheet_name]
+                break
+        
+        # If still not found, create it
+        if ws is None:
+            ws = wb.create_sheet(target_name, 0)
+
+        khmer_font = Font(name='Khmer OS Siemreap', size=11)
+        def write_cell(ref, val):
+            c = ws[ref]
+            c.value = str(val) if val is not None else ""
+            c.font = khmer_font
+
+        # --- MAPPING ---
+        write_cell('D2', data.get('company_name_kh', ''))
+        write_cell('D3', data.get('company_name_en', ''))
+        write_cell('D4', data.get('vatin', ''))
+        write_cell('D6', data.get('address_main', ''))
+        write_cell('D10', data.get('phone', ''))
+
+        # Business Activity
+        acts = parse_list_field(data.get('business_activities', []))
+        if acts:
+            # Prefer 'desc' as per logs showing useful info there, or 'name'
+            a = acts[0]
+            write_cell('D5', a.get('desc') or a.get('name') or '')
+
+        # Accounts
+        accs = parse_list_field(data.get('enterprise_accounts', []))
+        if accs:
+            acc = accs[0]
+            # Mapped: D11 -> number, D12 -> bank
+            write_cell('D11', acc.get('number', '')) 
+            write_cell('D12', acc.get('bank', ''))   
+        
+        # Save
+        save_dir = os.path.join(settings.MEDIA_ROOT, 'reports')
+        os.makedirs(save_dir, exist_ok=True)
+        fname = f"FullReport_{ovatr_code}.xlsx"
+        full_path = os.path.join(save_dir, fname)
+        wb.save(full_path)
+        
+        return FileResponse(open(full_path, 'rb'), as_attachment=True, filename=fname)
+
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)

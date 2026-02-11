@@ -78,7 +78,12 @@
                             </div>
 
                             <div class="flex items-center gap-3">
-                                <div class="text-right mr-1">
+                                <a :href="'/crosscheck/report/?ovatr_code=' + session.ovatr" @click.stop class="px-3 py-1.5 bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded text-xs font-bold hover:bg-teal-100 dark:hover:bg-teal-900/50 transition shadow-sm flex items-center gap-1 z-10">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                    Report
+                                </a>
+
+                                <div class="text-right mr-1 hidden md:block">
                                     <div class="text-xs font-bold text-gray-700 dark:text-gray-300" x-text="session.total_rows.toLocaleString() + ' rows'"></div>
                                     <div :class="session.match_rate > 90 ? 'text-green-600 dark:text-green-400' : 'text-orange-500 dark:text-orange-400'" class="text-[10px] font-bold" x-text="session.match_rate + '% Match'"></div>
                                 </div>
@@ -121,6 +126,7 @@
             },
 
             openSession(ovatr) {
+                // Default action: Open Results
                 window.location.href = `/crosscheck/results/?ovatr_code=${ovatr}`;
             },
 
