@@ -451,14 +451,14 @@ def save_purchase(request):
             target_cols = [
                 'excel_no', 'date', 'invoice_no', 'type', 'supplier_tin', 'supplier_name', 
                 'total_amount', 'exclude_vat', 'non_vat_purchase', 'vat_0', 
-                'purchase', 'import', 'non_creditable_vat', 'state_charge', 'non_state_charge', 
+                'purchase', 'import', 'non_creditable_vat', 'purchase_state_charge', 'import_state_charge', 
                 'description', 'status'
             ]
             df = df.iloc[:, :17]; df.columns = target_cols
             df = df[df['date'].notna()]
             df['no'] = range(1, len(df) + 1); df['no'] = df['no'].astype(str)
 
-            for col in ['total_amount', 'exclude_vat', 'non_vat_purchase', 'vat_0', 'purchase', 'import', 'non_creditable_vat', 'state_charge', 'non_state_charge']:
+            for col in ['total_amount', 'exclude_vat', 'non_vat_purchase', 'vat_0', 'purchase', 'import', 'non_creditable_vat', 'purchase_state_charge', 'import_state_charge']:
                 df[col] = df[col].apply(clean_currency)
 
             df['ovatr'] = ovatr_val
@@ -469,8 +469,8 @@ def save_purchase(request):
                     ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, type VARCHAR, 
                     supplier_tin VARCHAR, supplier_name VARCHAR, total_amount DOUBLE, 
                     exclude_vat DOUBLE, non_vat_purchase DOUBLE, vat_0 DOUBLE, purchase DOUBLE, 
-                    import DOUBLE, non_creditable_vat DOUBLE, state_charge DOUBLE, 
-                    non_state_charge DOUBLE, description VARCHAR, status VARCHAR, 
+                    import DOUBLE, non_creditable_vat DOUBLE, purchase_state_charge DOUBLE, 
+                    import_state_charge DOUBLE, description VARCHAR, status VARCHAR, 
                     PRIMARY KEY (ovatr, no)
                 )
             """)
@@ -481,7 +481,7 @@ def save_purchase(request):
                 SELECT 
                     ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, 
                     total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, 
-                    import, non_creditable_vat, state_charge, non_state_charge, 
+                    import, non_creditable_vat, purchase_state_charge, import_state_charge, 
                     description, status 
                 FROM df_purchase
             """)
@@ -968,25 +968,33 @@ def generate_annex_iii(request):
 def get_results_data(request):
     """
     UPDATED:
-    1. Handles 'page_size' parameter (defaults to 500).
-    2. Returns pagination metadata (total pages, current page, total rows).
-    3. Handles date matching logic and TIN matching logic.
+    1. Fixed 500 Error: Handles missing 'change_history' table gracefully.
+    2. Added safety check for column count (df.shape[1]) to prevent index errors.
+    3. Handles 'page_size' parameter (defaults to 500).
+    4. Returns pagination metadata (total pages, current page, total rows).
     """
     ovatr_code = request.GET.get('ovatr_code')
     table_type = request.GET.get('table_type', 'local')
     page = int(request.GET.get('page', 1))
-    # NEW: Handle dynamic page size
     page_size = int(request.GET.get('page_size', 500))
     
-    if not ovatr_code: return JsonResponse({'status': 'error'}, status=400)
+    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing OVATR Code'}, status=400)
     
     file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report file not found. Please generate it first.'}, status=404)
 
     try:
         conn = get_db_connection()
-        # Fetch History
-        hist = {r[0] for r in conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()}
+        
+        # --- FIX: Handle missing change_history table ---
+        hist = set()
+        try:
+            # Try to fetch history. If table doesn't exist (no edits yet), this will fail.
+            rows = conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()
+            hist = {r[0] for r in rows}
+        except Exception:
+            # Table likely doesn't exist yet, which is normal for fresh results
+            pass
         
         # Fetch User VATIN for UI Comparison
         vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
@@ -994,15 +1002,29 @@ def get_results_data(request):
         conn.close()
 
         sheet_name = 'AnnexIII-Import' if table_type == 'import' else 'AnnexIII-Local Pur'
-        df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
         
-        if df.empty: return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
+        # Read Excel
+        try:
+            df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
+        except ValueError:
+            # Sheet might be missing if no imports exist
+            return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
         
+        if df.empty: 
+            return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
+        
+        # --- FIX: Ensure we have enough columns ---
+        # We need at least index 22 (Column W). If file is malformed/empty, return safe empty set.
+        if df.shape[1] < 23:
+            return JsonResponse({'status': 'error', 'message': f'Excel format invalid. Expected 23+ columns, found {df.shape[1]}'}, status=500)
+
         df[0] = pd.to_numeric(df[0], errors='coerce')
         df = df.sort_values(by=0)
 
+        # Access columns safely
         p_amt = df[6].apply(clean_currency)
         d_amt = df[22].apply(clean_currency)
+        
         has_p = (df[4].fillna('').astype(str).str.strip() != '') | (p_amt != 0)
         has_d = (df[19].fillna('').astype(str).str.strip() != '') | (d_amt != 0)
         
@@ -1025,7 +1047,7 @@ def get_results_data(request):
         status_page = status[valid].iloc[start:end]
         
         # Calculate Total Pages
-        total_pages = (total_rows + page_size - 1) // page_size
+        total_pages = (total_rows + page_size - 1) // page_size if page_size > 0 else 1
 
         # Helper for Date Comparison
         def check_date_match(v1, v2):
@@ -1050,8 +1072,13 @@ def get_results_data(request):
             p_clean = clean_invoice_text(val(4))
             d_clean = clean_invoice_text(val(19))
             
+            # Row No is column 0. We check if this row number exists in history set.
+            row_no = str(val(0))
+            
             results.append({
-                'no': val(0), 'has_history': val(0) in hist, 'status': st,
+                'no': row_no, 
+                'has_history': row_no in hist, 
+                'status': st,
                 'p_inv_clean': p_clean, 'd_inv_clean': d_clean,
                 'v_inv': (p_clean == d_clean),
                 'v_tin': (clean_invoice_text(val(20)) == user_vatin_clean),
@@ -1072,7 +1099,10 @@ def get_results_data(request):
                 'total_rows': total_rows
             }
         })
-    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception as e: 
+        import traceback
+        print(traceback.format_exc()) # Print error to console for debugging
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def download_report(request):
     """
@@ -1119,11 +1149,11 @@ def get_report_data(request):
                 columns = [{'key': 'key', 'label': 'Field'}, {'key': 'value', 'label': 'Value'}]
                 
         elif sheet == 'annex_1': # State Charge (Imports)
-            # Assumption: Type='Import' and state_charge > 0 or specific logic
+            # Assumption: Type='Import' and import_state_charge > 0 or specific logic
             res = con.execute("""
-                SELECT no, date, invoice_no, supplier_name, total_amount, state_charge 
+                SELECT no, description, invoice_no, date, import_state_charge
                 FROM purchase 
-                WHERE ovatr = ? AND "import" > 0 AND state_charge <> 0
+                WHERE ovatr = ? AND import_state_charge <> 0
                 ORDER BY CAST(no AS INTEGER)
             """, [ovatr])
             cols = [desc[0] for desc in con.description]
@@ -1132,9 +1162,9 @@ def get_report_data(request):
             
         elif sheet == 'annex_2': # Non-State Charge (Imports)
             res = con.execute("""
-                SELECT no, date, invoice_no, supplier_name, total_amount, non_state_charge 
+                SELECT no, description, invoice_no, date, import
                 FROM purchase 
-                WHERE ovatr = ? AND "import" > 0 AND non_state_charge <> 0
+                WHERE ovatr = ? AND import <> 0
                 ORDER BY CAST(no AS INTEGER)
             """, [ovatr])
             cols = [desc[0] for desc in con.description]
@@ -1154,9 +1184,9 @@ def get_report_data(request):
             
         elif sheet == 'annex_4': # Export (Sales)
             res = con.execute("""
-                SELECT no, date, invoice_no, buyer_name, total_invoice_amount, vat_export 
+                SELECT no, description, invoice_no, date, vat_export
                 FROM sale 
-                WHERE ovatr = ? AND vat_export > 0
+                WHERE ovatr = ? AND vat_export <> 0
                 ORDER BY CAST(no AS INTEGER)
             """, [ovatr])
             cols = [desc[0] for desc in con.description]
@@ -1165,9 +1195,9 @@ def get_report_data(request):
             
         elif sheet == 'annex_5': # Local Sales
             res = con.execute("""
-                SELECT no, date, invoice_no, buyer_name, total_invoice_amount, vat_local_sale 
+                SELECT no, description, invoice_no, date, vat_local_sale
                 FROM sale 
-                WHERE ovatr = ? AND (vat_local_sale > 0 OR non_vat_sales > 0 OR vat_zero_rate > 0)
+                WHERE ovatr = ? AND vat_local_sale <> 0
                 ORDER BY CAST(no AS INTEGER)
             """, [ovatr])
             cols = [desc[0] for desc in con.description]

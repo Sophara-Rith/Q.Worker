@@ -176,9 +176,9 @@ class ReportGenerator:
         if 'Annex I-IM State Charge' in wb.sheetnames:
             ws = wb['Annex I-IM State Charge']
             data = con.execute("""
-                SELECT description, supplier_name, invoice_no, date, state_charge
+                SELECT description, supplier_name, invoice_no, date, purchase_state_charge
                 FROM purchase 
-                WHERE ovatr = ? AND state_charge > 0
+                WHERE ovatr = ? AND purchase_state_charge > 0
                 ORDER BY CAST(no AS INTEGER)
             """, [self.ovatr]).fetchall()
             # Adjust mapping based on specific Annex I columns
