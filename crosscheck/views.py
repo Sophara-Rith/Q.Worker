@@ -17,7 +17,7 @@ from django.http import FileResponse, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.core.files.storage import FileSystemStorage
 from openpyxl import load_workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Font, Border, Side, Alignment, PatternFill
 
 # --- Helpers ---
 
@@ -106,6 +106,20 @@ def cleanup_old_files():
             try:
                 if current_time - os.path.getctime(f) > 86400: os.remove(f)
             except: pass
+
+def to_excel_date(date_val):
+    """
+    Converts date string formats into Python datetime objects 
+    for Excel filtering compatibility.
+    """
+    if not date_val:
+        return None
+    for fmt in ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
+        try:
+            return datetime.strptime(str(date_val).strip(), fmt)
+        except ValueError:
+            continue
+    return date_val
 
 # --- Views ---
 
@@ -1265,107 +1279,170 @@ def update_report_cell(request):
 def download_full_report(request):
     """
     Generates the Full Excel Report.
-    Includes 'Robust Parsing' for malformed DB strings (missing quotes).
-    Fixes Case-Sensitivity issue for Sheet Names.
+    Annex I: Borders A-H, Amount G, Signature E-G/H. Fixed Summary G alignment.
+    Annex IV: Amount E, Signature D-E. Fixed Summary E alignment.
+    Annex V: Amount G, Borders A-H, Summary A-F, Footer F-H, Names F & H.
     """
     ovatr_code = request.GET.get('ovatr_code')
-    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    if not ovatr_code: 
+        return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
     
+    con = get_db_connection()
     try:
-        con = get_db_connection()
+        # 1. Fetch Company Info
         row = con.execute("SELECT * FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
-        if not row: return JsonResponse({'status': 'error', 'message': 'Not found'}, status=404)
+        if not row: 
+            return JsonResponse({'status': 'error', 'message': 'Company info not found'}, status=404)
+        
         cols = [desc[0] for desc in con.description]
-        data = dict(zip(cols, row))
-        con.close()
+        company_data = dict(zip(cols, row))
+
+        # 2. Fetch Data for Annexes
+        annex_i_rows = con.execute("SELECT description, invoice_no, date, import_state_charge FROM purchase WHERE ovatr = ? AND import_state_charge <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+        annex_iv_rows = con.execute("SELECT description, invoice_no, date, vat_export FROM sale WHERE ovatr = ? AND vat_export <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+        annex_v_rows = con.execute("SELECT description, invoice_no, date, vat_local_sale FROM sale WHERE ovatr = ? AND vat_local_sale <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+
+        # 3. Load Template
+        template_path = os.path.join(settings.BASE_DIR, 'templates', 'Sample-Excel_Report.xlsx')
+        if not os.path.exists(template_path):
+            template_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'Sample-Excel_Report.xlsx')
         
-        # --- Helper: Robust List Parser ---
-        def parse_list_field(value):
-            if not value: return []
-            if isinstance(value, list): return value
-            
-            s_val = str(value).strip()
-            if not s_val: return []
-
-            # 1. Try standard JSON
-            try: return json.loads(s_val)
-            except: pass
-
-            # 2. Try standard Python Literal
-            try: return ast.literal_eval(s_val)
-            except: pass
-
-            # 3. Apply Regex Fix for unquoted values
-            try:
-                # Matches keys that are followed by unquoted text up to a comma or closing brace
-                pattern = r"(:\s*)([^'\"\[\{\],\s][^,}]*?)(?=\s*[,}])"
-                fixed_val = re.sub(pattern, r"\1'\2'", s_val)
-                return ast.literal_eval(fixed_val)
-            except Exception as e:
-                print(f"DEBUG: Parsing failed completely for: {s_val[:50]}... Error: {e}")
-                return []
-
-        # Load Template
-        wb = None
-        paths = [
-            os.path.join(settings.BASE_DIR, 'templates', 'Sample-Excel_Report.xlsx'),
-            os.path.join(settings.MEDIA_ROOT, 'templates', 'Sample-Excel_Report.xlsx')
-        ]
-        for p in paths:
-            if os.path.exists(p): wb = load_workbook(p); break
+        wb = load_workbook(template_path)
         
-        if not wb: return JsonResponse({'status': 'error', 'message': 'Template missing'}, status=500)
-
-        # --- FIX: Case-Insensitive Sheet Finding ---
-        ws = None
-        target_name = 'Company Information'
-        
-        # Loop through existing sheets to find a match (ignoring case)
-        for sheet_name in wb.sheetnames:
-            if sheet_name.strip().lower() == target_name.lower():
-                ws = wb[sheet_name]
-                break
-        
-        # If still not found, create it
-        if ws is None:
-            ws = wb.create_sheet(target_name, 0)
-
+        # Styling Definitions
         khmer_font = Font(name='Khmer OS Siemreap', size=11)
-        def write_cell(ref, val):
-            c = ws[ref]
-            c.value = str(val) if val is not None else ""
-            c.font = khmer_font
+        khmer_font_bold = Font(name='Khmer OS Siemreap', size=11, bold=True)
+        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        align_middle = Alignment(vertical='center')
+        align_center = Alignment(horizontal='center', vertical='center')
+        bg_gray = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
 
-        # --- MAPPING ---
-        write_cell('D2', data.get('company_name_kh', ''))
-        write_cell('D3', data.get('company_name_en', ''))
-        write_cell('D4', data.get('vatin', ''))
-        write_cell('D6', data.get('address_main', ''))
-        write_cell('D10', data.get('phone', ''))
+        def to_excel_date(date_val):
+            if not date_val: return None
+            for fmt in ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
+                try: return datetime.strptime(str(date_val).strip(), fmt)
+                except: continue
+            return date_val
 
-        # Business Activity
-        acts = parse_list_field(data.get('business_activities', []))
-        if acts:
-            # Prefer 'desc' as per logs showing useful info there, or 'name'
-            a = acts[0]
-            write_cell('D5', a.get('desc') or a.get('name') or '')
+        # --- PART A: Company Info ---
+        ws_info = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'company information'), None)
+        if ws_info:
+            for ref, key in [('D2','company_name_kh'), ('D3','company_name_en'), ('D4','vatin'), ('D6','address_main'), ('D10','phone')]:
+                ws_info[ref].value = company_data.get(key, "")
+                ws_info[ref].font = khmer_font
 
-        # Accounts
-        accs = parse_list_field(data.get('enterprise_accounts', []))
-        if accs:
-            acc = accs[0]
-            # Mapped: D11 -> number, D12 -> bank
-            write_cell('D11', acc.get('number', '')) 
-            write_cell('D12', acc.get('bank', ''))   
-        
-        # Save
-        save_dir = os.path.join(settings.MEDIA_ROOT, 'reports')
-        os.makedirs(save_dir, exist_ok=True)
-        fname = f"FullReport_{ovatr_code}.xlsx"
-        full_path = os.path.join(save_dir, fname)
-        wb.save(full_path)
-        
+        # --- PART B: Annex I (IM State Charge) ---
+        ws1 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex i-im state charge'), None)
+        if ws1:
+            start_row = 9 
+            if ws1.max_row >= start_row:
+                ws1.delete_rows(start_row, ws1.max_row - start_row + 1)
+            for i, row_data in enumerate(annex_i_rows):
+                curr_row = start_row + i
+                for col in range(1, 9):
+                    cell = ws1.cell(row=curr_row, column=col)
+                    cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
+                ws1.cell(row=curr_row, column=1, value=i+1).alignment = align_center
+                ws1.cell(row=curr_row, column=2, value=row_data[0])
+                ws1.cell(row=curr_row, column=3, value=row_data[1])
+                dt_cell = ws1.cell(row=curr_row, column=4, value=to_excel_date(row_data[2]))
+                dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                ws1.cell(row=curr_row, column=7, value=row_data[3]).number_format = '#,### "៛"'
+
+            sum_row = start_row + len(annex_i_rows)
+            ws1.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
+            ws1.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូលជាបន្ទុករដ្ឋ").font = khmer_font_bold
+            ws1.cell(row=sum_row, column=1).alignment = align_center
+            
+            # Summary G: Applied Center/Middle Align
+            sum_cell = ws1.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})")
+            sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
+            
+            for col in range(1, 9):
+                cell = ws1.cell(row=sum_row, column=col)
+                cell.fill = bg_gray; cell.border = thin_border
+
+            sig_row = sum_row + 2
+            ws1.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=8)
+            ws1.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws1.cell(row=sig_row, column=5).alignment = align_center
+            ws1.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=8)
+            ws1.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font = khmer_font; ws1.cell(row=sig_row+1, column=5).alignment = align_center
+            ws1.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=7)
+            ws1.cell(row=sig_row+3, column=5, value="='Company information'!D9").font = khmer_font; ws1.cell(row=sig_row+3, column=5).alignment = align_center
+            ws1.cell(row=sig_row+3, column=8, value="='Company information'!E9").font = khmer_font; ws1.cell(row=sig_row+3, column=8).alignment = align_center
+
+        # --- PART C: Annex IV (Export) ---
+        ws4 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex iv-ex'), None)
+        if ws4:
+            start_row = 9 
+            if ws4.max_row >= start_row: ws4.delete_rows(start_row, ws4.max_row - start_row + 1)
+            for i, row_data in enumerate(annex_iv_rows):
+                curr_row = start_row + i
+                for col in range(1, 6): 
+                    cell = ws4.cell(row=curr_row, column=col)
+                    cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
+                ws4.cell(row=curr_row, column=1, value=i+1).alignment = align_center
+                ws4.cell(row=curr_row, column=2, value=row_data[0]); ws4.cell(row=curr_row, column=3, value=row_data[1])
+                dt_cell = ws4.cell(row=curr_row, column=4, value=to_excel_date(row_data[2]))
+                dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                ws4.cell(row=curr_row, column=5, value=row_data[3]).number_format = '#,### "៛"'
+
+            last_dr = start_row + len(annex_iv_rows) - 1; sum_row = last_dr + 1
+            ws4.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=4)
+            ws4.cell(row=sum_row, column=1, value="សរុបការនាំចេញ").font = khmer_font_bold; ws4.cell(row=sum_row, column=1).alignment = align_center
+            
+            # FIXED: Applied Center/Middle Align for Annex IV Summary E
+            sum_cell = ws4.cell(row=sum_row, column=5, value=f"=SUM(E{start_row}:E{last_dr})")
+            sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
+            
+            for col in range(1, 6): 
+                cell = ws4.cell(row=sum_row, column=col)
+                cell.fill = bg_gray; cell.border = thin_border
+
+            sig_row = sum_row + 2
+            ws4.merge_cells(start_row=sig_row, start_column=4, end_row=sig_row, end_column=5); ws4.cell(row=sig_row, column=4, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws4.cell(row=sig_row, column=4).alignment = align_center
+            role_row = sig_row + 2
+            ws4.merge_cells(start_row=role_row, start_column=4, end_row=role_row, end_column=5); ws4.cell(row=role_row, column=4, value="មន្ត្រីសវនកម្ម").font = khmer_font; ws4.cell(row=role_row, column=4).alignment = align_center
+            name_row = role_row + 3
+            ws4.cell(row=name_row, column=4, value="='Company information'!D9").font = khmer_font; ws4.cell(row=name_row, column=4).alignment = align_center
+            ws4.cell(row=name_row, column=5, value="='Company information'!E9").font = khmer_font; ws4.cell(row=name_row, column=5).alignment = align_center
+
+        # --- PART D: Annex V (Local Sale) ---
+        ws5 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex v-local sale'), None)
+        if ws5:
+            start_row = 9 
+            if ws5.max_row >= start_row: ws5.delete_rows(start_row, ws5.max_row - start_row + 1)
+            for i, row_data in enumerate(annex_v_rows):
+                curr_row = start_row + i
+                for col in range(1, 9):
+                    cell = ws5.cell(row=curr_row, column=col)
+                    cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
+                ws5.cell(row=curr_row, column=1, value=i+1).alignment = align_center
+                ws5.cell(row=curr_row, column=2, value=row_data[0]); ws5.cell(row=curr_row, column=3, value=row_data[1])
+                dt = ws5.cell(row=curr_row, column=4, value=to_excel_date(row_data[2]))
+                dt.alignment = align_center; dt.number_format = 'DD-MM-YYYY'
+                ws5.cell(row=curr_row, column=7, value=row_data[3]).number_format = '#,### "៛"'
+
+            last_dr = start_row + len(annex_v_rows) - 1; sum_row = last_dr + 1
+            ws5.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
+            ws5.cell(row=sum_row, column=1, value="សរុបការលក់ក្នុងស្រុក").font = khmer_font_bold; ws5.cell(row=sum_row, column=1).alignment = align_center
+            
+            # Summary G: Applied Center/Middle Align
+            sum_cell = ws5.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{last_dr})")
+            sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
+            
+            for col in range(1, 9):
+                cell = ws5.cell(row=sum_row, column=col)
+                cell.fill = bg_gray; cell.border = thin_border
+
+            sig_row = sum_row + 2
+            ws5.merge_cells(start_row=sig_row, start_column=6, end_row=sig_row, end_column=8); ws5.cell(row=sig_row, column=6, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws5.cell(row=sig_row, column=6).alignment = align_center
+            ws5.merge_cells(start_row=sig_row+1, start_column=6, end_row=sig_row+1, end_column=8); ws5.cell(row=sig_row+1, column=6, value="មន្ត្រីសវនកម្ម").font = khmer_font; ws5.cell(row=sig_row+1, column=6).alignment = align_center
+            ws5.cell(row=sig_row+3, column=6, value="='Company information'!D9").font = khmer_font; ws5.cell(row=sig_row+3, column=6).alignment = align_center
+            ws5.cell(row=sig_row+3, column=8, value="='Company information'!E9").font = khmer_font; ws5.cell(row=sig_row+3, column=8).alignment = align_center
+
+        save_dir = os.path.join(settings.MEDIA_ROOT, 'reports'); os.makedirs(save_dir, exist_ok=True)
+        fname = f"FullReport_{ovatr_code}.xlsx"; full_path = os.path.join(save_dir, fname); wb.save(full_path)
         return FileResponse(open(full_path, 'rb'), as_attachment=True, filename=fname)
-
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    finally:
+        con.close()
