@@ -820,9 +820,9 @@ def generate_annex_iii(request):
     """
     UPDATED:
     1. Duplicates 'AnnexIII-Import' from 'AnnexIII-Local Pur' BEFORE populating the Local Pur sheet.
-    2. Dynamically copies formatting (fonts, borders, alignment) from the start_row to all new rows.
+    2. Duplicates structure and formulas but REMOVES the slow cell-by-cell style application.
     3. CLEANUP STEP: Deletes existing data rows before writing new data to remove dummy/template data.
-    4. FIXED: "No" column now starts at 1 (using i+1 instead of r-1).
+    4. FIXED: "No" column now starts at 1.
     """
     conn = None
     try:
@@ -887,24 +887,11 @@ def generate_annex_iii(request):
                 if ws.cell(row=r, column=1).value and "ល.រ" in str(ws.cell(row=r, column=1).value):
                     start_row = r + 1; break
             
-            # 2. Capture Styles from the first data row (start_row)
-            style_source = {}
-            for c in range(1, 25): # Columns A to X
-                source_cell = ws.cell(row=start_row, column=c)
-                style_source[c] = {
-                    'font': copy(source_cell.font),
-                    'border': copy(source_cell.border),
-                    'fill': copy(source_cell.fill),
-                    'number_format': source_cell.number_format,
-                    'alignment': copy(source_cell.alignment),
-                    'protection': copy(source_cell.protection)
-                }
-
             # 3. CLEANUP: Delete existing data to ensure sheet is empty of template garbage
             if ws.max_row >= start_row:
                  ws.delete_rows(start_row, ws.max_row - start_row + 1)
             
-            # 4. Write Data & Apply Styles
+            # 4. Write Data (Styles Removed for Performance)
             for i, p_row in enumerate(data_rows):
                 r = start_row + i
                 p_inv_val = p_row[3] or ""
@@ -939,17 +926,6 @@ def generate_annex_iii(request):
                 ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
                 ws.cell(row=r, column=17, value=f'=U{r}="{user_vatin_safe}"')
                 ws.cell(row=r, column=18, value=f"=G{r}-W{r}")
-
-                # Apply Styles to the new row
-                for c in range(1, 25):
-                    cell = ws.cell(row=r, column=c)
-                    s = style_source[c]
-                    cell.font = copy(s['font'])
-                    cell.border = copy(s['border'])
-                    cell.fill = copy(s['fill'])
-                    cell.number_format = s['number_format']
-                    cell.alignment = copy(s['alignment'])
-                    cell.protection = copy(s['protection'])
 
         process_sheet('AnnexIII-Local Pur', local_purchases)
         process_sheet('AnnexIII-Import', import_purchases)
