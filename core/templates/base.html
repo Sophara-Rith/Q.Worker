@@ -121,10 +121,10 @@
         @keydown.escape.window="settingsOpen = false"
     >
         <aside class="relative bg-white flex flex-col transition-all duration-300 ease-in-out z-30 shadow-xl shadow-gray-200/50 w-64 [.sidebar-closed_&]:w-20">
-            <div class="h-16 flex items-center px-6 mb-2 flex-shrink-0">
+            <div class="h-16 flex items-center px-6 mb-2 flex-shrink-0 transition-all duration-300 ease-in-out [.sidebar-closed_&]:px-0 [.sidebar-closed_&]:justify-center">
                 <div class="flex items-center gap-3 overflow-hidden whitespace-nowrap">
-                    <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-white shadow-md shadow-brand-500/20">
-                        <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 text-white shadow-md shadow-brand-500/20 transition-all duration-300 [.sidebar-closed_&]:w-8 [.sidebar-closed_&]:h-8">
+                        <svg class="w-full h-full" width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
                             <defs>
                                 <linearGradient id="chipGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                                     <stop offset="0%" stop-color="#0f172a" />
@@ -194,7 +194,7 @@
             <nav class="flex-1 overflow-y-auto overflow-x-hidden px-4 space-y-1 no-scrollbar">
                 <a href="{% url 'dashboard:index' %}" class="flex items-center gap-3 px-3 py-3 mb-1 rounded-lg transition-all group relative overflow-hidden {% if request.resolver_match.view_name == 'dashboard:index' %} bg-brand-50 text-brand-600 {% else %} text-gray-600 hover:bg-gray-50 hover:text-gray-900 {% endif %}">
                     <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
                     </svg>
                     <span class="whitespace-nowrap text-[11px] font-medium leading-none transition-all duration-300 ease-in-out overflow-hidden max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">Dashboard</span>
                 </a>
