@@ -1279,9 +1279,17 @@ def update_report_cell(request):
 def download_full_report(request):
     """
     Generates the Full Excel Report.
-    Annex I: Borders A-H, Amount G, Signature E-G/H. Fixed Summary G alignment.
-    Annex IV: Amount E, Signature D-E. Fixed Summary E alignment.
-    Annex V: Amount G, Borders A-H, Summary A-F, Footer F-H, Names F & H.
+    Annex I: Borders A-H, Amount G, Signature E-G/H.
+    Annex II: Starts Row 11. Mapping: A:No, B:Desc, C:Inv, D:Date, G:Amt. Borders A-I.
+    Reverse Charge Logic: 
+        1. Merged header row with specific styling.
+        2. Integrated rows after Import data.
+        3. Column H: "អនុញ្ញាត (បានប្រកាស)" per row.
+        4. Column I: Formula =G...
+        5. Summary G and I formulas sum from Row 11 to sum_row-1.
+        6. Column H Summary "សរុបទឺកប្រាក់អនុញ្ញាត" set to BOLD.
+    Annex IV: Amount E, Signature D-E.
+    Annex V: Amount G, Borders A-H, Summary A-F, Footer F-H.
     """
     ovatr_code = request.GET.get('ovatr_code')
     if not ovatr_code: 
@@ -1299,6 +1307,13 @@ def download_full_report(request):
 
         # 2. Fetch Data for Annexes
         annex_i_rows = con.execute("SELECT description, invoice_no, date, import_state_charge FROM purchase WHERE ovatr = ? AND import_state_charge <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+        
+        # Annex II: Non-State Charge Imports
+        annex_ii_rows = con.execute("SELECT description, supplier_name, invoice_no, date, \"import\" FROM purchase WHERE ovatr = ? AND \"import\" <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+        
+        # Reverse Charge: Fetching from dedicated table
+        rc_rows = con.execute("SELECT description, supplier_name, invoice_no, date, vat FROM reverse_charge WHERE ovatr = ? ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+
         annex_iv_rows = con.execute("SELECT description, invoice_no, date, vat_export FROM sale WHERE ovatr = ? AND vat_export <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
         annex_v_rows = con.execute("SELECT description, invoice_no, date, vat_local_sale FROM sale WHERE ovatr = ? AND vat_local_sale <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
 
@@ -1313,9 +1328,12 @@ def download_full_report(request):
         khmer_font = Font(name='Khmer OS Siemreap', size=11)
         khmer_font_bold = Font(name='Khmer OS Siemreap', size=11, bold=True)
         thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        align_middle = Alignment(vertical='center')
-        align_center = Alignment(horizontal='center', vertical='center')
-        bg_gray = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
+        align_middle = Alignment(vertical='center', wrap_text=False)
+        align_center = Alignment(horizontal='center', vertical='center', wrap_text=False)
+        align_left_middle = Alignment(horizontal='left', vertical='center', wrap_text=False)
+        align_right_middle = Alignment(horizontal='right', vertical='center', wrap_text=False)
+        bg_gray_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+        bg_gray_summary = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
 
         def to_excel_date(date_val):
             if not date_val: return None
@@ -1334,9 +1352,8 @@ def download_full_report(request):
         # --- PART B: Annex I (IM State Charge) ---
         ws1 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex i-im state charge'), None)
         if ws1:
-            start_row = 9 
-            if ws1.max_row >= start_row:
-                ws1.delete_rows(start_row, ws1.max_row - start_row + 1)
+            start_row = 9
+            if ws1.max_row >= start_row: ws1.delete_rows(start_row, ws1.max_row - start_row + 1)
             for i, row_data in enumerate(annex_i_rows):
                 curr_row = start_row + i
                 for col in range(1, 9):
@@ -1353,14 +1370,11 @@ def download_full_report(request):
             ws1.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
             ws1.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូលជាបន្ទុករដ្ឋ").font = khmer_font_bold
             ws1.cell(row=sum_row, column=1).alignment = align_center
-            
-            # Summary G: Applied Center/Middle Align
             sum_cell = ws1.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})")
             sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
-            
             for col in range(1, 9):
                 cell = ws1.cell(row=sum_row, column=col)
-                cell.fill = bg_gray; cell.border = thin_border
+                cell.fill = bg_gray_summary; cell.border = thin_border
 
             sig_row = sum_row + 2
             ws1.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=8)
@@ -1371,14 +1385,93 @@ def download_full_report(request):
             ws1.cell(row=sig_row+3, column=5, value="='Company information'!D9").font = khmer_font; ws1.cell(row=sig_row+3, column=5).alignment = align_center
             ws1.cell(row=sig_row+3, column=8, value="='Company information'!E9").font = khmer_font; ws1.cell(row=sig_row+3, column=8).alignment = align_center
 
-        # --- PART C: Annex IV (Export) ---
+        # --- PART C: Annex II (IM Non-State Charge & Reverse Charge) ---
+        ws2 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex ii-im non-state charge'), None)
+        if ws2:
+            start_row = 11
+            if ws2.max_row >= start_row: ws2.delete_rows(start_row, ws2.max_row - start_row + 1)
+            
+            # 1. Insert Import Rows
+            curr_row = start_row
+            for i, row_data in enumerate(annex_ii_rows):
+                for col in range(1, 10):
+                    cell = ws2.cell(row=curr_row, column=col)
+                    cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
+                
+                ws2.cell(row=curr_row, column=1, value=i+1).alignment = align_center
+                ws2.cell(row=curr_row, column=2, value=row_data[0])
+                ws2.cell(row=curr_row, column=3, value=row_data[2])
+                dt_cell = ws2.cell(row=curr_row, column=4, value=to_excel_date(row_data[3]))
+                dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                ws2.cell(row=curr_row, column=7, value=row_data[4]).number_format = '#,### "៛"'
+                curr_row += 1
+
+            # 2. Insert Reverse Charge Header
+            ws2.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=9)
+            rc_header = ws2.cell(row=curr_row, column=1, value="II. អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)")
+            rc_header.font = khmer_font_bold; rc_header.alignment = align_left_middle; rc_header.fill = bg_gray_header
+            for col in range(1, 10): ws2.cell(row=curr_row, column=col).border = thin_border
+            curr_row += 1
+
+            # 3. Insert Reverse Charge Rows
+            for i, row_data in enumerate(rc_rows):
+                for col in range(1, 10):
+                    cell = ws2.cell(row=curr_row, column=col)
+                    cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
+                
+                ws2.cell(row=curr_row, column=1, value=i+1).alignment = align_center
+                ws2.cell(row=curr_row, column=2, value=row_data[0])
+                ws2.cell(row=curr_row, column=3, value=row_data[2])
+                dt_cell = ws2.cell(row=curr_row, column=4, value=to_excel_date(row_data[3]))
+                dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                ws2.cell(row=curr_row, column=7, value=row_data[4]).number_format = '#,### "៛"'
+                
+                # Column H: Text, Column I: Formula =G...
+                ws2.cell(row=curr_row, column=8, value="អនុញ្ញាត (បានប្រកាស)").alignment = align_center
+                ws2.cell(row=curr_row, column=9, value=f"=G{curr_row}").number_format = '#,### "៛"'
+                curr_row += 1
+
+            # 4. Summary Row
+            sum_row = curr_row
+            ws2.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
+            sum_label = "សរុបអាករលើការនាំចូល ឬ អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)"
+            ws2.cell(row=sum_row, column=1, value=sum_label).font = khmer_font_bold
+            ws2.cell(row=sum_row, column=1).alignment = align_center
+            
+            # G Summary
+            sum_val_cell = ws2.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})")
+            sum_val_cell.font = khmer_font_bold; sum_val_cell.number_format = '#,### "៛"'; sum_val_cell.alignment = align_center
+            
+            # H Label (BOLD)
+            h_label = ws2.cell(row=sum_row, column=8, value="សរុបទឺកប្រាក់អនុញ្ញាត")
+            h_label.font = khmer_font_bold; h_label.alignment = align_right_middle
+            
+            # I Summary
+            sum_i_cell = ws2.cell(row=sum_row, column=9, value=f"=SUM(I{start_row}:I{sum_row-1})")
+            sum_i_cell.font = khmer_font_bold; sum_i_cell.number_format = '#,### "៛"'; sum_i_cell.alignment = align_center
+
+            for col in range(1, 10):
+                cell = ws2.cell(row=sum_row, column=col)
+                cell.fill = bg_gray_summary; cell.border = thin_border
+
+            # 5. Signature Section
+            sig_row = sum_row + 2
+            ws2.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=9)
+            ws2.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws2.cell(row=sig_row, column=5).alignment = align_center
+            ws2.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=9)
+            ws2.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font = khmer_font; ws2.cell(row=sig_row+1, column=5).alignment = align_center
+            ws2.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=8)
+            ws2.cell(row=sig_row+3, column=5, value="='Company information'!D9").font = khmer_font; ws2.cell(row=sig_row+3, column=5).alignment = align_center
+            ws2.cell(row=sig_row+3, column=9, value="='Company information'!E9").font = khmer_font; ws2.cell(row=sig_row+3, column=9).alignment = align_center
+
+        # --- PART D: Annex IV (Export) ---
         ws4 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex iv-ex'), None)
         if ws4:
-            start_row = 9 
+            start_row = 9
             if ws4.max_row >= start_row: ws4.delete_rows(start_row, ws4.max_row - start_row + 1)
             for i, row_data in enumerate(annex_iv_rows):
                 curr_row = start_row + i
-                for col in range(1, 6): 
+                for col in range(1, 6):
                     cell = ws4.cell(row=curr_row, column=col)
                     cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
                 ws4.cell(row=curr_row, column=1, value=i+1).alignment = align_center
@@ -1390,14 +1483,11 @@ def download_full_report(request):
             last_dr = start_row + len(annex_iv_rows) - 1; sum_row = last_dr + 1
             ws4.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=4)
             ws4.cell(row=sum_row, column=1, value="សរុបការនាំចេញ").font = khmer_font_bold; ws4.cell(row=sum_row, column=1).alignment = align_center
-            
-            # FIXED: Applied Center/Middle Align for Annex IV Summary E
             sum_cell = ws4.cell(row=sum_row, column=5, value=f"=SUM(E{start_row}:E{last_dr})")
             sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
-            
-            for col in range(1, 6): 
+            for col in range(1, 6):
                 cell = ws4.cell(row=sum_row, column=col)
-                cell.fill = bg_gray; cell.border = thin_border
+                cell.fill = bg_gray_summary; cell.border = thin_border
 
             sig_row = sum_row + 2
             ws4.merge_cells(start_row=sig_row, start_column=4, end_row=sig_row, end_column=5); ws4.cell(row=sig_row, column=4, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws4.cell(row=sig_row, column=4).alignment = align_center
@@ -1407,10 +1497,10 @@ def download_full_report(request):
             ws4.cell(row=name_row, column=4, value="='Company information'!D9").font = khmer_font; ws4.cell(row=name_row, column=4).alignment = align_center
             ws4.cell(row=name_row, column=5, value="='Company information'!E9").font = khmer_font; ws4.cell(row=name_row, column=5).alignment = align_center
 
-        # --- PART D: Annex V (Local Sale) ---
+        # --- PART E: Annex V (Local Sale) ---
         ws5 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex v-local sale'), None)
         if ws5:
-            start_row = 9 
+            start_row = 9
             if ws5.max_row >= start_row: ws5.delete_rows(start_row, ws5.max_row - start_row + 1)
             for i, row_data in enumerate(annex_v_rows):
                 curr_row = start_row + i
@@ -1426,14 +1516,11 @@ def download_full_report(request):
             last_dr = start_row + len(annex_v_rows) - 1; sum_row = last_dr + 1
             ws5.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
             ws5.cell(row=sum_row, column=1, value="សរុបការលក់ក្នុងស្រុក").font = khmer_font_bold; ws5.cell(row=sum_row, column=1).alignment = align_center
-            
-            # Summary G: Applied Center/Middle Align
             sum_cell = ws5.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{last_dr})")
             sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
-            
             for col in range(1, 9):
                 cell = ws5.cell(row=sum_row, column=col)
-                cell.fill = bg_gray; cell.border = thin_border
+                cell.fill = bg_gray_summary; cell.border = thin_border
 
             sig_row = sum_row + 2
             ws5.merge_cells(start_row=sig_row, start_column=6, end_row=sig_row, end_column=8); ws5.cell(row=sig_row, column=6, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws5.cell(row=sig_row, column=6).alignment = align_center
