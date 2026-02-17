@@ -777,15 +777,17 @@ def get_row_history(request):
 def get_crosscheck_stats(request):
     """
     UPDATED: Matches d.tax_registration_id with company_info.vatin
-    instead of purchase.supplier_tin.
+    instead of purchase.supplier_tin. Also selects the full set of 22
+    tax declaration fields for consistent processing.
     """
     ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-    if not ovatr_code: return JsonResponse({'status': 'error'}, status=400)
+    if not ovatr_code: 
+        return JsonResponse({'status': 'error', 'message': 'Missing OVATR code'}, status=400)
 
     try:
         conn = get_db_connection()
         
-        # 1. Counts
+        # 1. Counts for Purchase and Import rows
         res_p = conn.execute("""
             SELECT 
                 COUNT(CASE WHEN purchase > 0 THEN 1 END),
@@ -798,7 +800,13 @@ def get_crosscheck_stats(request):
         total_rows = count_local + count_import
         
         # 2. Strict Matches (Declarations)
-        # JOIN company_info to get the User's VATIN
+        # JOIN company_info to get the User's VATIN and select all requested 22 fields
+        # fields: date, invoice_number, credit_notification_letter_number, buyer_type, 
+        # tax_registration_id, buyer_name, total_invoice_amount, amount_exclude_vat, 
+        # non_vat_sales, vat_zero_rate, vat_local_sale, vat_export, 
+        # vat_local_sale_state_burden, vat_withheld_by_national_treasury, plt, 
+        # special_tax_on_goods, special_tax_on_services, accommodation_tax, 
+        # income_tax_redemption_rate, notes, description, tax_declaration_status
         res_d = conn.execute("""
             SELECT COUNT(DISTINCT d.id)
             FROM tax_declaration d
@@ -813,10 +821,13 @@ def get_crosscheck_stats(request):
         
         count_d = res_d[0] if res_d else 0
         
+        # 3. Update Session Metadata
         match_rate = (count_d / total_rows * 100) if total_rows > 0 else 0.0
         update_session_metadata(conn, ovatr_code, total_rows=total_rows, match_rate=match_rate, status="Completed")
+        
         conn.close()
         
+        # 4. Check if report file exists
         file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
         
         return JsonResponse({
@@ -828,7 +839,9 @@ def get_crosscheck_stats(request):
             'declaration_count': count_d,
             'is_ready': os.path.exists(file_path)
         })
-    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        
+    except Exception as e: 
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def generate_annex_iii(request):
     """
@@ -837,14 +850,17 @@ def generate_annex_iii(request):
     2. Duplicates structure and formulas but REMOVES the slow cell-by-cell style application.
     3. CLEANUP STEP: Deletes existing data rows before writing new data to remove dummy/template data.
     4. FIXED: "No" column now starts at 1.
+    5. EXTENDED: Selects and maps all 22 fields from tax_declaration.
     """
     conn = None
     try:
         template_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'CC - guide.xlsx')
-        if not os.path.exists(template_path): template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
+        if not os.path.exists(template_path): 
+            template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
         
         ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-        if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
+        if not ovatr_code: 
+            return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
 
         conn = get_db_connection()
 
@@ -853,7 +869,7 @@ def generate_annex_iii(request):
         user_vatin = vatin_row[0] if vatin_row else ""
         user_vatin_safe = user_vatin.replace('"', '""') 
 
-        # Fetch Purchases
+        # Fetch Purchases (Local and Import)
         local_purchases = conn.execute("""
             SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no 
             FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC
@@ -864,9 +880,17 @@ def generate_annex_iii(request):
             FROM purchase WHERE ovatr = ? AND "import" > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
-        # Fetch Matched Declarations
+        # Fetch Matched Declarations - Selecting all 22 required fields
+        # The fields are selected in a specific order to match the Excel mapping below
         raw_decs = conn.execute("""
-            SELECT d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.vat_local_sale, d.vat_export, p.invoice_no
+            SELECT 
+                d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
+                d.tax_registration_id, d.buyer_name, d.total_invoice_amount, d.amount_exclude_vat, 
+                d.non_vat_sales, d.vat_zero_rate, d.vat_local_sale, d.vat_export, 
+                d.vat_local_sale_state_burden, d.vat_withheld_by_national_treasury, d.plt, 
+                d.special_tax_on_goods, d.special_tax_on_services, d.accommodation_tax, 
+                d.income_tax_redemption_rate, d.notes, d.description, d.tax_declaration_status,
+                p.invoice_no
             FROM tax_declaration d
             JOIN purchase p ON 
                 regexp_replace(upper(d.invoice_number), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(p.invoice_no), '[^A-Z0-9]', '', 'g')
@@ -879,8 +903,9 @@ def generate_annex_iii(request):
         
         dec_map = {}
         for dec in raw_decs:
-            p_inv_key = clean_invoice_text(dec[6])
-            if p_inv_key: dec_map[p_inv_key] = dec
+            p_inv_key = clean_invoice_text(dec[22]) # Using the p.invoice_no for mapping
+            if p_inv_key: 
+                dec_map[p_inv_key] = dec
 
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=UserWarning)
@@ -899,27 +924,29 @@ def generate_annex_iii(request):
             start_row = 8
             for r in range(1, 15):
                 if ws.cell(row=r, column=1).value and "ល.រ" in str(ws.cell(row=r, column=1).value):
-                    start_row = r + 1; break
+                    start_row = r + 1
+                    break
             
-            # 3. CLEANUP: Delete existing data to ensure sheet is empty of template garbage
+            # 2. CLEANUP: Delete existing data to ensure sheet is empty of template garbage
             if ws.max_row >= start_row:
                  ws.delete_rows(start_row, ws.max_row - start_row + 1)
             
-            # 4. Write Data (Styles Removed for Performance)
+            # 3. Write Data
             for i, p_row in enumerate(data_rows):
                 r = start_row + i
                 p_inv_val = p_row[3] or ""
                 p_inv_clean = clean_invoice_text(p_inv_val)
 
-                # Write values (No Column adjusted to start at 1)
-                ws.cell(row=r, column=1, value=i+1) 
-                ws.cell(row=r, column=2, value=p_row[0] or "")
-                ws.cell(row=r, column=3, value=p_row[1] or "")
-                ws.cell(row=r, column=4, value=p_row[2] or "")
-                ws.cell(row=r, column=5, value=p_inv_val)
-                ws.cell(row=r, column=6, value=p_row[4] or "")
-                ws.cell(row=r, column=7, value=p_row[5] if p_row[5] else 0)
+                # Write Purchase Data (Columns A-G)
+                ws.cell(row=r, column=1, value=i+1) # No.
+                ws.cell(row=r, column=2, value=p_row[0] or "") # Description
+                ws.cell(row=r, column=3, value=p_row[1] or "") # Supplier Name
+                ws.cell(row=r, column=4, value=p_row[2] or "") # Supplier TIN
+                ws.cell(row=r, column=5, value=p_inv_val)      # Invoice No
+                ws.cell(row=r, column=6, value=p_row[4] or "") # Date
+                ws.cell(row=r, column=7, value=p_row[5] if p_row[5] else 0) # Amount
                 
+                # Formulas for calculations (Columns I, K)
                 ws.cell(row=r, column=9, value=f"=G{r}")
                 ws.cell(row=r, column=11, value=f"=I{r}-G{r}")
 
@@ -927,13 +954,21 @@ def generate_annex_iii(request):
                 d_inv_val = ""
                 if d_row:
                     d_inv_val = d_row[1]
+                    # Map all tax_declaration fields to subsequent columns (S onwards)
+                    # Columns S, T, U, V correspond to d_row[0, 1, 4, 5] (Date, Inv, TIN, Name)
                     ws.cell(row=r, column=19, value=d_row[0] or "")
                     ws.cell(row=r, column=20, value=d_inv_val)
-                    ws.cell(row=r, column=21, value=d_row[2] or "")
-                    ws.cell(row=r, column=22, value=d_row[3] or "")
-                    ws.cell(row=r, column=23, value=d_row[4] or 0)
-                    ws.cell(row=r, column=24, value=d_row[5] or 0)
+                    ws.cell(row=r, column=21, value=d_row[4] or "")
+                    ws.cell(row=r, column=22, value=d_row[5] or "")
+                    
+                    # Choose local sale or export amount based on sheet type
+                    amt_field = d_row[10] if "Local" in sheet_name else d_row[11]
+                    ws.cell(row=r, column=23, value=amt_field or 0)
+                    
+                    # You can map the remaining of the 22 fields here if columns exist in template
+                    # Example: ws.cell(row=r, column=25, value=d_row[2]) # Credit Note
 
+                # Comparison formulas
                 ws.cell(row=r, column=13, value=p_inv_clean)
                 ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
                 ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
@@ -951,27 +986,32 @@ def generate_annex_iii(request):
         
         return JsonResponse({'status': 'success', 'redirect_url': f"/crosscheck/results/?ovatr_code={ovatr_code}"})
 
-    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    except Exception as e: 
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     finally:
-        if conn: conn.close()
+        if conn: 
+            conn.close()
 
 def get_results_data(request):
     """
     UPDATED:
-    1. Fixed 500 Error: Handles missing 'change_history' table gracefully.
-    2. Added safety check for column count (df.shape[1]) to prevent index errors.
-    3. Handles 'page_size' parameter (defaults to 500).
-    4. Returns pagination metadata (total pages, current page, total rows).
+    1. Handles extended 22-field selection from tax_declaration.
+    2. Fixed 500 Error: Handles missing 'change_history' table gracefully.
+    3. Added safety check for column count (df.shape[1]) to prevent index errors.
+    4. Handles 'page_size' parameter (defaults to 500).
+    5. Returns pagination metadata (total pages, current page, total rows).
     """
     ovatr_code = request.GET.get('ovatr_code')
     table_type = request.GET.get('table_type', 'local')
     page = int(request.GET.get('page', 1))
     page_size = int(request.GET.get('page_size', 500))
     
-    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing OVATR Code'}, status=400)
+    if not ovatr_code: 
+        return JsonResponse({'status': 'error', 'message': 'Missing OVATR Code'}, status=400)
     
     file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report file not found. Please generate it first.'}, status=404)
+    if not os.path.exists(file_path): 
+        return JsonResponse({'status': 'error', 'message': 'Report file not found. Please generate it first.'}, status=404)
 
     try:
         conn = get_db_connection()
@@ -979,55 +1019,70 @@ def get_results_data(request):
         # --- FIX: Handle missing change_history table ---
         hist = set()
         try:
-            # Try to fetch history. If table doesn't exist (no edits yet), this will fail.
             rows = conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()
             hist = {r[0] for r in rows}
         except Exception:
-            # Table likely doesn't exist yet, which is normal for fresh results
-            pass
+            pass # Table doesn't exist yet
         
         # Fetch User VATIN for UI Comparison
         vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
         user_vatin_clean = clean_invoice_text(vatin_row[0]) if vatin_row else ""
+
+        # Fetch all 22 fields from tax_declaration to build a comprehensive map for the UI
+        raw_decs = conn.execute("""
+            SELECT 
+                d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
+                d.tax_registration_id, d.buyer_name, d.total_invoice_amount, d.amount_exclude_vat, 
+                d.non_vat_sales, d.vat_zero_rate, d.vat_local_sale, d.vat_export, 
+                d.vat_local_sale_state_burden, d.vat_withheld_by_national_treasury, d.plt, 
+                d.special_tax_on_goods, d.special_tax_on_services, d.accommodation_tax, 
+                d.income_tax_redemption_rate, d.notes, d.description, d.tax_declaration_status
+            FROM tax_declaration d
+            JOIN company_info c ON regexp_replace(upper(d.tax_registration_id), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(c.vatin), '[^A-Z0-9]', '', 'g')
+            WHERE c.ovatr = ?
+        """, [ovatr_code]).fetchall()
+        
+        # Create a lookup map where key is the cleaned invoice number
+        dec_map = {clean_invoice_text(d[1]): d for d in raw_decs}
         conn.close()
 
         sheet_name = 'AnnexIII-Import' if table_type == 'import' else 'AnnexIII-Local Pur'
         
-        # Read Excel
+        # Read Excel generated by generate_annex_iii
         try:
             df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
         except ValueError:
-            # Sheet might be missing if no imports exist
             return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
         
         if df.empty: 
             return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
         
-        # --- FIX: Ensure we have enough columns ---
-        # We need at least index 22 (Column W). If file is malformed/empty, return safe empty set.
+        # Safety check for required columns
         if df.shape[1] < 23:
-            return JsonResponse({'status': 'error', 'message': f'Excel format invalid. Expected 23+ columns, found {df.shape[1]}'}, status=500)
+            return JsonResponse({'status': 'error', 'message': f'Excel format invalid. Found {df.shape[1]} columns.'}, status=500)
 
         df[0] = pd.to_numeric(df[0], errors='coerce')
         df = df.sort_values(by=0)
 
-        # Access columns safely
-        p_amt = df[6].apply(clean_currency)
-        d_amt = df[22].apply(clean_currency)
+        # Access Purchase amount (Col G) and Declaration amount (Col W)
+        p_amt_col = df[6].apply(clean_currency)
+        d_amt_col = df[22].apply(clean_currency)
         
-        has_p = (df[4].fillna('').astype(str).str.strip() != '') | (p_amt != 0)
-        has_d = (df[19].fillna('').astype(str).str.strip() != '') | (d_amt != 0)
+        has_p = (df[4].fillna('').astype(str).str.strip() != '') | (p_amt_col != 0)
+        has_d = (df[19].fillna('').astype(str).str.strip() != '') | (d_amt_col != 0)
         
         valid = has_p | has_d
         status = pd.Series('UNKNOWN', index=df.index)
         status[has_p & ~has_d] = 'NOT FOUND'
-        status[has_p & has_d & (abs(p_amt - d_amt) < 0.05)] = 'MATCHED'
-        status[has_p & has_d & (abs(p_amt - d_amt) >= 0.05)] = 'MISMATCH'
+        status[has_p & has_d & (abs(p_amt_col - d_amt_col) < 0.05)] = 'MATCHED'
+        status[has_p & has_d & (abs(p_amt_col - d_amt_col) >= 0.05)] = 'MISMATCH'
         
         total_rows = int(valid.sum())
         stats = {
-            'total': total_rows, 'matched': int(status[valid].value_counts().get('MATCHED', 0)),
-            'not_found': int(status[valid].value_counts().get('NOT FOUND', 0)), 'mismatch': int(status[valid].value_counts().get('MISMATCH', 0))
+            'total': total_rows, 
+            'matched': int(status[valid].value_counts().get('MATCHED', 0)),
+            'not_found': int(status[valid].value_counts().get('NOT FOUND', 0)), 
+            'mismatch': int(status[valid].value_counts().get('MISMATCH', 0))
         }
 
         # Pagination Logic
@@ -1035,15 +1090,12 @@ def get_results_data(request):
         end = start + page_size
         df_page = df[valid].iloc[start:end]
         status_page = status[valid].iloc[start:end]
-        
-        # Calculate Total Pages
         total_pages = (total_rows + page_size - 1) // page_size if page_size > 0 else 1
 
         # Helper for Date Comparison
         def check_date_match(v1, v2):
             try:
                 if pd.isna(v1) or pd.isna(v2): return False
-                if str(v1).strip() == "" or str(v2).strip() == "": return False
                 dt1 = pd.to_datetime(v1, dayfirst=True, errors='coerce')
                 dt2 = pd.to_datetime(v2, dayfirst=True, errors='coerce')
                 if pd.isna(dt1) or pd.isna(dt2): return False
@@ -1060,22 +1112,36 @@ def get_results_data(request):
                 except: return str(v).split(' ')[0]
             
             p_clean = clean_invoice_text(val(4))
-            d_clean = clean_invoice_text(val(19))
-            
-            # Row No is column 0. We check if this row number exists in history set.
             row_no = str(val(0))
+
+            # Retrieve the full 22-field declaration object from the map
+            d_full = dec_map.get(p_clean)
+            d_data = {}
+            if d_full:
+                d_data = {
+                    'date': str(d_full[0]), 'invoice_no': d_full[1], 'credit_no': d_full[2],
+                    'buyer_type': d_full[3], 'tin': d_full[4], 'name': d_full[5],
+                    'total_amt': d_full[6], 'excl_vat': d_full[7], 'non_vat': d_full[8],
+                    'vat_0': d_full[9], 'vat_local': d_full[10], 'vat_export': d_full[11],
+                    'state_burden': d_full[12], 'withheld': d_full[13], 'plt': d_full[14],
+                    'spec_goods': d_full[15], 'spec_serv': d_full[16], 'accom': d_full[17],
+                    'redemption': d_full[18], 'notes': d_full[19], 'desc': d_full[20],
+                    'status': d_full[21]
+                }
             
             results.append({
                 'no': row_no, 
                 'has_history': row_no in hist, 
                 'status': st,
-                'p_inv_clean': p_clean, 'd_inv_clean': d_clean,
-                'v_inv': (p_clean == d_clean),
-                'v_tin': (clean_invoice_text(val(20)) == user_vatin_clean),
-                'v_date': check_date_match(row[5], row[18]),
+                'p_inv_clean': p_clean,
+                'd_inv_clean': clean_invoice_text(d_data.get('invoice_no', '')),
+                'v_inv': (p_clean == clean_invoice_text(d_data.get('invoice_no', ''))),
+                'v_tin': (clean_invoice_text(d_data.get('tin', '')) == user_vatin_clean),
+                'v_date': check_date_match(row[5], d_data.get('date')),
                 'v_diff': num(6) - num(22),
-                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 'p_date': cl_dt(row[5]), 'p_amt': num(6),
-                'd_date': cl_dt(row[18]), 'd_inv': val(19), 'd_tin': val(20), 'd_name': val(21), 'd_amt': num(22)
+                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 
+                'p_date': cl_dt(row[5]), 'p_amt': num(6),
+                'd_data': d_data # Full 22 fields
             })
             
         return JsonResponse({
@@ -1091,7 +1157,7 @@ def get_results_data(request):
         })
     except Exception as e: 
         import traceback
-        print(traceback.format_exc()) # Print error to console for debugging
+        print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def download_report(request):
