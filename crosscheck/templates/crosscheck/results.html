@@ -1,7 +1,6 @@
 {% extends 'base.html' %} {% load static %} {% block title %}Session Results{% endblock %} {% block content %}
 
 <style>
-    /* Custom Scrollbar Styling */
     .custom-scrollbar::-webkit-scrollbar {
         width: 10px;
         height: 10px;
@@ -23,15 +22,12 @@
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #a8a8a8;
     }
-
-    /* Sticky Header Specifics */
     thead.sticky-header th {
         position: sticky;
         top: 0;
         z-index: 20;
         box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
-    /* Ensure z-index layering is correct */
     .sticky-group {
         position: sticky;
         top: 0;
@@ -39,42 +35,12 @@
     }
 </style>
 
-<div x-data="resultsDashboard()" x-init="init()" class="h-[calc(120vh-3.5rem)] flex flex-col relative overflow-hidden bg-gray-50 dark:bg-gray-900">
-    <div x-show="showDetailsModal" class="fixed inset-0 z-[60] flex items-center justify-center bg-black bg-opacity-50" style="display: none" x-transition.opacity @keydown.escape.window="showDetailsModal = false">
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-4xl p-6 relative flex flex-col max-h-[90vh]">
-            <div class="flex justify-between items-center mb-4 border-b pb-2 dark:border-gray-700">
-                <h3 class="text-xl font-bold text-gray-900 dark:text-white">Tax Declaration Details</h3>
-                <button @click="showDetailsModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
-            </div>
-
-            <div class="overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-4 text-sm p-2">
-                <template x-if="selectedDec">
-                    <div class="contents">
-                        <template x-for="(value, key) in selectedDec" :key="key">
-                            <div class="flex justify-between border-b border-gray-100 dark:border-gray-700 py-2 px-1 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                                <span class="font-semibold text-gray-500 uppercase text-[10px] tracking-wider" x-text="key.replace(/_/g, ' ')"></span>
-                                <span class="text-gray-900 dark:text-gray-200 font-mono text-right" x-text="value || '-'"></span>
-                            </div>
-                        </template>
-                    </div>
-                </template>
-                <template x-if="!selectedDec">
-                    <div class="col-span-2 text-center text-gray-500">No declaration data available.</div>
-                </template>
-            </div>
-            <div class="mt-4 flex justify-end">
-                <button @click="showDetailsModal = false" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 rounded text-sm font-medium transition-colors">Close</button>
-            </div>
-        </div>
-    </div>
-
+<div x-data="resultsDashboard()" x-init="init()" class="h-[calc(110vh-1.5rem)] flex flex-col relative overflow-hidden bg-gray-50 dark:bg-gray-900">
+    <!-- HISTORY MODAL -->
     <div x-show="showHistoryModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style="display: none" x-transition.opacity>
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-3xl p-6 relative flex flex-col max-h-[90vh]">
             <div class="flex justify-between items-center mb-4 flex-shrink-0">
                 <h3 class="text-lg font-bold text-gray-900 dark:text-white">Edit History - Row <span x-text="historyRowId"></span></h3>
-
                 <div class="flex items-center gap-4">
                     <div class="flex items-center gap-2">
                         <span class="text-sm text-gray-500">Filter:</span>
@@ -90,15 +56,9 @@
                     </button>
                 </div>
             </div>
-
             <div class="overflow-y-auto border rounded-lg flex-1">
-                <template x-if="historyLoading">
-                    <div class="text-center py-10 text-gray-500">Loading history...</div>
-                </template>
-                <template x-if="!historyLoading && filteredHistoryLogs.length === 0">
-                    <div class="text-center py-10 text-gray-500">No edits recorded matching filter.</div>
-                </template>
-
+                <template x-if="historyLoading"><div class="text-center py-10 text-gray-500">Loading history...</div></template>
+                <template x-if="!historyLoading && filteredHistoryLogs.length === 0"><div class="text-center py-10 text-gray-500">No edits recorded matching filter.</div></template>
                 <table x-show="!historyLoading && filteredHistoryLogs.length > 0" class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
                     <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0">
                         <tr>
@@ -123,6 +83,7 @@
         </div>
     </div>
 
+    <!-- TOP HEADER BAR -->
     <div class="flex flex-col md:flex-row justify-between items-center mb-2 flex-shrink-0 px-4 pt-4">
         <div>
             <h2 class="text-2xl font-bold text-gray-800 dark:text-white mb-1">Session Results</h2>
@@ -130,19 +91,19 @@
         </div>
         <div class="flex gap-2 mt-2 md:mt-0 items-center">
             <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1 mr-4">
-                <button @click="undo()" :disabled="historyIndex < 0" class="p-1.5 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all">
+                <button @click="undo()" :disabled="historyIndex < 0" class="p-1.5 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all" title="Undo">
                     <svg class="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
                 </button>
-                <button @click="redo()" :disabled="historyIndex >= history.length - 1" class="p-1.5 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all">
+                <button @click="redo()" :disabled="historyIndex >= history.length - 1" class="p-1.5 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all" title="Redo">
                     <svg class="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>
                 </button>
             </div>
             <button @click="saveChanges()" :disabled="!hasUnsavedChanges" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white text-sm font-bold rounded-lg shadow transition-all flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg><span x-text="hasUnsavedChanges ? 'Save' : 'Saved'"></span>
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                <span x-text="hasUnsavedChanges ? 'Save' : 'Saved'"></span>
             </button>
             <a :href="'{% url 'crosscheck:report' %}?ovatr_code=' + ovatrCode" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2">
-                Report
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                Report <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
             </a>
             <button @click="downloadFile()" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>Export
@@ -150,6 +111,7 @@
         </div>
     </div>
 
+    <!-- KPI CARDS -->
     <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3 flex-shrink-0 px-4">
         <div class="bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
             <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Rows</div>
@@ -172,7 +134,9 @@
         </div>
     </div>
 
+    <!-- TABLE CARD -->
     <div class="flex-1 mx-2 mb-2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden relative group/table min-h-0">
+        <!-- Toolbar -->
         <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center bg-gray-50 dark:bg-gray-900/50 flex-shrink-0 gap-3">
             <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto">
                 <div class="relative w-full md:w-64">
@@ -187,24 +151,31 @@
                 </div>
             </div>
             <div class="flex gap-2 text-sm font-bold">
-                <button class="px-2 py-1 rounded-lg border transition-all text-xs" :class="filter === 'ALL' ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50'" @click="filter = 'ALL'">All</button>
-                <button class="px-2 py-1 rounded-lg border transition-all text-green-700 border-green-200 text-xs" :class="filter === 'MATCHED' ? 'bg-green-100' : 'bg-white hover:bg-green-50'" @click="filter = 'MATCHED'">Matched</button>
-                <button class="px-2 py-1 rounded-lg border transition-all text-orange-700 border-orange-200 text-xs" :class="filter === 'MISMATCH' ? 'bg-orange-100' : 'bg-white hover:bg-orange-50'" @click="filter = 'MISMATCH'">Mismatch</button>
+                <button class="px-2 py-1 rounded-lg border transition-all text-xs" :class="filter === 'ALL' ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300'" @click="filter = 'ALL'">All</button>
+                <button class="px-2 py-1 rounded-lg border transition-all text-green-700 border-green-200 text-xs" :class="filter === 'MATCHED' ? 'bg-green-100' : 'bg-white hover:bg-green-50 dark:bg-gray-700 dark:text-green-400'" @click="filter = 'MATCHED'">Matched</button>
+                <button class="px-2 py-1 rounded-lg border transition-all text-orange-700 border-orange-200 text-xs" :class="filter === 'MISMATCH' ? 'bg-orange-100' : 'bg-white hover:bg-orange-50 dark:bg-gray-700 dark:text-orange-400'" @click="filter = 'MISMATCH'">Mismatch</button>
+                <button class="px-2 py-1 rounded-lg border transition-all text-red-700 border-red-200 text-xs" :class="filter === 'NOT FOUND' ? 'bg-red-100' : 'bg-white hover:bg-red-50 dark:bg-gray-700 dark:text-red-400'" @click="filter = 'NOT FOUND'">Not Found</button>
             </div>
         </div>
 
+        <!-- TABLE SCROLL AREA -->
         <div class="flex-1 overflow-auto w-full relative scroll-smooth custom-scrollbar" id="tableContainer" @scroll="handleScroll($el)">
             <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 border-separate border-spacing-0">
+                <!-- GROUP HEADER ROW 1 -->
                 <thead class="text-xs text-gray-700 uppercase sticky-group shadow-md">
                     <tr class="h-6">
-                        <th class="sticky left-0 z-30 bg-gray-100 dark:bg-gray-800 border-b border-r border-gray-300 dark:border-gray-600"></th>
-                        <th colspan="7" class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-center border-b border-r border-blue-200 dark:border-blue-800 py-1">Purchase Invoice</th>
-                        <th colspan="4" class="bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 text-center border-b border-r border-orange-200 dark:border-orange-800 py-1">Validation</th>
-                        <th colspan="6" class="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-center border-b border-purple-200 dark:border-purple-800 py-1">Tax Declaration (Matched)</th>
+                        <th class="sticky left-0 z-30 bg-gray-100 dark:bg-gray-800 border-b border-r border-gray-300 dark:border-gray-600 w-16"></th>
+                        <th colspan="7" class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-center border-b border-r border-blue-200 dark:border-blue-800 py-1 font-bold">Purchase Invoice</th>
+                        <th colspan="4" class="bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 text-center border-b border-r border-orange-200 dark:border-orange-800 py-1 font-bold">Validation</th>
+                        <!-- ★ colspan=22 for all 22 Tax Declaration fields -->
+                        <th colspan="22" class="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-center border-b border-purple-200 dark:border-purple-800 py-1 font-bold">Tax Declaration (Matched)</th>
                     </tr>
+
+                    <!-- COLUMN HEADER ROW 2 -->
                     <tr class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
                         <th class="px-3 py-2 sticky left-0 z-30 bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-16 text-center">No</th>
 
+                        <!-- PURCHASE INVOICE -->
                         <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">Description</th>
                         <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">Supplier</th>
                         <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">TIN</th>
@@ -213,30 +184,53 @@
                         <th class="px-3 py-2 whitespace-nowrap text-right bg-blue-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 font-bold">Amount</th>
                         <th class="px-3 py-2 text-center bg-blue-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 font-bold w-32 min-w-[120px]">Status</th>
 
+                        <!-- VALIDATION -->
                         <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">Inv</th>
                         <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">Date</th>
                         <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">TIN</th>
                         <th class="px-3 py-2 text-right whitespace-nowrap bg-orange-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 font-bold">Diff</th>
 
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800 font-bold">VAT Amount</th>
+                        <!-- TAX DECLARATION — 22 columns -->
                         <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Date</th>
                         <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Invoice #</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Buyer/Name</th>
+                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Credit No</th>
+                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Buyer Type</th>
                         <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">TIN</th>
-                        <th class="px-3 py-2 text-center bg-purple-50 dark:bg-gray-800">Action</th>
+                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Buyer / Name</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800 font-bold">Total Amt</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Excl VAT</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Non VAT</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">VAT 0</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800 font-bold">VAT Local</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800 font-bold">VAT Export</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">State Burden</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Withheld</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">PLT</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Spec Goods</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Spec Serv</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Accom</th>
+                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Redemption</th>
+                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Notes</th>
+                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Desc</th>
+                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Dec Status</th>
                     </tr>
                 </thead>
 
+                <!-- BODY -->
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
                     <template x-for="row in filteredRows" :key="row.no">
                         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors group text-xs">
-                            <td class="px-2 py-2 font-mono text-gray-400 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50 border-r border-gray-100 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-center flex items-center justify-between h-full">
-                                <span x-text="row.no"></span>
-                                <button x-show="row.has_history" @click="viewHistory(row.no)" class="text-blue-300 hover:text-blue-600 transition-colors ml-1" title="View History">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                </button>
+                            <!-- NO (sticky) -->
+                            <td class="px-2 py-2 font-mono text-gray-400 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50 border-r border-gray-100 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-center">
+                                <div class="flex items-center justify-between h-full">
+                                    <span x-text="row.no"></span>
+                                    <button x-show="row.has_history" @click="viewHistory(row.no)" class="text-blue-300 hover:text-blue-600 transition-colors ml-1" title="View History">
+                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    </button>
+                                </div>
                             </td>
 
+                            <!-- PURCHASE INVOICE (editable) -->
                             <td @dblclick="editCell(row, 'p_desc')" class="px-3 py-2 whitespace-nowrap max-w-xs truncate text-gray-600 dark:text-gray-300 cursor-pointer">
                                 <template x-if="editing.id === row.no && editing.field === 'p_desc'"><input type="text" x-model="row.p_desc" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded" autofocus /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_desc')"><span x-text="row.p_desc"></span></template>
@@ -262,46 +256,124 @@
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_amt')"><span x-text="row.p_amt ? formatNumber(row.p_amt) : '-'"></span></template>
                             </td>
 
+                            <!-- STATUS -->
                             <td class="px-3 py-2 text-center border-r border-gray-100 dark:border-gray-700">
-                                <span class="px-1 py-0.5 rounded text-[10px] font-bold uppercase border shadow-sm block w-full truncate" :class="{'bg-green-50 text-green-700 border-green-200': row.status === 'MATCHED', 'bg-red-50 text-red-700 border-red-200': row.status === 'NOT FOUND', 'bg-orange-50 text-orange-700 border-orange-200': row.status === 'MISMATCH'}" x-text="row.status"></span>
+                                <span
+                                    class="px-1 py-0.5 rounded text-[10px] font-bold uppercase border shadow-sm block w-full truncate"
+                                    :class="{
+                                        'bg-green-50 text-green-700 border-green-200': row.status === 'MATCHED',
+                                        'bg-red-50 text-red-700 border-red-200': row.status === 'NOT FOUND',
+                                        'bg-orange-50 text-orange-700 border-orange-200': row.status === 'MISMATCH'
+                                    }"
+                                    x-text="row.status"
+                                >
+                                </span>
                             </td>
 
+                            <!-- VALIDATION -->
                             <td class="px-3 py-2 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_inv" class="text-green-500 text-sm">●</span><span x-show="!row.v_inv" class="text-gray-300 text-sm">●</span></td>
                             <td class="px-3 py-2 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_date" class="text-green-500 text-sm">●</span><span x-show="!row.v_date" class="text-gray-300 text-sm">●</span></td>
                             <td class="px-3 py-2 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_tin" class="text-green-500 text-sm">●</span><span x-show="!row.v_tin" class="text-gray-300 text-sm">●</span></td>
-
                             <td @dblclick="editCell(row, 'v_diff')" class="px-3 py-2 text-right font-mono border-r border-gray-100 dark:border-gray-700 bg-orange-50/30 dark:bg-orange-900/10 font-bold cursor-pointer" :class="Math.abs(row.v_diff) > 0.05 ? 'text-red-500' : 'text-gray-300'">
                                 <template x-if="editing.id === row.no && editing.field === 'v_diff'"><input type="number" step="0.01" x-model="row.v_diff" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right" autofocus /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'v_diff')"><span x-text="Math.abs(row.v_diff) > 0.05 ? formatNumber(row.v_diff) : '-'"></span></template>
                             </td>
 
-                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold bg-purple-50/30 dark:bg-purple-900/10 text-purple-700 dark:text-purple-300">
-                                <span x-text="row.d_data && (row.d_data.vat_local || row.d_data.vat_export) ? formatNumber(row.d_data.vat_local || row.d_data.vat_export) : '-'"></span>
+                            <!-- TAX DECLARATION — ALL 22 FIELDS EXPANDED (no Action button) -->
+                            <!-- 1. Date -->
+                            <td class="px-3 py-2 whitespace-nowrap font-mono text-purple-700 dark:text-purple-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data ? (row.d_data.date || '-') : '-'"></span>
                             </td>
-                            <td class="px-3 py-2 whitespace-nowrap font-mono text-gray-500 dark:text-gray-400">
-                                <span x-text="row.d_data ? row.d_data.date : '-'"></span>
+                            <!-- 2. Invoice # -->
+                            <td class="px-3 py-2 whitespace-nowrap font-mono text-purple-600 dark:text-purple-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data ? (row.d_data.invoice_no || '-') : '-'"></span>
                             </td>
-                            <td class="px-3 py-2 whitespace-nowrap font-mono text-purple-600 dark:text-purple-400">
-                                <span x-text="row.d_data ? row.d_data.invoice_no : '-'"></span>
+                            <!-- 3. Credit No -->
+                            <td class="px-3 py-2 whitespace-nowrap font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data ? (row.d_data.credit_no || '-') : '-'"></span>
                             </td>
-                            <td class="px-3 py-2 whitespace-nowrap max-w-xs truncate text-gray-600 dark:text-gray-400" :title="row.d_data ? row.d_data.name : ''">
-                                <span x-text="row.d_data ? row.d_data.name : '-'"></span>
+                            <!-- 4. Buyer Type -->
+                            <td class="px-3 py-2 whitespace-nowrap max-w-[120px] truncate text-gray-600 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10" :title="row.d_data ? row.d_data.buyer_type : ''">
+                                <span x-text="row.d_data ? (row.d_data.buyer_type || '-') : '-'"></span>
                             </td>
-                            <td class="px-3 py-2 whitespace-nowrap font-mono text-gray-400">
-                                <span x-text="row.d_data ? row.d_data.tin : '-'"></span>
+                            <!-- 5. TIN -->
+                            <td class="px-3 py-2 whitespace-nowrap font-mono text-blue-500 dark:text-blue-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data ? (row.d_data.tin || '-') : '-'"></span>
                             </td>
-                            <td class="px-3 py-2 text-center bg-purple-50/20 dark:bg-purple-900/20">
-                                <button x-show="row.d_data && row.d_data.invoice_no" @click="selectedDec = row.d_data; showDetailsModal = true" class="text-blue-500 hover:text-blue-700 dark:hover:text-blue-400 p-1 transition-colors" title="View Full Details">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
-                                    </svg>
-                                </button>
+                            <!-- 6. Buyer / Name -->
+                            <td class="px-3 py-2 whitespace-nowrap max-w-[180px] truncate text-gray-700 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/10" :title="row.d_data ? row.d_data.name : ''">
+                                <span x-text="row.d_data ? (row.d_data.name || '-') : '-'"></span>
+                            </td>
+                            <!-- 7. Total Amt -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold text-gray-700 dark:text-gray-200 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.total_amt ? formatNumber(row.d_data.total_amt) : '-'"></span>
+                            </td>
+                            <!-- 8. Excl VAT -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-600 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.excl_vat ? formatNumber(row.d_data.excl_vat) : '-'"></span>
+                            </td>
+                            <!-- 9. Non VAT -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.non_vat ? formatNumber(row.d_data.non_vat) : '-'"></span>
+                            </td>
+                            <!-- 10. VAT 0 -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.vat_0 ? formatNumber(row.d_data.vat_0) : '-'"></span>
+                            </td>
+                            <!-- 11. VAT Local -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.vat_local ? formatNumber(row.d_data.vat_local) : '-'"></span>
+                            </td>
+                            <!-- 12. VAT Export -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.vat_export ? formatNumber(row.d_data.vat_export) : '-'"></span>
+                            </td>
+                            <!-- 13. State Burden -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.state_burden ? formatNumber(row.d_data.state_burden) : '-'"></span>
+                            </td>
+                            <!-- 14. Withheld -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.withheld ? formatNumber(row.d_data.withheld) : '-'"></span>
+                            </td>
+                            <!-- 15. PLT -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.plt ? formatNumber(row.d_data.plt) : '-'"></span>
+                            </td>
+                            <!-- 16. Spec Goods -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.spec_goods ? formatNumber(row.d_data.spec_goods) : '-'"></span>
+                            </td>
+                            <!-- 17. Spec Serv -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.spec_serv ? formatNumber(row.d_data.spec_serv) : '-'"></span>
+                            </td>
+                            <!-- 18. Accom -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.accom ? formatNumber(row.d_data.accom) : '-'"></span>
+                            </td>
+                            <!-- 19. Redemption -->
+                            <td class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-text="row.d_data && row.d_data.redemption ? formatNumber(row.d_data.redemption) : '-'"></span>
+                            </td>
+                            <!-- 20. Notes -->
+                            <td class="px-3 py-2 max-w-[140px] truncate text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10" :title="row.d_data ? row.d_data.notes : ''">
+                                <span x-text="row.d_data ? (row.d_data.notes || '-') : '-'"></span>
+                            </td>
+                            <!-- 21. Desc -->
+                            <td class="px-3 py-2 max-w-[140px] truncate text-gray-500 dark:text-gray-400 bg-purple-50/20 dark:bg-purple-900/10" :title="row.d_data ? row.d_data.desc : ''">
+                                <span x-text="row.d_data ? (row.d_data.desc || '-') : '-'"></span>
+                            </td>
+                            <!-- 22. Dec Status -->
+                            <td class="px-3 py-2 whitespace-nowrap bg-purple-50/20 dark:bg-purple-900/10">
+                                <span x-show="row.d_data && row.d_data.dec_status" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" x-text="row.d_data ? (row.d_data.dec_status || '') : ''"> </span>
+                                <span x-show="!row.d_data || !row.d_data.dec_status" class="text-gray-300">-</span>
                             </td>
                         </tr>
                     </template>
+
                     <tr x-show="rows.length === 0 && !loading" class="h-64">
-                        <td colspan="19" class="text-center text-gray-400">
+                        <td colspan="34" class="text-center text-gray-400">
                             <div class="flex flex-col items-center justify-center gap-2">
                                 <svg class="w-12 h-12 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 <span>No records found for this view.</span>
@@ -311,6 +383,7 @@
                 </tbody>
             </table>
 
+            <!-- Loading overlay -->
             <div x-show="loading" class="absolute inset-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-30">
                 <div class="flex items-center gap-3 bg-white dark:bg-gray-800 px-6 py-4 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700">
                     <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-brand-600"></div>
@@ -319,6 +392,7 @@
             </div>
         </div>
 
+        <!-- Scroll-to-top button -->
         <button
             x-show="showScrollTop"
             x-transition:enter="transition ease-out duration-300"
@@ -335,9 +409,9 @@
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
         </button>
 
+        <!-- PAGINATION FOOTER -->
         <div x-show="rows.length > 0" class="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 dark:text-gray-300 flex-shrink-0 z-30 gap-2">
             <div class="truncate">Showing <span class="font-bold" x-text="startRecord"></span> to <span class="font-bold" x-text="endRecord"></span> of <span class="font-bold" x-text="formatNumber(totalRows)"></span> results</div>
-
             <div class="flex items-center gap-4">
                 <div class="flex items-center gap-2">
                     <span class="text-gray-500 hidden sm:inline">Rows:</span>
@@ -352,7 +426,6 @@
                         <input x-model.number="pageSize" @keydown.enter="changePageSize()" @blur="changePageSize()" type="number" min="1" class="w-full text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 py-1 px-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="#" />
                     </div>
                 </div>
-
                 <div class="flex items-center gap-2 border-l border-gray-300 dark:border-gray-600 pl-4">
                     <button @click="changePage(page - 1)" :disabled="page <= 1" class="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-700 transition">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
@@ -365,7 +438,9 @@
             </div>
         </div>
     </div>
+    <!-- end table card -->
 </div>
+<!-- end main -->
 
 <script>
     document.addEventListener('alpine:init', () => {
@@ -378,37 +453,36 @@
             tableType: 'local',
             loading: true,
 
-            // Pagination Logic
+            // Pagination
             page: 1,
             pageSize: 500,
             pageSizePreset: '500',
             totalPages: 1,
             totalRows: 0,
 
-            // Scroll Button State
+            // UI state
             showScrollTop: false,
-
-            // Modal States
             showHistoryModal: false,
-            showDetailsModal: false,
-            selectedDec: null,
-
             historyRowId: null,
             historyLogs: [],
             historyLoading: false,
             historyFilter: '',
 
+            // Inline editing
             editing: {id: null, field: null},
+
+            // Undo/Redo
             history: [],
             historyIndex: -1,
             unsavedChanges: new Set(),
 
+            // ─── INIT ───
             async init() {
                 this.loadStats();
                 await this.fetchData();
             },
 
-            // --- COMPUTED PAGINATION ---
+            // ─── COMPUTED ───
             get startRecord() {
                 return (this.page - 1) * this.pageSize + 1;
             },
@@ -416,6 +490,28 @@
                 return Math.min(this.page * this.pageSize, this.totalRows);
             },
 
+            get uniqueHistoryFields() {
+                return Array.from(new Set(this.historyLogs.map((l) => l.field))).sort();
+            },
+            get filteredHistoryLogs() {
+                if (!this.historyFilter) return this.historyLogs;
+                return this.historyLogs.filter((l) => l.field === this.historyFilter);
+            },
+            get hasUnsavedChanges() {
+                return this.unsavedChanges.size > 0;
+            },
+
+            get filteredRows() {
+                if (!this.search && this.filter === 'ALL') return this.rows;
+                const term = this.search.toLowerCase();
+                return this.rows.filter((row) => {
+                    const matchesSearch = !term || (row.p_desc || '').toLowerCase().includes(term) || (row.p_inv || '').toLowerCase().includes(term) || (row.p_tin || '').toLowerCase().includes(term) || (row.d_data?.invoice_no || '').toLowerCase().includes(term) || (row.d_data?.tin || '').toLowerCase().includes(term);
+                    const matchesFilter = this.filter === 'ALL' || row.status === this.filter;
+                    return matchesSearch && matchesFilter;
+                });
+            },
+
+            // ─── STATS ───
             async loadStats() {
                 if (!this.ovatrCode) return;
                 try {
@@ -432,18 +528,15 @@
                 }
             },
 
+            // ─── FETCH DATA ───
             async fetchData() {
                 if (!this.ovatrCode) return;
                 this.loading = true;
-
                 try {
-                    // Use bound pageSize
                     const url = `{% url "crosscheck:get_results_data" %}?ovatr_code=${this.ovatrCode}&page=${this.page}&page_size=${this.pageSize}&table_type=${this.tableType}`;
                     const res = await fetch(url);
                     const data = await res.json();
-
                     if (data.status === 'success') {
-                        // Transform Rows
                         this.rows = data.data.map((r) => ({
                             ...r,
                             _orig_d_inv: r.d_inv,
@@ -451,12 +544,12 @@
                             _orig_d_date: r.d_date,
                             _session_history: {},
                         }));
-
-                        this.stats.total = data.stats.total;
-                        this.stats.matched = data.stats.matched;
-                        this.stats.not_found = data.stats.not_found;
-                        this.stats.mismatch = data.stats.mismatch;
-
+                        if (data.stats) {
+                            this.stats.total = data.stats.total;
+                            this.stats.matched = data.stats.matched;
+                            this.stats.not_found = data.stats.not_found;
+                            this.stats.mismatch = data.stats.mismatch;
+                        }
                         if (data.pagination) {
                             this.totalPages = data.pagination.total_pages;
                             this.totalRows = data.pagination.total_rows;
@@ -471,7 +564,7 @@
                 }
             },
 
-            // --- SCROLL HANDLERS ---
+            // ─── SCROLL ───
             handleScroll(el) {
                 this.showScrollTop = el.scrollTop > 200;
             },
@@ -480,13 +573,12 @@
                 if (el) el.scrollTo({top: 0, behavior: 'smooth'});
             },
 
-            // --- PAGINATION ACTIONS ---
+            // ─── PAGINATION ───
             changePage(newPage) {
                 if (newPage < 1 || newPage > this.totalPages) return;
                 this.page = newPage;
                 this.fetchData();
             },
-
             handlePageSizeChange() {
                 if (this.pageSizePreset !== 'custom') {
                     this.pageSize = parseInt(this.pageSizePreset);
@@ -494,7 +586,6 @@
                     this.fetchData();
                 }
             },
-
             changePageSize() {
                 if (this.pageSize > 0) {
                     this.page = 1;
@@ -502,34 +593,17 @@
                 }
             },
 
-            // --- HISTORY, EDITING & LOGIC ---
-            get uniqueHistoryFields() {
-                const fields = new Set(this.historyLogs.map((log) => log.field));
-                return Array.from(fields).sort();
-            },
-
-            get filteredHistoryLogs() {
-                if (!this.historyFilter) return this.historyLogs;
-                return this.historyLogs.filter((log) => log.field === this.historyFilter);
-            },
-
+            // ─── UNDO / REDO ───
             pushHistoryAction(rowId, field, oldValue, newValue) {
-                if (this.historyIndex < this.history.length - 1) {
-                    this.history = this.history.slice(0, this.historyIndex + 1);
-                }
+                if (this.historyIndex < this.history.length - 1) this.history = this.history.slice(0, this.historyIndex + 1);
                 this.history.push({rowId, field, oldValue, newValue});
                 this.historyIndex++;
-
                 const row = this.rows.find((r) => r.no === rowId);
                 if (row) {
-                    if (!row._session_history[field]) {
-                        row._session_history[field] = {old: oldValue, new: newValue};
-                    } else {
-                        row._session_history[field].new = newValue;
-                    }
+                    if (!row._session_history[field]) row._session_history[field] = {old: oldValue, new: newValue};
+                    else row._session_history[field].new = newValue;
                 }
             },
-
             undo() {
                 if (this.historyIndex < 0) return;
                 const action = this.history[this.historyIndex];
@@ -541,7 +615,6 @@
                 this.historyIndex--;
                 this.unsavedChanges.add(action.rowId);
             },
-
             redo() {
                 if (this.historyIndex >= this.history.length - 1) return;
                 this.historyIndex++;
@@ -554,21 +627,20 @@
                 this.unsavedChanges.add(action.rowId);
             },
 
+            // ─── EDITING ───
             editCell(row, field) {
-                this.editing = {id: row.no, field: field};
+                this.editing = {id: row.no, field};
                 row._originalValue = row[field];
                 this.$nextTick(() => {
                     const input = this.$el.querySelector('input');
                     if (input) input.focus();
                 });
             },
-
             stopEdit(row) {
                 if (this.editing.id === null) return;
                 const field = this.editing.field;
                 const newValue = row[field];
                 const oldValue = row._originalValue;
-
                 if (newValue != oldValue) {
                     this.pushHistoryAction(row.no, field, oldValue, newValue);
                     this.recalculate(row);
@@ -576,37 +648,28 @@
                 }
                 this.editing = {id: null, field: null};
             },
-
             cleanInvoice(val) {
                 if (!val) return '';
                 return String(val).replace(/[^a-zA-Z0-9]/g, '');
             },
-
             recalculate(row) {
                 if (this.editing.field !== 'p_inv_clean') row.p_inv_clean = this.cleanInvoice(row.p_inv);
                 const p_amt = parseFloat(row.p_amt) || 0;
                 const d_amt = parseFloat(row.d_amt) || 0;
                 const diff = p_amt - d_amt;
                 row.v_diff = diff;
-
                 row.v_inv = row.p_inv_clean && row.d_inv_clean && row.p_inv_clean === row.d_inv_clean;
-
                 const hasP = row.p_inv_clean !== '' || p_amt !== 0;
                 const hasD = row.d_inv_clean !== '' || d_amt !== 0;
-
                 if (hasP && !hasD) row.status = 'NOT FOUND';
                 else if (hasP && hasD && Math.abs(diff) < 0.05) row.status = 'MATCHED';
                 else if (hasP && hasD) row.status = 'MISMATCH';
                 else row.status = 'UNKNOWN';
             },
 
-            get hasUnsavedChanges() {
-                return this.unsavedChanges.size > 0;
-            },
-
+            // ─── SAVE ───
             async saveChanges() {
                 if (!this.hasUnsavedChanges) return;
-
                 const dirtyRows = this.rows.filter((r) => this.unsavedChanges.has(r.no));
                 for (const row of dirtyRows) {
                     try {
@@ -621,25 +684,18 @@
                                 p_date: row.p_date,
                                 p_amt: row.p_amt,
                                 p_tin: row.p_tin,
-
                                 d_inv: row.d_inv,
                                 d_tin: row.d_tin,
                                 d_name: row.d_name,
                                 d_date: row.d_date,
                                 d_amt: row.d_amt,
-
                                 original_d_inv: row._orig_d_inv,
                                 original_d_tin: row._orig_d_tin,
                                 original_d_date: row._orig_d_date,
                             },
                             history: row._session_history,
                         };
-
-                        await fetch('{% url "crosscheck:update_result_row" %}', {
-                            method: 'POST',
-                            body: JSON.stringify(payload),
-                        });
-
+                        await fetch('{% url "crosscheck:update_result_row" %}', {method: 'POST', body: JSON.stringify(payload)});
                         this.unsavedChanges.delete(row.no);
                         row._session_history = {};
                     } catch (e) {
@@ -652,19 +708,17 @@
                 this.fetchData();
             },
 
+            // ─── HISTORY MODAL ───
             async viewHistory(rowId) {
                 this.historyRowId = rowId;
                 this.historyLogs = [];
                 this.historyFilter = '';
                 this.historyLoading = true;
                 this.showHistoryModal = true;
-
                 try {
                     const res = await fetch(`{% url "crosscheck:get_row_history" %}?ovatr=${this.ovatrCode}&no=${rowId}`);
                     const data = await res.json();
-                    if (data.status === 'success') {
-                        this.historyLogs = data.data;
-                    }
+                    if (data.status === 'success') this.historyLogs = data.data;
                 } catch (e) {
                     console.error(e);
                 } finally {
@@ -672,6 +726,7 @@
                 }
             },
 
+            // ─── TABLE SWITCH ───
             switchTable(type) {
                 if (this.tableType === type) return;
                 this.tableType = type;
@@ -683,24 +738,17 @@
                 this.fetchData();
             },
 
+            // ─── DOWNLOAD ───
             downloadFile() {
                 window.location.href = "{% url 'crosscheck:download_report' %}?ovatr_code=" + this.ovatrCode;
             },
 
-            get filteredRows() {
-                if (!this.search && this.filter === 'ALL') return this.rows;
-                const term = this.search.toLowerCase();
-                return this.rows.filter((row) => {
-                    const matchesSearch = !term || (row.p_desc || '').toLowerCase().includes(term) || (row.p_inv || '').toLowerCase().includes(term) || (row.d_inv || '').toLowerCase().includes(term);
-                    const matchesFilter = this.filter === 'ALL' || row.status === this.filter;
-                    return matchesSearch && matchesFilter;
-                });
-            },
-
+            // ─── FORMAT ───
             formatNumber(num) {
                 return new Intl.NumberFormat('en-US').format(num);
             },
         }));
     });
 </script>
+
 {% endblock %}

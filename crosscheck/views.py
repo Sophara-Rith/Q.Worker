@@ -1126,7 +1126,7 @@ def get_results_data(request):
                     'state_burden': d_full[12], 'withheld': d_full[13], 'plt': d_full[14],
                     'spec_goods': d_full[15], 'spec_serv': d_full[16], 'accom': d_full[17],
                     'redemption': d_full[18], 'notes': d_full[19], 'desc': d_full[20],
-                    'status': d_full[21]
+                    'dec_status': d_full[21]
                 }
             
             results.append({
