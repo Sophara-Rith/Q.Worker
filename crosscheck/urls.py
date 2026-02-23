@@ -14,7 +14,8 @@ urlpatterns = [
     path('report/', views.report_view, name='report'),
     path('api/report/data/', views.get_report_data, name='get_report_data'),
     path('api/report/update/', views.update_report_cell, name='update_report_cell'),
-    path('api/report/download/', views.download_full_report, name='download_full_report'),
+    path('download_full_report/', views.download_full_report, name='download_full_report'),
+    path('download_word_report/', views.download_word_report, name='download_word_report'),
 
     # --- APIs (Existing) ---
     path('api/get-history/', views.get_history_api, name='get_history_api'),

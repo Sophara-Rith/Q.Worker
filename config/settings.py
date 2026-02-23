@@ -23,10 +23,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-&3_@2v=m4sm^ggatvb8s0#%vetzffjf@j3ivnjcvgd2wwe&7ui'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# ALLOWED_HOSTS must include the ngrok domain to accept the tunnel traffic
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '.ngrok-free.app']
 
-ALLOWED_HOSTS = []
+# Since ngrok uses HTTPS by default, we tell Django to trust the proxy header
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
+# Keep these False for local/ngrok testing so cookies work over HTTP/HTTPS tunnels
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
+
+DISABLE_HARDWARE_ID_CHECK = True
 
 # Application definition
 

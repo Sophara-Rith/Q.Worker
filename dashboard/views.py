@@ -7,7 +7,8 @@ from django.contrib.auth.decorators import login_required
 
 def get_db_connection():
     # Helper to connect to the same DuckDB as Crosscheck app
-    con = duckdb.connect(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
+    db_path = os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb')
+    con = duckdb.connect(db_path)
     # Ensure sessions table exists (in case Dashboard is hit before any Crosscheck)
     con.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
@@ -34,51 +35,60 @@ def index(request):
     con = get_db_connection()
     
     try:
-        # 1. KPI: Total Sessions
-        total_sessions = con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+        # Safely check existing tables to prevent crash on first load
+        tables_query = con.execute("SHOW TABLES").fetchall()
+        tables = [r[0] for r in tables_query]
         
-        # 2. KPI: Average Match Rate (only for completed/processed items)
-        avg_match_result = con.execute("SELECT AVG(match_rate) FROM sessions WHERE total_rows > 0").fetchone()
-        avg_match_rate = round(avg_match_result[0] or 0.0, 1)
+        total_sessions = 0
+        avg_match_rate = 0.0
+        
+        if 'sessions' in tables:
+            total_sessions = con.execute("SELECT COUNT(*) FROM sessions").fetchone()[0]
+            if total_sessions > 0:
+                avg_res = con.execute("SELECT AVG(match_rate) FROM sessions WHERE total_rows > 0").fetchone()
+                avg_match_rate = round(avg_res[0] or 0.0, 1)
 
-        # 3. KPI: Total Rows Processed
-        total_rows = con.execute("SELECT SUM(total_rows) FROM sessions").fetchone()[0] or 0
+        # Dynamically calculate TOTAL ROWS from actual master tables
+        total_rows = 0
+        master_tables = ['purchase', 'sale', 'tax_declaration', 'reverse_charge', 'tax_paid']
+        for table in master_tables:
+            if table in tables:
+                total_rows += con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
         
-        # 4. Recent Activity (Top 5)
-        # We join with company_info just in case, but sessions table has most data now
-        recent_sessions = con.execute("""
-            SELECT ovatr, company_name, tin, status, match_rate, last_modified
-            FROM sessions
-            ORDER BY last_modified DESC
-            LIMIT 5
-        """).fetchall()
-        
-        # Format for template
+        # Recent Activity (Top 5)
         recent_activity = []
-        for r in recent_sessions:
-            last_mod = r[5]
-            time_str = last_mod.strftime('%Y-%m-%d %H:%M') if last_mod else "N/A"
+        if 'sessions' in tables:
+            recent_sessions = con.execute("""
+                SELECT ovatr, company_name, tin, status, match_rate, last_modified
+                FROM sessions
+                ORDER BY last_modified DESC
+                LIMIT 5
+            """).fetchall()
             
-            # Calculate time ago roughly for display
-            time_ago = "Just now"
-            if last_mod:
-                diff = datetime.now() - last_mod
-                if diff.days > 0: time_ago = f"{diff.days} days ago"
-                elif diff.seconds > 3600: time_ago = f"{diff.seconds // 3600} hours ago"
-                elif diff.seconds > 60: time_ago = f"{diff.seconds // 60} mins ago"
+            # Format for template
+            for r in recent_sessions:
+                last_mod = r[5]
+                time_str = last_mod.strftime('%Y-%m-%d %H:%M') if last_mod else "N/A"
+                
+                # Calculate time ago roughly for display
+                time_ago = "Just now"
+                if last_mod:
+                    diff = datetime.now() - last_mod
+                    if diff.days > 0: time_ago = f"{diff.days} days ago"
+                    elif diff.seconds > 3600: time_ago = f"{diff.seconds // 3600} hours ago"
+                    elif diff.seconds > 60: time_ago = f"{diff.seconds // 60} mins ago"
 
-            recent_activity.append({
-                'ovatr': r[0],
-                'company_name': r[1],
-                'tin': r[2] or 'N/A',
-                'status': r[3],
-                'match_rate': round(r[4], 1),
-                'last_modified': time_str,
-                'time_ago': time_ago
-            })
+                recent_activity.append({
+                    'ovatr': r[0],
+                    'company_name': r[1],
+                    'tin': r[2] or 'N/A',
+                    'status': r[3],
+                    'match_rate': round(r[4] or 0.0, 1),
+                    'last_modified': time_str,
+                    'time_ago': time_ago
+                })
 
     except Exception as e:
-        # Fallback if DB not ready
         print(f"Dashboard Error: {e}")
         total_sessions = 0
         avg_match_rate = 0.0
