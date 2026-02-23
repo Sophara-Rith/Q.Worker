@@ -10,6 +10,10 @@
                 <span class="text-[10px] font-bold text-indigo-400 dark:text-indigo-300 uppercase tracking-wider">Session Key</span>
                 <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-400" x-text="ovatrCode"></span>
                 <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse ml-1"></div>
+                <div class="w-px h-4 bg-indigo-200 dark:bg-indigo-700 mx-1"></div>
+                <button @click="clearSession()" class="text-red-400 hover:text-red-600 transition-colors" title="Clear Session & Restart">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </button>
             </div>
             <div class="flex items-center gap-2 text-sm font-medium text-gray-400 bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm">
                 <span :class="state === 'locked' ? 'text-brand-600 dark:text-brand-400' : ''">1. Auth</span>
@@ -477,7 +481,7 @@
                 audit_end: '',
                 contact_title: 'លោក',
                 contact_name: '',
-                request_submission_date: '', // The exact date they submitted the request
+                request_submission_date: '',
             },
 
             // Data Structure matching the backend database
@@ -521,7 +525,7 @@
                 i_moc_number: '',
                 i_moc_date: '',
                 i_patent_date: '',
-                i_patent_amount: '', // <-- NEW: Added Patent Amount field
+                i_patent_amount: '',
                 i_vat_cert_date: '',
                 i_request_submission_date: '',
 
@@ -534,6 +538,48 @@
                 window.addEventListener('scroll', () => {
                     this.showScrollButton = window.pageYOffset > 300;
                 });
+
+                // 1. Load from localStorage if a previous draft exists
+                const savedDraft = localStorage.getItem('crosscheck_draft');
+                if (savedDraft) {
+                    try {
+                        const parsed = JSON.parse(savedDraft);
+                        if (parsed.state) this.state = parsed.state;
+                        if (parsed.ovatrCode) this.ovatrCode = parsed.ovatrCode;
+                        if (parsed.tempFilePath) this.tempFilePath = parsed.tempFilePath;
+                        if (parsed.formData) this.formData = {...this.formData, ...parsed.formData};
+                        if (parsed.uiState) this.uiState = {...this.uiState, ...parsed.uiState};
+                    } catch (e) {
+                        console.error('Failed to parse saved state from local storage', e);
+                    }
+                }
+
+                // 2. Set up watchers to automatically persist state on every change
+                this.$watch('state', () => this.persistState());
+                this.$watch('ovatrCode', () => this.persistState());
+                this.$watch('tempFilePath', () => this.persistState());
+                this.$watch('formData', () => this.persistState(), {deep: true});
+                this.$watch('uiState', () => this.persistState(), {deep: true});
+            },
+
+            // Helper to save state locally
+            persistState() {
+                const draft = {
+                    state: this.state,
+                    ovatrCode: this.ovatrCode,
+                    tempFilePath: this.tempFilePath,
+                    formData: this.formData,
+                    uiState: this.uiState,
+                };
+                localStorage.setItem('crosscheck_draft', JSON.stringify(draft));
+            },
+
+            // Clear session fully
+            clearSession() {
+                if (confirm('Warning: This will clear all your progress and current data. Continue?')) {
+                    localStorage.removeItem('crosscheck_draft');
+                    window.location.reload();
+                }
             },
 
             // --- Date Formatting Helper ---
@@ -657,7 +703,6 @@
                     this.formData.i_contact_person = '';
                 }
 
-                // COMPILE THE EXACT REQUEST DATE STRING
                 if (this.uiState.request_submission_date) {
                     this.formData.i_request_submission_date = `ស្នើសុំបង្វិលសងអាករលើតម្លៃបន្ថែមតាមអនឡាញចុះ${this.formatKhmerDate(this.uiState.request_submission_date)}`;
                 } else {
@@ -735,6 +780,7 @@
             },
 
             downloadAnnex3() {
+                localStorage.removeItem('crosscheck_draft'); // Clear cache on successful generation
                 const url = "{% url 'crosscheck:processing' %}?ovatr_code=" + this.ovatrCode;
                 window.location.href = url;
             },
