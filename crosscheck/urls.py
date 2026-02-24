@@ -38,4 +38,7 @@ urlpatterns = [
     # --- Download APIs ---
     # NOTE: download_report is for the Annex III Result file (Results Module)
     path('api/download-report/', views.download_report, name='download_report'),
+
+    # --- Crosscheck Status APIs ---
+    path('api/user-statuses/', views.api_user_statuses, name='api_user_statuses'),
 ]

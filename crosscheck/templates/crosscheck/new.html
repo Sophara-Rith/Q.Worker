@@ -1,436 +1,525 @@
 {% extends 'base.html' %} {% load static %} {% block title %}New Crosscheck{% endblock %} {% block content %}
-<div x-data="crosscheckWorkflow()" x-on:scroll.window="showScrollButton = window.pageYOffset > 300" class="max-w-[1600px] mx-auto pb-20 relative">
-    <div class="flex items-center justify-between mb-8">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white tracking-tight">New Crosscheck</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Initiate audit process & verify company master data.</p>
-        </div>
-        <div class="flex items-center gap-4">
-            <div x-show="ovatrCode" x-transition class="hidden md:flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 px-3 py-1.5 rounded-lg shadow-sm">
-                <span class="text-[10px] font-bold text-indigo-400 dark:text-indigo-300 uppercase tracking-wider">Session Key</span>
-                <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-400" x-text="ovatrCode"></span>
-                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse ml-1"></div>
-                <div class="w-px h-4 bg-indigo-200 dark:bg-indigo-700 mx-1"></div>
-                <button @click="clearSession()" class="text-red-400 hover:text-red-600 transition-colors" title="Clear Session & Restart">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                </button>
+
+<style>
+    /* Custom Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 10px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+    }
+</style>
+
+<div x-data="crosscheckWorkflow()" x-on:scroll.window="showScrollButton = window.pageYOffset > 300" class="min-h-[calc(100vh-4rem)] p-4 md:p-8 bg-slate-50 dark:bg-[#0f172a] text-slate-800 dark:text-slate-200 relative overflow-hidden">
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none z-0"></div>
+
+    <div class="max-w-[1400px] mx-auto relative z-10 pb-20">
+        <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
+            <div>
+                <h1 class="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-3">New Crosscheck</h1>
+                <p class="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">Initiate audit process & verify company master data.</p>
             </div>
-            <div class="flex items-center gap-2 text-sm font-medium text-gray-400 bg-white dark:bg-gray-800 px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-700 shadow-sm">
-                <span :class="state === 'locked' ? 'text-brand-600 dark:text-brand-400' : ''">1. Auth</span>
-                <span class="text-gray-300 dark:text-gray-600">/</span>
-                <span :class="state === 'upload' ? 'text-brand-600 dark:text-brand-400' : ''">2. Upload</span>
-                <span class="text-gray-300 dark:text-gray-600">/</span>
-                <span :class="state === 'preview' ? 'text-brand-600 dark:text-brand-400' : ''">3. Verify</span>
-            </div>
-        </div>
-    </div>
 
-    <div x-show="state === 'locked'" x-transition class="max-w-md mx-auto bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-8 text-center mt-12">
-        <div class="w-14 h-14 bg-gray-50 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-5">
-            <svg class="w-6 h-6 text-gray-400 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-        </div>
-        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-1">Security Check</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mb-6">Enter 18-digit OVATR code (OVATR...)</p>
-        <div class="relative">
-            <input type="text" x-model="inputCode" @keyup="validateCode()" class="block w-full text-center text-lg font-mono tracking-widest border border-gray-400 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 uppercase py-2 shadow-md transition-shadow leading-relaxed" placeholder="OVATR..." maxlength="18" autofocus />
-            <div class="text-xs text-red-500 font-bold mt-2 h-4" x-text="codeError"></div>
-        </div>
-    </div>
-
-    <div x-show="state === 'upload'" x-cloak class="max-w-2xl mx-auto mt-10 relative">
-        <div
-            class="relative border-2 border-dashed rounded-xl p-12 text-center transition-all bg-white dark:bg-gray-800 cursor-pointer group shadow-sm hover:shadow-md overflow-hidden"
-            :class="isDragging ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-brand-400 dark:hover:border-brand-500 hover:bg-gray-50 dark:hover:bg-gray-700'"
-            @dragover.prevent="isDragging = true"
-            @dragleave.prevent="isDragging = false"
-            @drop.prevent="handleDrop($event)"
-            @click="$refs.fileInput.click()"
-        >
-            <input type="file" x-ref="fileInput" class="hidden" accept=".xlsx,.xls" @change="handleFileSelect($event)" />
-            <div class="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
-            </div>
-            <h3 class="text-lg font-bold text-gray-900 dark:text-white">Upload Core Excel Workbook</h3>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Drag & drop or click to browse</p>
-
-            <div x-show="isProcessing" class="absolute inset-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur z-10 flex flex-col items-center justify-center p-8">
-                <div class="animate-spin rounded-full h-10 w-10 border-b-4 border-brand-600 mb-4"></div>
-                <h4 class="text-sm font-bold text-gray-800 dark:text-gray-200 mb-1" x-text="progressMessage">Extracting Data...</h4>
-            </div>
-        </div>
-    </div>
-
-    <div x-show="state === 'preview'" x-cloak x-transition.opacity>
-        <div class="flex items-center justify-end gap-3 mb-6 sticky top-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur py-4 z-40 border-b border-gray-200 dark:border-gray-800">
-            <span x-text="saveMessage" class="text-sm font-bold text-green-600 dark:text-green-400" x-transition></span>
-            <button @click="resetUpload()" :disabled="isSaving" class="px-5 py-2.5 text-xs font-bold text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">Cancel</button>
-            <button @click="saveComputedData()" :disabled="isSaving" :class="isSaving ? 'opacity-75 cursor-wait' : 'hover:bg-brand-700'" class="px-6 py-2.5 text-xs font-bold text-white bg-brand-600 rounded-lg shadow-md transition-colors flex items-center gap-2">
-                <svg x-show="isSaving" class="animate-spin -ml-1 mr-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span x-text="isSaving ? 'Saving Data...' : 'Confirm & Generate'"></span>
-            </button>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6">
-            <div class="lg:col-span-12 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-brand-200 dark:border-brand-900/50 bg-brand-50/30 dark:bg-brand-900/10">
-                <div class="mb-5 border-b border-brand-100 dark:border-brand-900/50 pb-2">
-                    <h4 class="text-sm font-bold text-brand-700 dark:text-brand-400 uppercase tracking-wider flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                        I. ព័ត៌មានសម្រាប់របាយការណ៍ (Report Configuration)
-                    </h4>
+            <div class="flex items-center gap-4">
+                <div x-show="ovatrCode" x-transition class="hidden md:flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-3.5 py-2 rounded-lg shadow-inner ring-1 ring-inset ring-indigo-500/20">
+                    <span class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest opacity-80">Session ID</span>
+                    <span class="text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 leading-none" x-text="ovatrCode"></span>
+                    <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+                    <div class="w-px h-4 bg-indigo-500/30 mx-1.5"></div>
+                    <button @click="clearSession()" class="text-rose-400 hover:text-rose-500 transition-colors" title="Clear Session & Restart">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </button>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">Auditor Names (សវនករ)</label>
-                        <template x-for="(auditor, idx) in uiState.auditors" :key="idx">
-                            <div class="flex gap-2 mb-2">
-                                <select x-model="auditor.title" class="w-1/3 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-2 py-2 focus:ring-2 focus:ring-brand-500 font-khmer">
+                <div class="flex items-center gap-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800/80 backdrop-blur px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-sm ring-1 ring-inset ring-white/5">
+                    <span :class="state === 'locked' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">1. Auth</span>
+                    <span class="text-slate-300 dark:text-slate-600">/</span>
+                    <span :class="state === 'upload' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">2. Upload</span>
+                    <span class="text-slate-300 dark:text-slate-600">/</span>
+                    <span :class="state === 'preview' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">3. Verify</span>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="state === 'locked'" x-transition class="max-w-md mx-auto bg-white dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 p-10 text-center mt-20 relative overflow-hidden ring-1 ring-inset ring-white/5">
+            <div class="absolute -right-10 -top-10 w-32 h-32 bg-indigo-500/10 rounded-full blur-2xl"></div>
+
+            <div class="w-16 h-16 bg-slate-100 dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-6 ring-1 ring-inset ring-slate-500/20 shadow-inner">
+                <svg class="w-7 h-7 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+            </div>
+            <h3 class="text-xl font-extrabold text-slate-900 dark:text-white mb-2 tracking-tight">Security Check</h3>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mb-8 font-medium">Enter 18-digit Session ID (OVATR...)</p>
+
+            <div class="relative">
+                <input
+                    type="text"
+                    x-model="inputCode"
+                    @keyup="validateCode()"
+                    class="block w-full text-center text-lg font-mono tracking-widest border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 uppercase py-3 shadow-inner transition-all leading-relaxed"
+                    placeholder="OVATR..."
+                    maxlength="18"
+                    autofocus
+                />
+                <div class="text-[10px] font-bold tracking-widest uppercase mt-3 h-4 transition-colors duration-300" :class="codeError.includes('Verifying') ? 'text-indigo-500 animate-pulse' : 'text-rose-500'" x-text="codeError"></div>
+            </div>
+        </div>
+
+        <div x-show="state === 'upload'" x-cloak class="max-w-2xl mx-auto mt-16 relative">
+            <div
+                class="relative border-2 border-dashed rounded-2xl p-16 text-center transition-all bg-white dark:bg-slate-800/50 backdrop-blur-md cursor-pointer group shadow-xl overflow-hidden"
+                :class="isDragging ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 ring-4 ring-indigo-500/10' : 'border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800/80'"
+                @dragover.prevent="isDragging = true"
+                @dragleave.prevent="isDragging = false"
+                @drop.prevent="handleDrop($event)"
+                @click="$refs.fileInput.click()"
+            >
+                <input type="file" x-ref="fileInput" class="hidden" accept=".xlsx,.xls" @change="handleFileSelect($event)" />
+
+                <div class="w-20 h-20 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 group-hover:bg-indigo-100 dark:group-hover:bg-indigo-500/20 transition-all duration-300 shadow-inner ring-1 ring-inset ring-indigo-500/20">
+                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                </div>
+                <h3 class="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">Upload Core Excel Workbook</h3>
+                <p class="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium">Drag & drop or click to browse files (.xlsx)</p>
+
+                <div x-show="isProcessing" x-transition.opacity class="absolute inset-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md z-10 flex flex-col items-center justify-center p-8">
+                    <svg class="animate-spin h-10 w-10 text-indigo-500 mb-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <h4 class="text-sm font-bold text-slate-800 dark:text-white tracking-widest uppercase" x-text="progressMessage">Extracting Data...</h4>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="state === 'preview'" x-cloak x-transition.opacity>
+            <div class="flex items-center justify-between gap-4 mb-6 sticky top-0 bg-slate-50/90 dark:bg-[#0f172a]/90 backdrop-blur-xl py-4 z-40 border-b border-slate-200 dark:border-slate-800 shadow-sm px-2">
+                <div class="flex items-center gap-3">
+                    <span x-show="isSaving" class="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-bold rounded-lg uppercase tracking-wider shadow-inner">
+                        <svg class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span x-text="saveMessage"></span>
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <button @click="resetUpload()" :disabled="isSaving" class="px-5 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-50">Cancel</button>
+                    <button @click="saveComputedData()" :disabled="isSaving" :class="isSaving ? 'opacity-75 cursor-wait' : 'hover:shadow-indigo-500/30 hover:-translate-y-0.5'" class="px-6 py-2.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-violet-600 rounded-xl shadow-lg transition-all flex items-center gap-2 ring-1 ring-inset ring-white/20">
+                        <svg x-show="isSaving" class="animate-spin -ml-1 mr-1 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <span x-text="isSaving ? 'Processing...' : 'Confirm & Generate'"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-12 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-xl border border-indigo-200 dark:border-indigo-500/30 bg-indigo-50/30 dark:bg-indigo-900/10 ring-1 ring-inset ring-indigo-500/10 relative overflow-hidden">
+                    <div class="absolute -right-20 -top-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+                    <div class="mb-6 border-b border-indigo-200 dark:border-indigo-500/30 pb-3 relative z-10">
+                        <h4 class="text-sm font-extrabold text-indigo-700 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                            I. ព័ត៌មានសម្រាប់របាយការណ៍ (Report Configuration)
+                        </h4>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
+                        <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Auditor Names (សវនករ)</label>
+                            <template x-for="(auditor, idx) in uiState.auditors" :key="idx">
+                                <div class="flex gap-2 mb-2.5">
+                                    <select x-model="auditor.title" class="w-1/3 text-xs font-bold border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
+                                        <option value="លោក">លោក</option>
+                                        <option value="លោកស្រី">លោកស្រី</option>
+                                        <option value="កញ្ញា">កញ្ញា</option>
+                                    </select>
+                                    <input type="text" x-model="auditor.name" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 font-khmer focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="ឈ្មោះសវនករ..." />
+                                    <button @click="uiState.auditors.splice(idx, 1)" class="text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 font-bold px-3 rounded-lg transition-colors" x-show="uiState.auditors.length > 1">✕</button>
+                                </div>
+                            </template>
+                            <button @click="uiState.auditors.push({title:'លោក', name:''})" class="text-xs text-indigo-600 dark:text-indigo-400 font-bold mt-1 hover:underline flex items-center gap-1">+ បន្ថែមសវនករ</button>
+                        </div>
+
+                        <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Contact Person (អ្នកតំណាង)</label>
+                            <div class="flex gap-2 mb-3">
+                                <select x-model="uiState.contact_title" class="w-1/3 text-xs font-bold border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
                                     <option value="លោក">លោក</option>
                                     <option value="លោកស្រី">លោកស្រី</option>
-                                    <option value="កញ្ញា">កញ្ញា</option>
                                 </select>
-                                <input type="text" x-model="auditor.name" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 font-khmer focus:ring-2 focus:ring-brand-500" placeholder="ឈ្មោះសវនករ..." />
-                                <button @click="uiState.auditors.splice(idx, 1)" class="text-red-400 hover:text-red-600 font-bold px-2" x-show="uiState.auditors.length > 1">✕</button>
+                                <input type="text" x-model="uiState.contact_name" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 font-khmer focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="ឈ្មោះតំណាងក្រុមហ៊ុន..." />
                             </div>
-                        </template>
-                        <button @click="uiState.auditors.push({title:'លោក', name:''})" class="text-xs text-brand-600 dark:text-brand-400 font-bold mt-1 hover:underline">+ បន្ថែមសវនករ</button>
-                    </div>
+                            <input type="text" x-model="formData.i_contact_position" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 font-khmer focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="តួនាទី (ឧ. ប្រធានគណនេយ្យ)" />
+                        </div>
 
-                    <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">Contact Person (អ្នកតំណាង)</label>
-                        <div class="flex gap-2 mb-3">
-                            <select x-model="uiState.contact_title" class="w-1/3 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-2 py-2 focus:ring-2 focus:ring-brand-500 font-khmer">
-                                <option value="លោក">លោក</option>
-                                <option value="លោកស្រី">លោកស្រី</option>
-                            </select>
-                            <input type="text" x-model="uiState.contact_name" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 font-khmer focus:ring-2 focus:ring-brand-500" placeholder="ឈ្មោះតំណាងក្រុមហ៊ុន..." />
+                        <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Requested Period (រយៈពេលស្នើសុំ)</label>
+                            <div class="flex items-center gap-3 mb-3">
+                                <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">ចាប់ពី៖</span>
+                                <select x-model="uiState.req_from_month" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
+                                    <option value="">ជ្រើសរើសខែ...</option>
+                                    <template x-for="m in khmerMonths" :key="m"><option :value="m" x-text="m"></option></template>
+                                </select>
+                                <input type="text" x-model="uiState.req_from_year" class="w-24 text-xs font-bold font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 text-center focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="YYYY" maxlength="4" />
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">ដល់៖</span>
+                                <select x-model="uiState.req_to_month" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
+                                    <option value="">ជ្រើសរើសខែ...</option>
+                                    <template x-for="m in khmerMonths" :key="m"><option :value="m" x-text="m"></option></template>
+                                </select>
+                                <input type="text" x-model="uiState.req_to_year" class="w-24 text-xs font-bold font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 text-center focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="YYYY" maxlength="4" />
+                            </div>
                         </div>
-                        <input type="text" x-model="formData.i_contact_position" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 font-khmer focus:ring-2 focus:ring-brand-500" placeholder="តួនាទី (ឧ. ប្រធានគណនេយ្យ)" />
-                    </div>
 
-                    <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">Requested Period (រយៈពេលស្នើសុំ)</label>
-                        <div class="flex items-center gap-2 mb-3">
-                            <span class="text-xs font-bold text-gray-500 w-12 text-right">ចាប់ពី៖</span>
-                            <select x-model="uiState.req_from_month" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-2 py-2 font-khmer">
-                                <option value="">ជ្រើសរើសខែ...</option>
-                                <template x-for="m in khmerMonths" :key="m">
-                                    <option :value="m" x-text="m"></option>
-                                </template>
-                            </select>
-                            <input type="text" x-model="uiState.req_from_year" class="w-24 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-center" placeholder="ឆ្នាំ (YYYY)" maxlength="4" />
+                        <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Audit Timeline (កាលបរិច្ឆេទចុះសវនកម្ម)</label>
+                            <div class="flex items-center gap-3 mb-3">
+                                <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">ថ្ងៃចុះ៖</span>
+                                <input type="date" x-model="uiState.audit_start" class="w-full text-xs font-mono font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">បញ្ច​ប់៖</span>
+                                <input type="date" x-model="uiState.audit_end" class="w-full text-xs font-mono font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-gray-500 w-12 text-right">ដល់៖</span>
-                            <select x-model="uiState.req_to_month" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-2 py-2 font-khmer">
-                                <option value="">ជ្រើសរើសខែ...</option>
-                                <template x-for="m in khmerMonths" :key="m">
-                                    <option :value="m" x-text="m"></option>
-                                </template>
-                            </select>
-                            <input type="text" x-model="uiState.req_to_year" class="w-24 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 text-center" placeholder="ឆ្នាំ (YYYY)" maxlength="4" />
-                        </div>
-                    </div>
 
-                    <div class="lg:col-span-2 bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-3">Audit Timeline (កាលបរិច្ឆេទចុះសវនកម្ម)</label>
-                        <div class="flex items-center gap-2 mb-3">
-                            <span class="text-xs font-bold text-gray-500 w-12 text-right">ថ្ងៃចុះ៖</span>
-                            <input type="date" x-model="uiState.audit_start" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500" />
+                        <div class="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">MOC Num</label>
+                                <input type="text" x-model="formData.i_moc_number" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" placeholder="No..." />
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">MOC Date</label>
+                                <input type="date" x-model="formData.i_moc_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Patent Date</label>
+                                <input type="date" x-model="formData.i_patent_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Patent Amt</label>
+                                <input type="text" x-model="formData.i_patent_amount" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" placeholder="1,140,000" />
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">VAT Cert Date</label>
+                                <input type="date" x-model="formData.i_vat_cert_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Request Date</label>
+                                <input type="date" x-model="uiState.request_submission_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                            </div>
                         </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-bold text-gray-500 w-12 text-right">បញ្ច​ប់៖</span>
-                            <input type="date" x-model="uiState.audit_end" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500" />
-                        </div>
-                    </div>
 
-                    <div class="lg:col-span-4 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-2">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">MOC Number</label>
-                            <input type="text" x-model="formData.i_moc_number" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500 shadow-sm" placeholder="No..." />
+                        <div class="lg:col-span-4 mt-2">
+                            <label class="block text-[10px] font-extrabold text-amber-600 dark:text-amber-500 uppercase tracking-widest mb-2">Amount Requested (ទឹកប្រាក់ស្នើសុំបង្វិលសង)</label>
+                            <input type="text" x-model="formData.i_amount_requested" class="w-full text-xl font-mono font-black border border-amber-300 dark:border-amber-500/50 rounded-xl px-5 py-4 text-amber-900 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-300 focus:ring-2 focus:ring-amber-500 shadow-inner transition-shadow" placeholder="Ex: 931,937,106" />
                         </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">MOC Date</label>
-                            <input type="date" x-model="formData.i_moc_date" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500 shadow-sm" />
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Patent Date</label>
-                            <input type="date" x-model="formData.i_patent_date" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500 shadow-sm" />
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Patent Amount</label>
-                            <input type="text" x-model="formData.i_patent_amount" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500 shadow-sm" placeholder="Ex: 1,140,000" />
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VAT Cert Date</label>
-                            <input type="date" x-model="formData.i_vat_cert_date" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500 shadow-sm" />
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Request Date</label>
-                            <input type="date" x-model="uiState.request_submission_date" class="w-full text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-2 focus:ring-2 focus:ring-brand-500 shadow-sm" />
-                        </div>
-                    </div>
-
-                    <div class="lg:col-span-4 mt-2">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Amount Requested (ទឹកប្រាក់ស្នើសុំបង្វិលសង)</label>
-                        <input type="text" x-model="formData.i_amount_requested" class="w-full text-lg border border-gray-400 dark:border-gray-600 rounded-lg px-4 py-3 font-bold text-gray-900 bg-yellow-50 dark:bg-yellow-900/30 dark:text-yellow-100 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" placeholder="Ex: 931,937,106" />
                     </div>
                 </div>
-            </div>
 
-            <div class="lg:col-span-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mt-4">
-                <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">A. Core Identity</h4>
-                <div class="grid grid-cols-2 gap-5">
-                    <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (English)</label>
-                        <input type="text" x-model="formData.company_name_en" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-bold text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div class="col-span-1">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Company Name (Khmer)</label>
-                        <input type="text" x-model="formData.company_name_kh" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed font-khmer text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (New)</label>
-                        <input type="text" x-model="formData.vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed bg-yellow-50 dark:bg-yellow-900/30 text-gray-900 dark:text-yellow-100 font-bold focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">VATIN (Old)</label>
-                        <input type="text" x-model="formData.old_vatin" class="w-full text-sm font-mono border border-gray-400 dark:border-gray-600 dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 dark:text-gray-300 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Enterprise ID</label>
-                        <input type="text" x-model="formData.enterprise_id" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">File Barcode</label>
-                        <input type="text" x-model="formData.file_barcode" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-500 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                </div>
-            </div>
-
-            <div class="lg:col-span-4 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 mt-4">
-                <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">B. Registration</h4>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Status</label>
-                        <input type="text" x-model="formData.status" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg px-3 py-3.5 leading-relaxed text-green-700 dark:text-green-400 font-bold bg-green-50 dark:bg-green-900/20 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Reg. Date</label>
-                            <input type="text" x-model="formData.reg_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Success Date</label>
-                            <input type="text" x-model="formData.success_date" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-3">
+                <div class="lg:col-span-8 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 mt-2">
+                    <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                        A. Core Identity
+                    </h4>
+                    <div class="grid grid-cols-2 gap-6">
                         <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Taxpayer Type</label>
-                            <input type="text" x-model="formData.taxpayer_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Company Name (English)</label>
+                            <input type="text" x-model="formData.company_name_en" class="w-full text-sm border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
                         </div>
                         <div class="col-span-1">
-                            <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Tax Year</label>
-                            <input type="text" x-model="formData.tax_year" class="w-full text-sm border border-gray-400 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-3.5 leading-relaxed text-gray-900 dark:text-white font-normal focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Company Name (Khmer)</label>
+                            <input type="text" x-model="formData.company_name_kh" class="w-full text-sm border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 font-bold font-khmer text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">VATIN (New)</label>
+                            <input type="text" x-model="formData.vatin" class="w-full text-sm font-mono border border-indigo-200 dark:border-indigo-500/30 rounded-xl px-4 py-3.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-900 dark:text-indigo-300 font-extrabold focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">VATIN (Old)</label>
+                            <input type="text" x-model="formData.old_vatin" class="w-full text-sm font-mono border border-slate-200 dark:border-slate-700/50 dark:bg-slate-900/50 rounded-xl px-4 py-3.5 text-slate-500 dark:text-slate-400 bg-slate-50 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Enterprise ID</label>
+                            <input type="text" x-model="formData.enterprise_id" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">File Barcode</label>
+                            <input type="text" x-model="formData.file_barcode" class="w-full text-sm font-mono border border-slate-200 dark:border-slate-700/50 dark:bg-slate-900/50 rounded-xl px-4 py-3.5 text-slate-500 dark:text-slate-400 bg-slate-50 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Registered Entity</label>
-                        <input type="text" x-model="formData.registered_entity" class="w-full text-xs border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
                 </div>
-            </div>
 
-            <div class="lg:col-span-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">C. Contact Info</h4>
-                <div class="grid grid-cols-2 gap-4 mb-4">
-                    <div><label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Phone</label><input type="text" x-model="formData.phone" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" /></div>
-                    <div><label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Email</label><input type="text" x-model="formData.email" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" /></div>
-                </div>
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Main Address</label>
-                        <textarea x-model="formData.address_main" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
+                <div class="lg:col-span-4 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 mt-2">
+                    <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        B. Registration
+                    </h4>
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Status</label>
+                            <input type="text" x-model="formData.status" class="w-full text-sm font-bold border border-emerald-200 dark:border-emerald-500/30 rounded-xl px-4 py-3.5 text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 focus:ring-2 focus:ring-emerald-500 shadow-sm transition-all" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Reg. Date</label>
+                                <input type="text" x-model="formData.reg_date" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Success Date</label>
+                                <input type="text" x-model="formData.success_date" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-1">
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Taxpayer Type</label>
+                                <input type="text" x-model="formData.taxpayer_type" class="w-full text-sm border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            </div>
+                            <div class="col-span-1">
+                                <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Tax Year</label>
+                                <input type="text" x-model="formData.tax_year" class="w-full text-sm font-mono font-bold border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all text-center" />
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Registered Entity</label>
+                            <input type="text" x-model="formData.registered_entity" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Office Address</label>
-                        <textarea x-model="formData.address_office" rows="5" class="w-full text-sm border border-gray-400 dark:border-gray-600 rounded-lg p-3.5 leading-relaxed text-gray-900 dark:text-white bg-white dark:bg-gray-700 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow"></textarea>
-                    </div>
                 </div>
-            </div>
 
-            <div class="lg:col-span-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-5 border-b dark:border-gray-700 pb-2">D. Metrics</h4>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Employees</label>
-                        <input type="text" x-model="formData.employee_count" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                <div class="lg:col-span-6 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
+                    <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        C. Contact Info
+                    </h4>
+                    <div class="grid grid-cols-2 gap-5 mb-5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Phone</label
+                            ><input type="text" x-model="formData.phone" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Email</label><input type="text" x-model="formData.email" class="w-full text-sm border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
                     </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Total Salary (KHR)</label>
-                        <input type="text" x-model="formData.total_salary" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Property Type</label>
-                        <input type="text" x-model="formData.property_type" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Rent (KHR)</label>
-                        <input type="text" x-model="formData.rent_per_month" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-right text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                    </div>
-                    <div class="col-span-2">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Form</label>
-                        <input type="text" x-model="formData.enterprise_form" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed mb-2 text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
-                        <input type="text" x-model="formData.add_ent_form" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-600 bg-gray-50 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" placeholder="Additional" />
-                    </div>
-                    <div class="col-span-2">
-                        <label class="block text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase mb-1.5">Signage</label>
-                        <input type="text" x-model="formData.signage" class="w-full text-sm border border-gray-400 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg px-3 py-3.5 leading-relaxed text-gray-800 focus:ring-2 focus:ring-brand-500 shadow-md transition-shadow" />
+                    <div class="space-y-5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Main Address</label>
+                            <textarea x-model="formData.address_main" rows="3" class="w-full text-sm font-khmer border border-slate-300 dark:border-slate-600 rounded-xl p-4 leading-relaxed text-slate-900 dark:text-white bg-white dark:bg-[#0b1121] focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all"></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Office Address</label>
+                            <textarea x-model="formData.address_office" rows="3" class="w-full text-sm font-khmer border border-slate-300 dark:border-slate-600 rounded-xl p-4 leading-relaxed text-slate-900 dark:text-white bg-white dark:bg-[#0b1121] focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all"></textarea>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="lg:col-span-12 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <div class="flex justify-between items-center mb-5 border-b dark:border-gray-700 pb-2">
-                    <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">E. សកម្មភាពអាជីវកម្ម (Business Activities)</h4>
-                    <button @click="formData.business_activities.push({no:'', code:'', name:'', desc:'', type:''})" class="text-xs bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 px-3 py-1 rounded-full font-bold hover:bg-brand-100">+ Add Row</button>
+                <div class="lg:col-span-6 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
+                    <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3 flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                        D. Operational Metrics
+                    </h4>
+                    <div class="grid grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Employees</label>
+                            <input type="text" x-model="formData.employee_count" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-right text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Total Salary (KHR)</label>
+                            <input type="text" x-model="formData.total_salary" class="w-full text-sm font-mono font-bold border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-right text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Property Type</label>
+                            <input type="text" x-model="formData.property_type" class="w-full text-sm font-khmer border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Rent (KHR)</label>
+                            <input type="text" x-model="formData.rent_per_month" class="w-full text-sm font-mono font-bold border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-right text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Enterprise Form</label>
+                            <input type="text" x-model="formData.enterprise_form" class="w-full text-sm font-khmer border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 mb-2.5 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            <input type="text" x-model="formData.add_ent_form" class="w-full text-sm font-khmer border border-slate-200 dark:border-slate-700/50 dark:bg-slate-900/50 rounded-xl px-4 py-3.5 text-slate-500 bg-slate-50 focus:ring-2 focus:ring-indigo-500/50 shadow-inner transition-all" placeholder="Additional..." />
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Signage</label>
+                            <input type="text" x-model="formData.signage" class="w-full text-sm font-khmer border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                        </div>
+                    </div>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full min-w-[600px]">
-                        <thead>
-                            <tr class="text-left text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
-                                <th class="p-2 rounded-l-lg w-12 text-center">No</th>
-                                <th class="p-2 w-24">Code</th>
-                                <th class="p-2">Activity Name (Khmer)</th>
-                                <th class="p-2">Description (Khmer)</th>
-                                <th class="p-2">Type</th>
-                                <th class="p-2 rounded-r-lg w-10"></th>
-                            </tr>
-                        </thead>
-                        <tbody class="space-y-2">
-                            <template x-for="(item, index) in formData.business_activities" :key="index">
-                                <tr>
-                                    <td class="p-1"><input type="text" x-model="item.no" class="w-full text-xs text-center border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-mono" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.code" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-mono" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.name" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-khmer" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.desc" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-khmer" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.type" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm" /></td>
-                                    <td class="p-1 text-center"><button @click="formData.business_activities.splice(index, 1)" class="text-red-400 hover:text-red-600">x</button></td>
+
+                <div class="lg:col-span-12 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
+                    <div class="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3">
+                        <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            E. សកម្មភាពអាជីវកម្ម (Business Activities)
+                        </h4>
+                        <button @click="formData.business_activities.push({no:'', code:'', name:'', desc:'', type:''})" class="text-xs bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-4 py-1.5 rounded-full font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors shadow-sm ring-1 ring-inset ring-indigo-500/20">+ Add Row</button>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar pb-2">
+                        <table class="w-full min-w-[700px]">
+                            <thead>
+                                <tr class="text-left text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-900/50">
+                                    <th class="p-3 rounded-l-xl w-14 text-center">No</th>
+                                    <th class="p-3 w-28">Code</th>
+                                    <th class="p-3">Activity Name (Khmer)</th>
+                                    <th class="p-3">Description (Khmer)</th>
+                                    <th class="p-3 w-32">Type</th>
+                                    <th class="p-3 rounded-r-xl w-12 text-center">Act</th>
                                 </tr>
-                            </template>
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody class="space-y-2">
+                                <template x-for="(item, index) in formData.business_activities" :key="index">
+                                    <tr>
+                                        <td class="p-1.5"><input type="text" x-model="item.no" class="w-full text-xs text-center border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-2 py-2.5 shadow-sm font-mono focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.code" class="w-full text-xs font-bold border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm font-mono focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.name" class="w-full text-xs border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm font-khmer focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.desc" class="w-full text-xs border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm font-khmer focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.type" class="w-full text-xs font-mono border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm focus:ring-1 focus:ring-indigo-500 transition-all text-center" /></td>
+                                        <td class="p-1.5 text-center">
+                                            <button @click="formData.business_activities.splice(index, 1)" class="w-7 h-7 inline-flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/30 transition-colors font-bold shadow-sm ring-1 ring-inset ring-rose-500/20">✕</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
 
-            <div class="lg:col-span-12 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <div class="flex justify-between items-center mb-5 border-b dark:border-gray-700 pb-2">
-                    <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">F. គណនីសហគ្រាស (Accounts)</h4>
-                    <button @click="formData.enterprise_accounts.push({no:'', bank:'', account_name:'', number:'', currency:'', type:''})" class="text-xs bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 px-3 py-1 rounded-full font-bold hover:bg-brand-100">+ Add</button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full min-w-[700px]">
-                        <thead>
-                            <tr class="text-left text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
-                                <th class="p-2 rounded-l-lg w-12 text-center">No</th>
-                                <th class="p-2">Bank Name</th>
-                                <th class="p-2">Account Number</th>
-                                <th class="p-2">Account Name</th>
-                                <th class="p-2 w-24">Currency</th>
-                                <th class="p-2">Account Type</th>
-                                <th class="p-2 rounded-r-lg w-10"></th>
-                            </tr>
-                        </thead>
-                        <tbody class="space-y-2">
-                            <template x-for="(item, index) in formData.enterprise_accounts" :key="index">
-                                <tr>
-                                    <td class="p-1"><input type="text" x-model="item.no" class="w-full text-xs text-center border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-mono" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.bank" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-khmer" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.number" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-mono font-bold text-gray-700 dark:text-gray-300" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.account_name" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-khmer" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.currency" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm text-center" /></td>
-                                    <td class="p-1"><input type="text" x-model="item.type" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm" /></td>
-                                    <td class="p-1 text-center"><button @click="formData.enterprise_accounts.splice(index, 1)" class="text-red-400 hover:text-red-600">x</button></td>
+                <div class="lg:col-span-12 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
+                    <div class="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3">
+                        <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
+                            F. គណនីសហគ្រាស (Accounts)
+                        </h4>
+                        <button @click="formData.enterprise_accounts.push({no:'', bank:'', account_name:'', number:'', currency:'', type:''})" class="text-xs bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-4 py-1.5 rounded-full font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors shadow-sm ring-1 ring-inset ring-indigo-500/20">+ Add Row</button>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar pb-2">
+                        <table class="w-full min-w-[800px]">
+                            <thead>
+                                <tr class="text-left text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-900/50">
+                                    <th class="p-3 rounded-l-xl w-14 text-center">No</th>
+                                    <th class="p-3">Bank Name</th>
+                                    <th class="p-3">Account Number</th>
+                                    <th class="p-3">Account Name</th>
+                                    <th class="p-3 w-28 text-center">Currency</th>
+                                    <th class="p-3 w-32">Type</th>
+                                    <th class="p-3 rounded-r-xl w-12 text-center">Act</th>
                                 </tr>
-                            </template>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="lg:col-span-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <div class="flex justify-between items-center mb-5 border-b dark:border-gray-700 pb-2">
-                    <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">G. ស្ថាប័នពាក់ព័ន្ធ (Institutions)</h4>
-                    <button @click="formData.related_institutions.push({no: '', name:'', ref:'', date:''})" class="text-xs bg-brand-50 dark:bg-brand-900/30 text-brand-600 dark:text-brand-400 px-3 py-1 rounded-full font-bold hover:bg-brand-100">+ Add</button>
-                </div>
-                <table class="w-full">
-                    <thead>
-                        <tr class="text-left text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase bg-gray-50 dark:bg-gray-700">
-                            <th class="p-2 rounded-l-lg w-12 text-center">No</th>
-                            <th class="p-2 w-1/2">Name</th>
-                            <th class="p-2">Reference</th>
-                            <th class="p-2 w-40">Date</th>
-                            <th class="p-2 rounded-r-lg w-8"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <template x-for="(item, index) in formData.related_institutions" :key="index">
-                            <tr>
-                                <td class="p-1"><input type="text" x-model="item.no" class="w-full text-xs text-center border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-mono" /></td>
-                                <td class="p-1"><input type="text" x-model="item.name" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm font-khmer" /></td>
-                                <td class="p-1"><input type="text" x-model="item.ref" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm" /></td>
-                                <td class="p-1"><input type="text" x-model="item.date" class="w-full text-xs border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-white rounded px-2 py-2 shadow-sm" /></td>
-                                <td class="p-1"><button @click="formData.related_institutions.splice(index, 1)" class="text-red-400 hover:text-red-600">x</button></td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
-            </div>
-
-            <div class="lg:col-span-6 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <div class="mb-5 border-b dark:border-gray-700 pb-2">
-                    <h4 class="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider">H. ការប៉ាន់ស្មានផលរបរ (Estimates)</h4>
+                            </thead>
+                            <tbody class="space-y-2">
+                                <template x-for="(item, index) in formData.enterprise_accounts" :key="index">
+                                    <tr>
+                                        <td class="p-1.5"><input type="text" x-model="item.no" class="w-full text-xs text-center border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-2 py-2.5 shadow-sm font-mono focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.bank" class="w-full text-xs border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm font-khmer focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.number" class="w-full text-xs font-black tracking-wider text-indigo-700 dark:text-indigo-400 border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] rounded-lg px-3 py-2.5 shadow-sm font-mono focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.account_name" class="w-full text-xs border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm font-khmer focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.currency" class="w-full text-xs font-bold border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-2 py-2.5 shadow-sm text-center focus:ring-1 focus:ring-indigo-500 transition-all uppercase" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.type" class="w-full text-xs border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5 text-center">
+                                            <button @click="formData.enterprise_accounts.splice(index, 1)" class="w-7 h-7 inline-flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/30 transition-colors font-bold shadow-sm ring-1 ring-inset ring-rose-500/20">✕</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div class="flex items-center gap-4 mb-6">
-                    <label class="text-xs font-bold text-gray-700 dark:text-gray-300 font-khmer whitespace-nowrap">កាលបរិច្ឆេទផ្គត់ផ្គង់</label>
-                    <input type="text" x-model="formData.h_date" class="w-full text-sm border-gray-400 dark:border-gray-600 rounded-lg px-3 py-2 bg-yellow-50 dark:bg-yellow-900/30 dark:text-yellow-100 focus:bg-yellow-100 dark:focus:bg-yellow-900/50 focus:ring-2 focus:ring-brand-500 shadow-md font-bold text-gray-800" />
+                <div class="lg:col-span-6 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
+                    <div class="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3">
+                        <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
+                            G. ស្ថាប័នពាក់ព័ន្ធ (Institutions)
+                        </h4>
+                        <button @click="formData.related_institutions.push({no: '', name:'', ref:'', date:''})" class="text-xs bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-4 py-1.5 rounded-full font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors shadow-sm ring-1 ring-inset ring-indigo-500/20">+ Add Row</button>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar pb-2">
+                        <table class="w-full min-w-[500px]">
+                            <thead>
+                                <tr class="text-left text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-50 dark:bg-slate-900/50">
+                                    <th class="p-3 rounded-l-xl w-14 text-center">No</th>
+                                    <th class="p-3 w-1/2">Name</th>
+                                    <th class="p-3">Reference</th>
+                                    <th class="p-3 w-32">Date</th>
+                                    <th class="p-3 rounded-r-xl w-12 text-center">Act</th>
+                                </tr>
+                            </thead>
+                            <tbody class="space-y-2">
+                                <template x-for="(item, index) in formData.related_institutions" :key="index">
+                                    <tr>
+                                        <td class="p-1.5"><input type="text" x-model="item.no" class="w-full text-xs text-center border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-2 py-2.5 shadow-sm font-mono focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.name" class="w-full text-xs border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm font-khmer focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.ref" class="w-full text-xs border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5"><input type="text" x-model="item.date" class="w-full text-xs font-mono border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-lg px-3 py-2.5 shadow-sm focus:ring-1 focus:ring-indigo-500 transition-all" /></td>
+                                        <td class="p-1.5 text-center">
+                                            <button @click="formData.related_institutions.splice(index, 1)" class="w-7 h-7 inline-flex items-center justify-center rounded-full bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white dark:bg-rose-500/10 dark:text-rose-400 dark:hover:bg-rose-500/30 transition-colors font-bold shadow-sm ring-1 ring-inset ring-rose-500/20">✕</button>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
 
-                <div class="overflow-x-auto">
-                    <table class="w-full border-collapse">
-                        <thead>
-                            <tr>
-                                <th class="w-1/3"></th>
-                                <th class="p-3 text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-center font-khmer">១២ ខែកន្លងមក</th>
-                                <th class="p-3 text-xs font-bold text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-center font-khmer">៣ ខែខាងមុខ</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="p-3 text-xs font-bold text-gray-700 dark:text-gray-300 font-khmer border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800">ផលរបរផ្គត់ផ្គង់រយ:ពេល</td>
-                                <td class="p-2 border border-gray-200 dark:border-gray-600">
-                                    <div class="relative"><input type="text" x-model="formData.h_real_12m" class="w-full text-sm text-right border-gray-300 dark:border-gray-600 rounded px-2 py-2 bg-yellow-50 dark:bg-yellow-900/30 dark:text-yellow-100 focus:bg-yellow-100 focus:ring-1 focus:ring-brand-500" /></div>
-                                </td>
-                                <td class="p-2 border border-gray-200 dark:border-gray-600">
-                                    <div class="relative"><input type="text" x-model="formData.h_real_3m" class="w-full text-sm text-right border-gray-300 dark:border-gray-600 rounded px-2 py-2 bg-yellow-50 dark:bg-yellow-900/30 dark:text-yellow-100 focus:bg-yellow-100 focus:ring-1 focus:ring-brand-500" /></div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="p-3 text-xs font-bold text-gray-700 dark:text-gray-300 font-khmer border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-800">ការប៉ាន់ស្មានផលរបររយ:ពេល</td>
-                                <td class="p-2 border border-gray-200 dark:border-gray-600">
-                                    <div class="relative"><input type="text" x-model="formData.h_est_12m" class="w-full text-sm text-right border-gray-300 dark:border-gray-600 rounded px-2 py-2 bg-yellow-50 dark:bg-yellow-900/30 dark:text-yellow-100 focus:bg-yellow-100 focus:ring-1 focus:ring-brand-500" /></div>
-                                </td>
-                                <td class="p-2 border border-gray-200 dark:border-gray-600">
-                                    <div class="relative"><input type="text" x-model="formData.h_est_3m" class="w-full text-sm text-right border-gray-300 dark:border-gray-600 rounded px-2 py-2 bg-yellow-50 dark:bg-yellow-900/30 dark:text-yellow-100 focus:bg-yellow-100 focus:ring-1 focus:ring-brand-500" /></div>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                <div class="lg:col-span-6 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
+                    <div class="mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3">
+                        <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                            H. ការប៉ាន់ស្មានផលរបរ (Estimates)
+                        </h4>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-4 mb-6 bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20 ring-1 ring-inset ring-amber-500/10">
+                        <label class="text-[11px] font-bold text-amber-800 dark:text-amber-500 uppercase tracking-widest font-khmer whitespace-nowrap">កាលបរិច្ឆេទផ្គត់ផ្គង់</label>
+                        <input type="text" x-model="formData.h_date" class="w-48 text-sm font-mono font-black text-center border border-amber-300 dark:border-amber-500/50 rounded-lg px-3 py-2 bg-white dark:bg-[#0b1121] text-amber-900 dark:text-amber-400 focus:ring-2 focus:ring-amber-500 shadow-inner transition-all" />
+                    </div>
+
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full border-collapse">
+                            <thead>
+                                <tr>
+                                    <th class="w-1/3 border-b border-slate-200 dark:border-slate-700"></th>
+                                    <th class="p-3 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-center font-khmer rounded-tl-xl">១២ ខែកន្លងមក</th>
+                                    <th class="p-3 text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-center font-khmer rounded-tr-xl">៣ ខែខាងមុខ</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="p-3 text-[11px] font-bold text-slate-700 dark:text-slate-300 font-khmer border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">ផលរបរផ្គត់ផ្គង់រយ:ពេល</td>
+                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]">
+                                        <input type="text" x-model="formData.h_real_12m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+                                    </td>
+                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]">
+                                        <input type="text" x-model="formData.h_real_3m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="p-3 text-[11px] font-bold text-slate-700 dark:text-slate-300 font-khmer border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 rounded-bl-xl">ការប៉ាន់ស្មានផលរបររយ:ពេល</td>
+                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]">
+                                        <input type="text" x-model="formData.h_est_12m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+                                    </td>
+                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121] rounded-br-xl">
+                                        <input type="text" x-model="formData.h_est_3m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -439,17 +528,12 @@
     <button
         x-show="showScrollButton"
         @click="window.scrollTo({top: 0, behavior: 'smooth'})"
-        x-transition:enter="transition ease-out duration-300"
-        x-transition:enter-start="opacity-0 translate-y-8"
-        x-transition:enter-end="opacity-100 translate-y-0"
-        x-transition:leave="transition ease-in duration-200"
-        x-transition:leave-start="opacity-100 translate-y-0"
-        x-transition:leave-end="opacity-0 translate-y-8"
-        class="fixed bottom-8 right-8 bg-brand-600 hover:bg-brand-700 text-white p-3.5 rounded-full shadow-2xl hover:shadow-brand-500/50 transition-all focus:outline-none z-50 flex items-center justify-center transform hover:-translate-y-1"
+        x-transition.opacity
+        class="fixed bottom-8 right-8 bg-gradient-to-r from-indigo-500 to-violet-600 text-white p-4 rounded-full shadow-[0_10px_25px_rgba(99,102,241,0.4)] hover:shadow-[0_15px_35px_rgba(99,102,241,0.6)] transition-all focus:outline-none z-50 flex items-center justify-center transform hover:-translate-y-1"
         title="Scroll to Top"
         x-cloak
     >
-        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 15l7-7 7 7"></path></svg>
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 15l7-7 7 7"></path></svg>
     </button>
 </div>
 
@@ -466,11 +550,8 @@
             saveMessage: '',
             tempFilePath: '',
             showScrollButton: false,
-
-            // Reusable array for the dropdowns
             khmerMonths: ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'],
 
-            // Smart UI State for user-friendly inputs
             uiState: {
                 auditors: [{title: 'លោក', name: ''}],
                 req_from_month: '',
@@ -484,7 +565,6 @@
                 request_submission_date: '',
             },
 
-            // Data Structure matching the backend database
             formData: {
                 company_name_en: '',
                 company_name_kh: '',
@@ -514,8 +594,6 @@
                 h_real_3m: '',
                 h_est_12m: '',
                 h_est_3m: '',
-
-                // Block I string variables sent to DB
                 i_auditor_names: '',
                 i_request_date: '',
                 i_contact_person: '',
@@ -528,7 +606,6 @@
                 i_patent_amount: '',
                 i_vat_cert_date: '',
                 i_request_submission_date: '',
-
                 business_activities: [],
                 enterprise_accounts: [],
                 related_institutions: [],
@@ -538,8 +615,6 @@
                 window.addEventListener('scroll', () => {
                     this.showScrollButton = window.pageYOffset > 300;
                 });
-
-                // 1. Load from localStorage if a previous draft exists
                 const savedDraft = localStorage.getItem('crosscheck_draft');
                 if (savedDraft) {
                     try {
@@ -553,8 +628,6 @@
                         console.error('Failed to parse saved state from local storage', e);
                     }
                 }
-
-                // 2. Set up watchers to automatically persist state on every change
                 this.$watch('state', () => this.persistState());
                 this.$watch('ovatrCode', () => this.persistState());
                 this.$watch('tempFilePath', () => this.persistState());
@@ -562,19 +635,11 @@
                 this.$watch('uiState', () => this.persistState(), {deep: true});
             },
 
-            // Helper to save state locally
             persistState() {
-                const draft = {
-                    state: this.state,
-                    ovatrCode: this.ovatrCode,
-                    tempFilePath: this.tempFilePath,
-                    formData: this.formData,
-                    uiState: this.uiState,
-                };
+                const draft = {state: this.state, ovatrCode: this.ovatrCode, tempFilePath: this.tempFilePath, formData: this.formData, uiState: this.uiState};
                 localStorage.setItem('crosscheck_draft', JSON.stringify(draft));
             },
 
-            // Clear session fully
             clearSession() {
                 if (confirm('Warning: This will clear all your progress and current data. Continue?')) {
                     localStorage.removeItem('crosscheck_draft');
@@ -582,7 +647,6 @@
                 }
             },
 
-            // --- Date Formatting Helper ---
             formatKhmerDate(dateStr) {
                 if (!dateStr) return '';
                 const parts = dateStr.split('-');
@@ -635,7 +699,6 @@
                 this.isProcessing = true;
                 const fd = new FormData();
                 fd.append('file', file);
-
                 fetch('{% url "crosscheck:upload_init" %}', {method: 'POST', body: fd})
                     .then((r) => r.json())
                     .then((res) => {
@@ -662,109 +725,64 @@
                 }
             },
 
-            // --- STEP 3: Compile UI State & Chain Save ---
             saveComputedData() {
                 if (!this.tempFilePath) {
                     alert('Error: Source file lost. Please upload again.');
                     return;
                 }
-
                 this.isSaving = true;
                 this.saveMessage = 'Saving Company Info...';
                 this.formData.OVATR = this.ovatrCode;
 
-                // --- 1. COMPILE UI STATE INTO FORMDATA ---
                 this.formData.i_auditor_names = this.uiState.auditors
                     .filter((a) => a.name.trim() !== '')
                     .map((a) => `${a.title} ${a.name}`)
                     .join(', ');
-
                 let reqDate = '';
                 if (this.uiState.req_from_month && this.uiState.req_from_year) {
                     reqDate = `ខែ${this.uiState.req_from_month} ឆ្នាំ${this.uiState.req_from_year}`;
-                    if (this.uiState.req_to_month && this.uiState.req_to_year) {
-                        reqDate += ` ដល់ខែ${this.uiState.req_to_month} ឆ្នាំ${this.uiState.req_to_year}`;
-                    }
+                    if (this.uiState.req_to_month && this.uiState.req_to_year) reqDate += ` ដល់ខែ${this.uiState.req_to_month} ឆ្នាំ${this.uiState.req_to_year}`;
                 }
                 this.formData.i_request_date = reqDate;
 
                 let auditTimeline = '';
                 if (this.uiState.audit_start) {
                     auditTimeline = `ពី${this.formatKhmerDate(this.uiState.audit_start)}`;
-                    if (this.uiState.audit_end) {
-                        auditTimeline += ` ដល់${this.formatKhmerDate(this.uiState.audit_end)}`;
-                    }
+                    if (this.uiState.audit_end) auditTimeline += ` ដល់${this.formatKhmerDate(this.uiState.audit_end)}`;
                 }
                 this.formData.i_audit_timeline = auditTimeline;
+                this.formData.i_contact_person = this.uiState.contact_name.trim() !== '' ? `${this.uiState.contact_title} ${this.uiState.contact_name}` : '';
+                this.formData.i_request_submission_date = this.uiState.request_submission_date ? `ស្នើសុំបង្វិលសងអាករលើតម្លៃបន្ថែមតាមអនឡាញចុះ${this.formatKhmerDate(this.uiState.request_submission_date)}` : '';
 
-                if (this.uiState.contact_name.trim() !== '') {
-                    this.formData.i_contact_person = `${this.uiState.contact_title} ${this.uiState.contact_name}`;
-                } else {
-                    this.formData.i_contact_person = '';
-                }
-
-                if (this.uiState.request_submission_date) {
-                    this.formData.i_request_submission_date = `ស្នើសុំបង្វិលសងអាករលើតម្លៃបន្ថែមតាមអនឡាញចុះ${this.formatKhmerDate(this.uiState.request_submission_date)}`;
-                } else {
-                    this.formData.i_request_submission_date = '';
-                }
-
-                // --- 2. START SAVING PROCESS ---
-                fetch('{% url "crosscheck:save_company_info" %}', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
-                    body: JSON.stringify(this.formData),
-                })
+                fetch('{% url "crosscheck:save_company_info" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify(this.formData)})
                     .then((response) => response.json())
                     .then((data) => {
                         if (data.status !== 'success') throw new Error(data.message);
-
-                        this.saveMessage = '⏳ Processing Tax Paid...';
-                        return fetch('{% url "crosscheck:save_taxpaid" %}', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
-                            body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath}),
-                        });
+                        this.saveMessage = 'Processing Tax Paid...';
+                        return fetch('{% url "crosscheck:save_taxpaid" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath})});
                     })
                     .then((response) => response.json())
                     .then((taxData) => {
-                        if (taxData.status !== 'success' && taxData.status !== 'warning') {
-                            throw new Error('TaxPaid Error: ' + taxData.message);
-                        }
-
-                        this.saveMessage = '⏳ Processing Purchase Invoices...';
-                        return fetch('{% url "crosscheck:save_purchase" %}', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
-                            body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath}),
-                        });
+                        if (taxData.status !== 'success' && taxData.status !== 'warning') throw new Error('TaxPaid Error: ' + taxData.message);
+                        this.saveMessage = 'Processing Purchase Invoices...';
+                        return fetch('{% url "crosscheck:save_purchase" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath})});
                     })
                     .then((response) => response.json())
                     .then((purchData) => {
                         if (purchData.status !== 'success') throw new Error('Purchase Error: ' + purchData.message);
-
-                        this.saveMessage = '⏳ Processing Sale Invoices...';
-                        return fetch('{% url "crosscheck:save_sale" %}', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
-                            body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath}),
-                        });
+                        this.saveMessage = 'Processing Sale Invoices...';
+                        return fetch('{% url "crosscheck:save_sale" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath})});
                     })
                     .then((response) => response.json())
                     .then((saleData) => {
                         if (saleData.status !== 'success') console.warn('Sale Error: ' + saleData.message);
-
-                        this.saveMessage = '⏳ Processing Reverse Charge...';
-                        return fetch('{% url "crosscheck:save_reverse_charge" %}', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'},
-                            body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath}),
-                        });
+                        this.saveMessage = 'Processing Reverse Charge...';
+                        return fetch('{% url "crosscheck:save_reverse_charge" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify({ovatr: this.ovatrCode, temp_path: this.tempFilePath})});
                     })
                     .then((response) => response.json())
                     .then((rcData) => {
                         if (rcData.status === 'success') {
-                            this.saveMessage = '✅ All Data Saved! Redirecting...';
+                            this.saveMessage = 'Data Saved! Redirecting...';
                             this.downloadAnnex3();
                         } else {
                             this.isSaving = false;
@@ -774,13 +792,13 @@
                     .catch((err) => {
                         this.isSaving = false;
                         console.error(err);
-                        this.saveMessage = '❌ Error';
+                        this.saveMessage = 'Error';
                         alert('Process Failed: ' + err.message);
                     });
             },
 
             downloadAnnex3() {
-                localStorage.removeItem('crosscheck_draft'); // Clear cache on successful generation
+                localStorage.removeItem('crosscheck_draft');
                 const url = "{% url 'crosscheck:processing' %}?ovatr_code=" + this.ovatrCode;
                 window.location.href = url;
             },

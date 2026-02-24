@@ -1,105 +1,168 @@
 {% extends 'base.html' %} {% block title %}Reporting Module{% endblock %} {% block content %}
 
 <style>
+    /* Premium Custom Scrollbar */
     .custom-scrollbar::-webkit-scrollbar {
         width: 8px;
         height: 8px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 4px;
-    }
-    .dark .custom-scrollbar::-webkit-scrollbar-track {
-        background: #374151;
+        background: transparent;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 4px;
+        background: #cbd5e1;
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
     }
     .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #4b5563;
+        background: #475569;
+        border: 2px solid transparent;
+        background-clip: padding-box;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #a8a8a8;
+        background: #94a3b8;
+        border: 2px solid transparent;
+        background-clip: padding-box;
     }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+
     .table-grid-row td {
-        border-bottom: 1px solid #e5e7eb;
+        border-bottom: 1px solid #e2e8f0;
     }
     .dark .table-grid-row td {
-        border-bottom: 1px solid #374151;
+        border-bottom: 1px solid #334155;
     }
+
     .edit-input:focus {
-        outline: 2px solid #6366f1;
-        outline-offset: -2px;
+        outline: none;
     }
-    .cell-modified {
-        background-color: #fffbeb !important;
-        color: #2563eb !important;
-        font-weight: 600;
-    }
-    .dark .cell-modified {
-        background-color: rgba(253, 230, 138, 0.1) !important;
-        color: #60a5fa !important;
-    }
+
     thead.sticky-header th {
         position: sticky;
         top: 0;
         z-index: 20;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
 </style>
 
-<div x-data="reportModule()" x-init="init()" class="flex flex-col h-[calc(108vh-6rem)] relative overflow-hidden bg-gray-50 dark:bg-gray-900">
-    <div class="flex flex-col md:flex-row justify-between items-center mb-4 flex-shrink-0 px-4 pt-4">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-800 dark:text-white mb-1">Session Report</h2>
-            <p class="text-sm text-gray-500">Review and finalize data.</p>
-        </div>
-        <div class="flex gap-4 items-center mt-2 md:mt-0">
-            <div class="relative w-full md:w-80">
-                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </span>
-                <input type="text" x-model="searchInput" @keydown.enter="searchSession()" placeholder="Search OVATR..." class="pl-10 w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm py-2.5 shadow-sm focus:ring-brand-500 focus:border-brand-500 transition-all" />
+<div x-data="reportModule()" x-init="init()" class="flex flex-col h-[calc(100vh-1rem)] relative overflow-hidden bg-slate-50 dark:bg-[#0f172a] text-slate-800 dark:text-slate-200">
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-indigo-500/10 blur-[120px] rounded-full pointer-events-none z-0"></div>
+
+    <div x-show="showHistoryModal" @keydown.escape.window="showHistoryModal = false" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" style="display: none" x-transition.opacity>
+        <div @click.outside="showHistoryModal = false" class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl p-6 relative flex flex-col max-h-[85vh] border border-slate-200 dark:border-slate-700">
+            <div class="flex justify-between items-center mb-4 flex-shrink-0">
+                <h3 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Edit History - Row <span x-text="displayRowId" class="text-indigo-500 ml-1"></span>
+                    <span class="text-xs text-slate-500 ml-1 font-medium" x-show="currentTab !== 'company' && currentTab !== 'taxpaid'">(ID: <span x-text="historyRowId"></span>)</span>
+                </h3>
+                <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-500">Filter:</span>
+                        <select x-model="historyFilter" class="text-xs border-slate-300 rounded-lg shadow-sm py-1.5 pl-3 pr-8 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 dark:bg-slate-900 dark:border-slate-600 dark:text-white transition-all">
+                            <option value="">All Fields</option>
+                            <template x-for="field in uniqueHistoryFields" :key="field"><option :value="field" x-text="field"></option></template>
+                        </select>
+                    </div>
+                    <button @click="showHistoryModal = false" class="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 p-1.5 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
             </div>
 
-            <div x-show="ovatr" x-transition class="hidden md:flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 px-4 py-2.5 rounded-xl shadow-sm">
-                <span class="text-[10px] font-bold text-indigo-400 dark:text-indigo-300 uppercase tracking-wider">Session Key</span>
-                <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-400" x-text="ovatr"></span>
-                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse ml-1"></div>
+            <div class="overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl flex-1 custom-scrollbar bg-slate-50 dark:bg-slate-900/50">
+                <template x-if="filteredHistoryLogs.length === 0"><div class="text-center py-10 text-xs text-slate-500">No session edits recorded matching this filter.</div></template>
+                <table x-show="filteredHistoryLogs.length > 0" class="w-full text-xs text-left text-slate-600 dark:text-slate-300">
+                    <thead class="text-[10px] text-slate-500 uppercase bg-slate-100 dark:bg-slate-800/80 sticky top-0 shadow-sm z-10 backdrop-blur-md">
+                        <tr>
+                            <th class="px-4 py-3 w-36 tracking-wider font-semibold">Time</th>
+                            <th class="px-4 py-3 w-36 tracking-wider font-semibold">Modified Field</th>
+                            <th class="px-4 py-3 text-rose-500 tracking-wider font-semibold">Old Value</th>
+                            <th class="px-4 py-3 text-emerald-500 tracking-wider font-semibold">New Value</th>
+                            <th class="px-4 py-3 w-24 text-center tracking-wider font-semibold">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 dark:divide-slate-700/50">
+                        <template x-for="log in filteredHistoryLogs" :key="log.timestamp + log.field">
+                            <tr class="hover:bg-white dark:hover:bg-slate-800 transition-colors group">
+                                <td class="px-4 py-3 whitespace-nowrap text-[10px] text-slate-400 font-mono" x-text="log.timestamp"></td>
+                                <td class="px-4 py-3 font-mono font-medium text-slate-700 dark:text-slate-200" x-text="log.field"></td>
+                                <td class="px-4 py-3 text-rose-500 line-through decoration-rose-500/30" x-text="log.old_value"></td>
+                                <td class="px-4 py-3 text-emerald-500 font-medium" x-text="log.new_value"></td>
+                                <td class="px-4 py-3 text-center">
+                                    <button @click="restoreHistoryValue(log)" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-600 hover:text-white dark:bg-indigo-500/10 dark:border-indigo-500/20 dark:text-indigo-400 dark:hover:bg-indigo-500 dark:hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm">
+                                        Restore
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-col md:flex-row justify-between items-center mb-4 flex-shrink-0 px-5 pt-5 relative z-10">
+        <div>
+            <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight flex items-center gap-3">Session Report</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">Review, edit, and finalize your audit data.</p>
+        </div>
+
+        <div class="flex gap-4 items-center mt-3 md:mt-0">
+            <div class="relative w-full md:w-80 group">
+                <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-indigo-500 text-slate-400">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </span>
+                <input type="text" x-model="searchInput" @keydown.enter="searchSession()" placeholder="Search OVATR ID..." class="pl-11 pr-4 w-full rounded-xl border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0b1121] dark:text-white text-sm py-2.5 shadow-inner focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder-slate-400" />
+            </div>
+
+            <div x-show="ovatr" x-transition class="hidden md:flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-4 py-2 rounded-xl shadow-inner ring-1 ring-inset ring-indigo-500/20 h-[42px]">
+                <span class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest opacity-80">Session ID</span>
+                <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-0.5" x-text="ovatr"></span>
+                <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+            </div>
+
+            <div x-show="ovatr" class="flex bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm ring-1 ring-inset ring-slate-200 dark:ring-slate-700 h-[42px] items-center">
+                <button @click="undo()" :disabled="historyIndex < 0" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300" title="Undo Last Edit">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+                </button>
+                <div class="w-px h-5 bg-slate-200 dark:bg-slate-700 self-center mx-0.5"></div>
+                <button @click="redo()" :disabled="historyIndex >= history.length - 1" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300" title="Redo Edit">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>
+                </button>
             </div>
 
             <div x-show="ovatr" class="relative inline-block text-left" @click.away="openExport = false">
-                <button @click="openExport = !openExport" class="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl shadow-md text-sm font-bold transition-all flex items-center gap-2 focus:outline-none">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
-                    </svg>
+                <button @click="openExport = !openExport" class="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 text-sm font-bold transition-all flex items-center gap-2 focus:outline-none ring-1 ring-inset ring-white/20 h-[42px]">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Export
-                    <svg class="w-4 h-4 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                    </svg>
+                    <svg class="w-4 h-4 opacity-70 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
 
                 <div
                     x-show="openExport"
-                    x-transition:enter="transition ease-out duration-100"
-                    x-transition:enter-start="transform opacity-0 scale-95"
-                    x-transition:enter-end="transform opacity-100 scale-100"
-                    x-transition:leave="transition ease-in duration-75"
-                    x-transition:leave-start="transform opacity-100 scale-100"
-                    x-transition:leave-end="transform opacity-0 scale-95"
-                    class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 overflow-hidden z-50"
+                    x-transition:enter="transition ease-out duration-150"
+                    x-transition:enter-start="transform opacity-0 scale-95 translate-y-2"
+                    x-transition:enter-end="transform opacity-100 scale-100 translate-y-0"
+                    x-transition:leave="transition ease-in duration-100"
+                    x-transition:leave-start="transform opacity-100 scale-100 translate-y-0"
+                    x-transition:leave-end="transform opacity-0 scale-95 translate-y-2"
+                    class="absolute right-0 mt-3 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 ring-1 ring-black/5 dark:ring-white/10"
                     x-cloak
                 >
-                    <a :href="'/crosscheck/download_full_report/?ovatr_code=' + ovatr" class="px-4 py-3 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-gray-700 flex items-center gap-3 border-b border-gray-100 dark:border-gray-700 transition-colors" target="_blank" @click="openExport = false">
-                        <div class="p-1.5 bg-green-100 dark:bg-green-900/30 rounded-md">
-                            <svg class="w-4 h-4 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <a :href="'/crosscheck/download_full_report/?ovatr_code=' + ovatr" class="px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-700/50 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 transition-colors group" target="_blank" @click="openExport = false">
+                        <div class="p-1.5 bg-emerald-100 dark:bg-emerald-500/20 rounded-md group-hover:scale-110 transition-transform">
+                            <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         </div>
                         Export Excel
                     </a>
-                    <a :href="'/crosscheck/download_word_report/?ovatr_code=' + ovatr" class="px-4 py-3 text-sm font-bold text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-gray-700 flex items-center gap-3 transition-colors" target="_blank" @click="openExport = false">
-                        <div class="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-md">
-                            <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                    <a :href="'/crosscheck/download_word_report/?ovatr_code=' + ovatr" class="px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors group" target="_blank" @click="openExport = false">
+                        <div class="p-1.5 bg-blue-100 dark:bg-blue-500/20 rounded-md group-hover:scale-110 transition-transform">
+                            <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         </div>
                         Export Word
                     </a>
@@ -108,33 +171,36 @@
         </div>
     </div>
 
-    <div x-show="ovatr" x-transition class="flex-1 mx-2 mb-2 bg-white dark:bg-gray-800 rounded-xl shadow border border-gray-300 dark:border-gray-700 flex flex-col overflow-hidden relative min-h-0">
-        <div class="flex px-0 pt-0 border-b border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-900/50 flex-shrink-0 w-full">
+    <div x-show="ovatr" x-transition class="flex-1 mx-4 mb-4 bg-white dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700/80 flex flex-col overflow-hidden relative min-h-0 z-10 ring-1 ring-inset ring-white/10">
+        <div class="flex px-2 pt-2 border-b border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/50 flex-shrink-0 w-full overflow-x-auto custom-scrollbar gap-1">
             <template x-for="tab in tabs" :key="tab.id">
                 <button
                     @click="switchTab(tab.id)"
-                    :class="currentTab === tab.id ? 'bg-white dark:bg-gray-800 text-indigo-700 dark:text-indigo-400 border-r border-l border-gray-300 dark:border-gray-700' : 'bg-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 border-r border-transparent'"
-                    class="flex-1 py-3 text-xs font-bold uppercase tracking-tight transition-colors text-center focus:outline-none truncate px-1"
+                    :class="currentTab === tab.id ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] border-t border-r border-l border-slate-200 dark:border-slate-700' : 'bg-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 border-transparent'"
+                    class="flex-1 py-3 px-4 min-w-[120px] text-[11px] font-extrabold uppercase tracking-widest transition-all text-center focus:outline-none rounded-t-xl border-b-0 whitespace-nowrap"
                 >
                     <span x-text="tab.label"></span>
                 </button>
             </template>
         </div>
 
-        <div class="flex-1 overflow-auto custom-scrollbar relative" id="tableContainer" @scroll="handleScroll($el)">
-            <div x-show="loading" class="absolute inset-0 bg-white/80 dark:bg-gray-900/80 flex items-center justify-center z-50">
-                <div class="flex items-center gap-3 bg-white dark:bg-gray-800 px-6 py-4 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700">
-                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-600"></div>
-                    <span class="text-gray-700 dark:text-gray-200 font-medium text-sm">Loading Data...</span>
+        <div class="flex-1 overflow-auto custom-scrollbar relative bg-white dark:bg-[#0b1121]" id="tableContainer" @scroll="handleScroll($el)">
+            <div x-show="loading" class="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 transition-all">
+                <div class="flex items-center gap-4 bg-white dark:bg-slate-800 px-8 py-5 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 ring-1 ring-inset ring-white/10">
+                    <svg class="animate-spin h-6 w-6 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-slate-700 dark:text-slate-200 font-bold tracking-wide">Loading Data...</span>
                 </div>
             </div>
 
             <table class="text-xs text-left border-separate border-spacing-0 table-fixed w-full">
                 <colgroup>
-                    <col class="w-12" />
+                    <col class="w-16" />
                     <template x-if="currentTab === 'company'">
-                        <col class="w-1/2" />
-                        <col class="w-1/2" />
+                        <col class="w-1/3" />
+                        <col class="w-2/3" />
                     </template>
                     <template x-if="['annex_1', 'annex_2', 'annex_4', 'annex_5'].includes(currentTab)">
                         <col class="w-2/5" />
@@ -143,8 +209,8 @@
                         <col class="w-1/5" />
                     </template>
                     <template x-if="currentTab === 'annex_3'">
-                        <col class="w-24" />
-                        <col class="w-24" />
+                        <col class="w-32" />
+                        <col class="w-48" />
                         <col class="w-auto" />
                         <col class="w-32" />
                         <col class="w-32" />
@@ -155,43 +221,62 @@
                     </template>
                 </colgroup>
 
-                <thead class="sticky-header">
-                    <tr>
-                        <th class="px-2 py-2 font-bold text-gray-800 dark:text-gray-200 uppercase bg-gray-200 dark:bg-gray-700 border-r border-b border-gray-300 dark:border-gray-600 text-center h-8">No</th>
+                <thead class="sticky-header shadow-sm">
+                    <tr class="bg-slate-100 dark:bg-slate-800/90 backdrop-blur-md">
+                        <th class="px-2 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-r border-b border-slate-200 dark:border-slate-700 text-center bg-slate-100 dark:bg-slate-800">No</th>
                         <template x-if="currentTab === 'company'">
-                            <th class="px-3 py-2 font-bold text-gray-800 dark:text-gray-200 uppercase bg-gray-200 dark:bg-gray-700 border-r border-b border-gray-300 dark:border-gray-600 h-8 align-middle text-left">Field Name</th>
+                            <th class="px-4 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-r border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 align-middle text-left">Field Name</th>
                         </template>
                         <template x-if="currentTab === 'company'">
-                            <th class="px-3 py-2 font-bold text-gray-800 dark:text-gray-200 uppercase bg-gray-200 dark:bg-gray-700 border-r border-b border-gray-300 dark:border-gray-600 h-8 align-middle text-left">Value</th>
+                            <th class="px-4 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 align-middle text-left">Value</th>
                         </template>
                         <template x-if="currentTab !== 'company'">
                             <template x-for="col in displayColumns" :key="col.key">
-                                <th class="px-3 py-2 font-bold text-gray-800 dark:text-gray-200 uppercase bg-gray-200 dark:bg-gray-700 border-r border-b border-gray-300 dark:border-gray-600 h-8 align-middle text-center truncate" x-text="col.label"></th>
+                                <th class="px-4 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-r border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 align-middle text-center truncate" x-text="col.label"></th>
                             </template>
                         </template>
                     </tr>
                 </thead>
 
-                <tbody class="bg-white dark:bg-gray-800">
+                <tbody class="bg-white dark:bg-[#0b1121]">
                     <template x-for="(row, idx) in paginatedRows" :key="row.no || idx">
-                        <tr class="hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors group text-xs table-grid-row">
-                            <td class="px-2 py-2 font-mono text-gray-500 dark:text-gray-400 border-r border-gray-300 dark:border-gray-600 text-center h-8 align-middle bg-gray-50 dark:bg-gray-800">
-                                <span x-text="(currentPage - 1) * pageSize + idx + 1"></span>
+                        <tr class="hover:bg-indigo-50/50 dark:hover:bg-slate-800/60 transition-colors group text-xs table-grid-row">
+                            <td class="px-2 py-3 font-mono font-medium text-slate-400 dark:text-slate-500 border-r border-slate-100 dark:border-slate-800 text-center align-middle bg-slate-50 dark:bg-slate-900/30 group-hover:bg-indigo-50/80 dark:group-hover:bg-slate-800">
+                                <div class="flex items-center justify-between h-full px-1">
+                                    <span x-text="(currentPage - 1) * pageSize + idx + 1"></span>
+                                    <button x-show="row.has_history" @click.stop="viewHistory(row, idx)" class="text-indigo-400 hover:text-indigo-600 dark:text-indigo-500 dark:hover:text-indigo-300 transition-colors ml-1" title="View Edit History">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    </button>
+                                </div>
                             </td>
 
                             <template x-if="currentTab === 'company'">
-                                <td class="px-3 py-2 border-r border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900/30 font-bold text-gray-900 dark:text-white align-middle truncate">
+                                <td class="px-4 py-3 border-r border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/20 font-bold text-slate-700 dark:text-slate-300 align-middle truncate uppercase tracking-wide text-[10px]">
                                     <span x-text="formatFieldLabel(row.key)"></span>
                                 </td>
                             </template>
+
                             <template x-if="currentTab === 'company'">
-                                <td @dblclick="startEdit(row, 'value')" class="p-0 border-r border-gray-300 dark:border-gray-600 relative align-middle h-8 cursor-pointer" :class="{'cell-modified': isModified(row, 'value')}">
-                                    <div class="w-full h-full relative">
+                                <td @click="handleCellAction(row, 'value', row.value)" title="Click to copy, Dbl-click to edit" class="p-0 border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors">
+                                    <div class="w-full h-full relative group/cell">
+                                        <div x-show="!isEditing(row, 'value')" class="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 text-indigo-400 transition-opacity pointer-events-none">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </div>
+
                                         <template x-if="isEditing(row, 'value')">
-                                            <textarea x-model="row.value" @blur="stopEdit(row, 'value')" @keydown.enter.prevent="stopEdit(row, 'value')" class="edit-input w-full h-full min-h-[2.5rem] px-3 py-2 bg-white dark:bg-gray-700 border-0 text-sm resize-none block text-gray-900 dark:text-gray-100" :class="{'text-right': isAmountCol(row.key)}" x-effect="$el.focus(); $el.select()"></textarea>
+                                            <input
+                                                type="text"
+                                                x-model="row.value"
+                                                @click.stop
+                                                @blur="stopEdit(row, 'value')"
+                                                @keydown.enter.prevent="stopEdit(row, 'value')"
+                                                class="edit-input w-full h-full min-h-[3rem] px-4 py-3 bg-white dark:bg-[#090e17] ring-2 ring-indigo-500 border-0 text-xs font-medium text-slate-900 dark:text-slate-100 shadow-xl z-10 relative rounded-md"
+                                                :class="{'text-right font-mono font-bold': isAmountCol(row.key)}"
+                                                autofocus
+                                            />
                                         </template>
                                         <template x-if="!isEditing(row, 'value')">
-                                            <div class="px-3 py-2 w-full h-full flex items-center overflow-hidden truncate whitespace-nowrap text-left" x-text="formatValue(row.value, row.key)" :title="isModified(row, 'value') ? 'Original: ' + row._orig.value : row.value"></div>
+                                            <div class="px-4 py-3 w-full h-full flex items-center overflow-hidden truncate whitespace-nowrap text-left font-medium text-slate-600 dark:text-slate-300" :class="{'font-mono': isAmountCol(row.key)}" x-text="formatValue(row.value, row.key)" :title="isModified(row, 'value') ? 'Original: ' + row._orig.value : row.value"></div>
                                         </template>
                                     </div>
                                 </td>
@@ -199,26 +284,28 @@
 
                             <template x-if="currentTab !== 'company'">
                                 <template x-for="col in displayColumns" :key="col.key">
-                                    <td class="p-0 border-r border-gray-300 dark:border-gray-600 relative align-middle h-8 cursor-pointer" @dblclick="startEdit(row, col.key)" :class="{'cell-modified': isModified(row, col.key)}">
-                                        <div class="w-full h-full relative">
+                                    <td @click="handleCellAction(row, col.key, row[col.key])" title="Click to copy, Dbl-click to edit" class="p-0 border-r border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors">
+                                        <div class="w-full h-full relative group/cell">
+                                            <div x-show="!isEditing(row, col.key)" class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 text-indigo-400 transition-opacity pointer-events-none">
+                                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                            </div>
+
                                             <template x-if="isEditing(row, col.key)">
-                                                <textarea
+                                                <input
+                                                    type="text"
                                                     x-model="row[col.key]"
+                                                    @click.stop
                                                     @blur="stopEdit(row, col.key)"
                                                     @keydown.enter.prevent="stopEdit(row, col.key)"
-                                                    class="edit-input w-full h-full min-h-[2.5rem] px-3 py-2 bg-white dark:bg-gray-700 border-0 text-sm resize-none block text-gray-900 dark:text-gray-100"
-                                                    :class="{'text-right': isAmountCol(col.key)}"
-                                                    x-effect="$el.focus(); $el.select()"
-                                                ></textarea>
+                                                    class="edit-input w-full h-full min-h-[3rem] px-3 py-3 bg-white dark:bg-[#090e17] ring-2 ring-indigo-500 border-0 text-xs font-medium text-slate-900 dark:text-slate-100 shadow-xl z-10 relative rounded-md"
+                                                    :class="{'text-right font-mono font-bold': isAmountCol(col.key)}"
+                                                    autofocus
+                                                />
                                             </template>
                                             <template x-if="!isEditing(row, col.key)">
                                                 <div
-                                                    class="px-3 py-2 w-full h-full flex items-center overflow-hidden truncate whitespace-nowrap"
-                                                    :class="{
-                                                         'justify-end': isAmountCol(col.key),
-                                                         'justify-start': !isAmountCol(col.key),
-                                                         'font-bold': isAmountCol(col.key),
-                                                     }"
+                                                    class="px-3 py-3 w-full h-full flex items-center overflow-hidden truncate whitespace-nowrap text-slate-600 dark:text-slate-300"
+                                                    :class="{'justify-end font-mono font-bold text-slate-700 dark:text-slate-200': isAmountCol(col.key), 'justify-start font-medium': !isAmountCol(col.key)}"
                                                     x-text="formatValue(row[col.key], col.key)"
                                                     :title="isModified(row, col.key) ? 'Original: ' + formatValue(row._orig[col.key], col.key) : row[col.key]"
                                                 ></div>
@@ -232,22 +319,24 @@
                 </tbody>
             </table>
 
-            <div x-show="!loading && rows.length === 0" class="flex flex-col items-center justify-center h-48 text-gray-400">
-                <svg class="w-10 h-10 mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                <span>No data available</span>
+            <div x-show="!loading && rows.length === 0" class="flex flex-col items-center justify-center h-64 text-slate-400 dark:text-slate-500">
+                <div class="w-16 h-16 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3 ring-1 ring-inset ring-slate-500/10">
+                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                </div>
+                <span class="font-bold tracking-wide">No data available for this section</span>
             </div>
         </div>
 
-        <button x-show="showScrollTop" x-transition @click="scrollToTop()" class="absolute bottom-16 right-8 z-50 p-3 rounded-full bg-brand-600 hover:bg-brand-700 text-white shadow-xl hover:shadow-2xl transition-all transform hover:-translate-y-1 focus:outline-none" title="Scroll to Top" style="display: none">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 15l7-7 7 7"></path></svg>
+        <button x-show="showScrollTop" x-transition @click="scrollToTop()" class="absolute bottom-16 right-8 z-40 p-3.5 rounded-full bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-xl hover:shadow-indigo-500/30 transition-all transform hover:-translate-y-1 focus:outline-none" title="Scroll to Top" style="display: none">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"></path></svg>
         </button>
 
-        <div x-show="rows.length > 0" class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 dark:text-gray-300 flex-shrink-0 z-30 gap-2">
-            <div class="truncate">Showing <span class="font-bold" x-text="startRecord"></span> to <span class="font-bold" x-text="endRecord"></span> of <span class="font-bold" x-text="totalRecords"></span> results</div>
-            <div class="flex items-center gap-4">
+        <div x-show="rows.length > 0" class="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-600 dark:text-slate-400 flex-shrink-0 z-30 gap-3">
+            <div class="truncate font-medium">Showing <span class="font-bold text-slate-900 dark:text-white" x-text="startRecord"></span> to <span class="font-bold text-slate-900 dark:text-white" x-text="endRecord"></span> of <span class="font-bold text-indigo-600 dark:text-indigo-400" x-text="totalRecords"></span> results</div>
+            <div class="flex items-center gap-5">
                 <div class="flex items-center gap-2">
-                    <span class="text-gray-500 hidden sm:inline">Rows:</span>
-                    <select x-model="pageSizePreset" @change="handlePageSizeChange()" class="text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 py-1 pl-2 pr-6 focus:ring-brand-500 focus:border-brand-500">
+                    <span class="text-slate-500 hidden sm:inline uppercase tracking-wider text-[9px] font-bold">Rows/Page:</span>
+                    <select x-model="pageSizePreset" @change="handlePageSizeChange()" class="text-[11px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 pl-3 pr-7 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm transition-all cursor-pointer">
                         <option value="50">50</option>
                         <option value="100">100</option>
                         <option value="500">500</option>
@@ -255,15 +344,15 @@
                         <option value="custom">Custom</option>
                     </select>
                     <div x-show="pageSizePreset === 'custom'" x-transition class="w-16">
-                        <input x-model.number="pageSize" type="number" min="1" class="w-full text-xs border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 py-1 px-2 focus:ring-brand-500 focus:border-brand-500" placeholder="#" />
+                        <input x-model.number="pageSize" type="number" min="1" class="w-full text-[11px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 px-3 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm transition-all" placeholder="#" />
                     </div>
                 </div>
-                <div class="flex items-center gap-2 border-l border-gray-300 dark:border-gray-600 pl-4">
-                    <button @click="prevPage()" :disabled="currentPage === 1" class="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-700 transition">
+                <div class="flex items-center gap-3 border-l border-slate-300 dark:border-slate-700 pl-5">
+                    <button @click="prevPage()" :disabled="currentPage === 1" class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed bg-white dark:bg-slate-800 transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
                     </button>
-                    <span class="px-2 min-w-[80px] text-center">Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span></span>
-                    <button @click="nextPage()" :disabled="currentPage === totalPages" class="px-2 py-1 rounded border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-700 transition">
+                    <span class="px-2 min-w-[70px] text-center font-bold text-slate-700 dark:text-slate-300">Page <span x-text="currentPage"></span> of <span x-text="totalPages"></span></span>
+                    <button @click="nextPage()" :disabled="currentPage === totalPages" class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed bg-white dark:bg-slate-800 transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                     </button>
                 </div>
@@ -271,8 +360,17 @@
         </div>
     </div>
 
-    <div x-show="toast.show" x-transition class="fixed bottom-5 right-5 px-4 py-2 rounded shadow-xl text-white text-xs font-bold flex items-center gap-2 z-50" :class="toast.type === 'error' ? 'bg-red-500' : 'bg-green-600'">
-        <span x-text="toast.message"></span>
+    <div
+        x-show="toast.show"
+        x-transition.opacity.duration.300ms
+        class="fixed bottom-8 right-8 px-5 py-3.5 rounded-xl shadow-2xl text-sm font-bold flex items-center gap-3 z-50 border ring-1 ring-inset"
+        :class="toast.type === 'error' ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-700 dark:border-slate-200 ring-white/10 dark:ring-black/10' : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-700 dark:border-slate-200 ring-white/10 dark:ring-black/10'"
+    >
+        <div :class="toast.type === 'error' ? 'bg-rose-500/20 text-rose-400 dark:text-rose-600' : 'bg-emerald-500/20 text-emerald-400 dark:text-emerald-600'" class="rounded-full p-1">
+            <svg x-show="toast.type === 'success'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+            <svg x-show="toast.type === 'error'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </div>
+        <span x-text="toast.message" class="tracking-wide"></span>
     </div>
 </div>
 
@@ -284,6 +382,23 @@
             currentTab: 'company',
             openExport: false,
             showScrollTop: false,
+
+            // UNDO / REDO HISTORY TRACKING
+            history: [],
+            historyIndex: -1,
+
+            // HISTORY MODAL TRACKING
+            showHistoryModal: false,
+            historyRowId: null,
+            displayRowId: null,
+            historyLogs: [],
+            historyLoading: false,
+            historyFilter: '',
+
+            // SMART CLICK TRACKERS
+            clicks: 0,
+            clickTimer: null,
+            clickDelay: 250,
 
             tabs: [
                 {id: 'company', label: 'Company Info'},
@@ -353,8 +468,196 @@
             init() {
                 if (this.ovatr) {
                     this.searchInput = this.ovatr;
+                    this.loadLocalHistory();
                     this.fetchData();
                 }
+            },
+
+            // --- LOCAL STORAGE PERSISTENCE FOR HISTORY ---
+            saveLocalHistory() {
+                const data = {
+                    history: this.history,
+                    historyIndex: this.historyIndex,
+                };
+                localStorage.setItem(`report_history_${this.ovatr}`, JSON.stringify(data));
+            },
+
+            loadLocalHistory() {
+                const stored = localStorage.getItem(`report_history_${this.ovatr}`);
+                if (stored) {
+                    try {
+                        const parsed = JSON.parse(stored);
+                        this.history = parsed.history || [];
+                        this.historyIndex = parsed.historyIndex !== undefined ? parsed.historyIndex : -1;
+                    } catch (e) {
+                        console.error('Failed to load local history', e);
+                    }
+                }
+            },
+
+            get uniqueHistoryFields() {
+                return Array.from(new Set(this.historyLogs.map((l) => l.field))).sort();
+            },
+
+            get filteredHistoryLogs() {
+                return !this.historyFilter ? this.historyLogs : this.historyLogs.filter((l) => l.field === this.historyFilter);
+            },
+
+            viewHistory(row, idx) {
+                let idVal = null;
+                if (this.currentTab === 'company') idVal = row['key'];
+                else if (this.currentTab === 'taxpaid') idVal = row['description'];
+                else idVal = String(row['no']); // Force to string to prevent matching errors
+
+                this.historyRowId = idVal;
+                this.displayRowId = (this.currentPage - 1) * this.pageSize + idx + 1;
+                this.historyFilter = '';
+
+                // Construct history logs directly from local stack
+                this.historyLogs = this.history
+                    .slice(0, this.historyIndex + 1)
+                    .filter((h) => String(h.idVal) === String(idVal) && h.sheet === this.currentTab)
+                    .map((h) => ({
+                        timestamp: h.timestamp,
+                        field: this.formatFieldLabel(h.field),
+                        raw_field: h.field,
+                        old_value: h.oldValue,
+                        new_value: h.newValue,
+                    }))
+                    .reverse(); // Show newest edits first
+
+                this.showHistoryModal = true;
+            },
+
+            restoreHistoryValue(log) {
+                let row;
+                if (this.currentTab === 'company') row = this.rows.find((r) => r.key === String(this.historyRowId));
+                else if (this.currentTab === 'taxpaid') row = this.rows.find((r) => r.description === String(this.historyRowId));
+                else row = this.rows.find((r) => String(r.no) === String(this.historyRowId));
+
+                if (!row) {
+                    this.showToast('Row not found in current view.', 'error');
+                    return;
+                }
+
+                const field = log.raw_field;
+                const currentValue = row[field];
+                const restoredValue = log.old_value;
+
+                if (String(currentValue) === String(restoredValue)) {
+                    this.showToast('Value is already set to this.', 'success');
+                    return;
+                }
+
+                // Apply restoration
+                row[field] = restoredValue;
+                row.has_history = true;
+                row._modified_fields[field] = true;
+
+                this.pushHistoryAction(row, field, currentValue, restoredValue);
+                this.updateCell(row, field, restoredValue);
+
+                if (this.showHistoryModal) {
+                    // Refresh modal
+                    this.historyLogs = this.history
+                        .slice(0, this.historyIndex + 1)
+                        .filter((h) => String(h.idVal) === String(this.historyRowId) && h.sheet === this.currentTab)
+                        .map((h) => ({
+                            timestamp: h.timestamp,
+                            field: this.formatFieldLabel(h.field),
+                            raw_field: h.field,
+                            old_value: h.oldValue,
+                            new_value: h.newValue,
+                        }))
+                        .reverse();
+                }
+            },
+
+            // SMART CLICK HANDLERS
+            handleCellAction(row, field, textToCopy) {
+                if (this.isEditing(row, field)) return;
+
+                this.clicks++;
+                if (this.clicks === 1) {
+                    this.clickTimer = setTimeout(() => {
+                        this.clicks = 0;
+                        this.copyToClipboard(textToCopy);
+                    }, this.clickDelay);
+                } else if (this.clicks === 2) {
+                    clearTimeout(this.clickTimer);
+                    this.clicks = 0;
+                    this.startEdit(row, field);
+                }
+            },
+
+            copyToClipboard(text) {
+                if (text === null || text === undefined || text === '') return;
+                navigator.clipboard.writeText(String(text)).then(() => {
+                    this.showToast('Copied to clipboard', 'success');
+                });
+            },
+
+            // HISTORY TRACKING LOGIC
+            pushHistoryAction(row, field, oldValue, newValue) {
+                if (this.historyIndex < this.history.length - 1) {
+                    this.history = this.history.slice(0, this.historyIndex + 1);
+                }
+
+                let idVal = null;
+                if (this.currentTab === 'company') idVal = row['key'];
+                else if (this.currentTab === 'taxpaid') idVal = row['description'];
+                else idVal = String(row['no']);
+
+                const time = new Date().toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'});
+
+                this.history.push({
+                    sheet: this.currentTab,
+                    idVal: idVal,
+                    field: field,
+                    oldValue: oldValue,
+                    newValue: newValue,
+                    timestamp: time,
+                });
+                this.historyIndex++;
+                this.saveLocalHistory();
+            },
+
+            undo() {
+                if (this.historyIndex < 0) return;
+                const action = this.history[this.historyIndex];
+
+                let row;
+                if (this.currentTab === 'company') row = this.rows.find((r) => r.key === action.idVal);
+                else if (this.currentTab === 'taxpaid') row = this.rows.find((r) => r.description === action.idVal);
+                else row = this.rows.find((r) => String(r.no) === String(action.idVal));
+
+                if (row) {
+                    row[action.field] = action.oldValue;
+                    row.has_history = true;
+                    row._modified_fields[action.field] = true;
+                    this.updateCell(row, action.field, action.oldValue);
+                }
+                this.historyIndex--;
+                this.saveLocalHistory();
+            },
+
+            redo() {
+                if (this.historyIndex >= this.history.length - 1) return;
+                this.historyIndex++;
+                const action = this.history[this.historyIndex];
+
+                let row;
+                if (this.currentTab === 'company') row = this.rows.find((r) => r.key === action.idVal);
+                else if (this.currentTab === 'taxpaid') row = this.rows.find((r) => r.description === action.idVal);
+                else row = this.rows.find((r) => String(r.no) === String(action.idVal));
+
+                if (row) {
+                    row[action.field] = action.newValue;
+                    row.has_history = true;
+                    row._modified_fields[action.field] = true;
+                    this.updateCell(row, action.field, action.newValue);
+                }
+                this.saveLocalHistory();
             },
 
             get paginatedRows() {
@@ -397,19 +700,22 @@
 
             searchSession() {
                 const code = this.searchInput.trim().toUpperCase();
-                if (!code.startsWith('OVATR')) return this.showToast('Invalid Format', 'error');
+                if (!code.startsWith('OVATR')) return this.showToast('Invalid Format. Must start with OVATR', 'error');
                 const url = new URL(window.location);
                 url.searchParams.set('ovatr_code', code);
                 window.history.pushState({}, '', url);
                 this.ovatr = code;
+                this.loadLocalHistory();
                 this.fetchData();
             },
+
             switchTab(id) {
                 this.currentTab = id;
                 this.rows = [];
                 this.currentPage = 1;
                 this.fetchData();
             },
+
             fetchData() {
                 if (!this.ovatr) return;
                 this.loading = true;
@@ -420,7 +726,28 @@
                         this.loading = false;
                         if (res.status === 'success') {
                             this.rows = res.data;
-                            this.rows.forEach((r) => (r._orig = JSON.parse(JSON.stringify(r))));
+
+                            // Initialize logic + sync with Local Storage history stack
+                            this.rows.forEach((r) => {
+                                r._orig = JSON.parse(JSON.stringify(r));
+                                r._modified_fields = {};
+                                r.has_history = false;
+
+                                let idVal = null;
+                                if (this.currentTab === 'company') idVal = r['key'];
+                                else if (this.currentTab === 'taxpaid') idVal = r['description'];
+                                else idVal = String(r['no']);
+
+                                // Check if this specific row was modified in our history stack
+                                const rowHistory = this.history.filter((h) => String(h.idVal) === String(idVal) && h.sheet === this.currentTab && this.history.indexOf(h) <= this.historyIndex);
+
+                                if (rowHistory.length > 0) {
+                                    r.has_history = true;
+                                    rowHistory.forEach((h) => {
+                                        r._modified_fields[h.field] = true;
+                                    });
+                                }
+                            });
                             this.columns = res.columns;
                         } else {
                             this.showToast(res.message, 'error');
@@ -429,7 +756,7 @@
                     })
                     .catch(() => {
                         this.loading = false;
-                        this.showToast('Network Error', 'error');
+                        this.showToast('Network Error. Could not fetch data.', 'error');
                     });
             },
 
@@ -445,21 +772,35 @@
                 const idx = this.rows.indexOf(row);
                 this.editingState = {idx: idx, key: key};
                 this.$nextTick(() => {
-                    const input = this.$el.querySelector('textarea');
-                    if (input) input.select();
+                    const input = this.$el.querySelector('input.edit-input');
+                    if (input) {
+                        input.focus();
+                        input.select();
+                    }
                 });
             },
             isEditing(row, key) {
                 const idx = this.rows.indexOf(row);
                 return this.editingState.idx === idx && this.editingState.key === key;
             },
+
             stopEdit(row, key) {
                 this.editingState = {idx: null, key: null};
                 const newValue = row[key];
-                if (this.isModified(row, key)) {
+
+                // Compare to the current stored state to see if it changed during THIS specific edit
+                const oldValue = row._orig[key];
+
+                if (String(newValue) !== String(oldValue)) {
+                    // Activate history and keep the highlight
+                    row.has_history = true;
+                    row._modified_fields[key] = true;
+
+                    this.pushHistoryAction(row, key, oldValue, newValue);
                     this.updateCell(row, key, newValue);
                 }
             },
+
             updateCell(row, field, newValue) {
                 let idVal = null;
                 if (this.currentTab === 'company') idVal = row['key'];
@@ -474,17 +815,24 @@
                     .then((r) => r.json())
                     .then((res) => {
                         if (res.status === 'success') {
-                            this.showToast('Saved', 'success');
+                            this.showToast('Change saved successfully', 'success');
+                            // Sync base so diffs calc properly, but _modified_fields keeps it highlighted
                             row._orig[field] = newValue;
                         } else {
                             this.showToast('Save Failed: ' + res.message, 'error');
+                            // Revert change on failure
+                            row[field] = row._orig[field];
+                            row._modified_fields[field] = false;
                         }
                     });
             },
 
             isModified(row, key) {
-                return String(row[key]) !== String(row._orig[key]);
+                if (!row._orig) return false;
+                // Note: Removing actual color highlight but keeping the hover tooltip logic
+                return String(row[key]) !== String(row._orig[key]) || (row._modified_fields && row._modified_fields[key]);
             },
+
             isAmountCol(key) {
                 const k = key.toLowerCase();
                 if (k.includes('year') || k.includes('date') || k.includes('no') || k.includes('id') || k.includes('count') || k.includes('phone') || k.includes('code') || k.includes('tin')) return false;
@@ -510,7 +858,7 @@
                 this.toast.message = msg;
                 this.toast.type = type;
                 this.toast.show = true;
-                setTimeout(() => (this.toast.show = false), 3000);
+                setTimeout(() => (this.toast.show = false), 2000);
             },
         }));
     });

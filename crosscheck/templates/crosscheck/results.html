@@ -2,82 +2,102 @@
 
 <style>
     .custom-scrollbar::-webkit-scrollbar {
-        width: 10px;
-        height: 10px;
+        width: 8px;
+        height: 8px;
     }
     .custom-scrollbar::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 4px;
-    }
-    .dark .custom-scrollbar::-webkit-scrollbar-track {
-        background: #374151;
+        background: transparent;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 4px;
+        background: #cbd5e1;
+        border-radius: 10px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
     }
     .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #4b5563;
+        background: #475569;
+        border: 2px solid transparent;
+        background-clip: padding-box;
     }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #a8a8a8;
+        background: #94a3b8;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+    }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+        border: 2px solid transparent;
+        background-clip: padding-box;
     }
     thead.sticky-header th {
         position: sticky;
         top: 0;
         z-index: 20;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     }
     .sticky-group {
         position: sticky;
         top: 0;
         z-index: 30;
     }
+
+    input[type='number']::-webkit-inner-spin-button,
+    input[type='number']::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    /* Smooth transition for table rows */
+    .table-row-hover {
+        transition: background-color 0.15s ease-in-out;
+    }
 </style>
 
-<div x-data="resultsDashboard()" x-init="init()" class="h-[calc(110vh-1.5rem)] flex flex-col relative overflow-hidden bg-gray-50 dark:bg-gray-900">
+<div x-data="resultsDashboard()" x-init="init()" class="h-[calc(113vh-1rem)] flex flex-col relative overflow-hidden bg-slate-50 dark:bg-[#0f172a] text-slate-800 dark:text-slate-200">
     <meta name="csrf-token" content="{{ csrf_token }}" />
 
-    <div x-show="showHistoryModal" @keydown.escape.window="showHistoryModal = false" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50" style="display: none" x-transition.opacity>
-        <div @click.outside="showHistoryModal = false" class="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl p-6 relative flex flex-col max-h-[90vh]">
+    <div x-show="showHistoryModal" @keydown.escape.window="showHistoryModal = false" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" style="display: none" x-transition.opacity>
+        <div @click.outside="showHistoryModal = false" class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl p-6 relative flex flex-col max-h-[85vh] border border-slate-200 dark:border-slate-700">
             <div class="flex justify-between items-center mb-4 flex-shrink-0">
-                <h3 class="text-lg font-bold text-gray-900 dark:text-white">Edit History - Row <span x-text="historyRowId"></span></h3>
-                <div class="flex items-center gap-4">
+                <h3 class="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    Edit History - Row <span x-text="historyRowId" class="text-indigo-500"></span>
+                </h3>
+                <div class="flex items-center gap-3">
                     <div class="flex items-center gap-2">
-                        <span class="text-sm text-gray-500">Filter:</span>
-                        <select x-model="historyFilter" class="text-sm border-gray-300 rounded-md shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50 dark:bg-gray-700 dark:border-gray-600 dark:text-white">
+                        <span class="text-xs text-slate-500">Filter:</span>
+                        <select x-model="historyFilter" class="text-xs border-slate-300 rounded-lg shadow-sm py-1.5 pl-3 pr-8 focus:border-indigo-500 focus:ring focus:ring-indigo-500/20 dark:bg-slate-900 dark:border-slate-600 dark:text-white transition-all">
                             <option value="">All Fields</option>
                             <template x-for="field in uniqueHistoryFields" :key="field"><option :value="field" x-text="field"></option></template>
                         </select>
                     </div>
-                    <button @click="showHistoryModal = false" class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    <button @click="showHistoryModal = false" class="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 p-1.5 rounded-lg">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
             </div>
 
-            <div class="overflow-y-auto border rounded-lg flex-1 custom-scrollbar">
-                <template x-if="historyLoading"><div class="text-center py-10 text-gray-500">Loading history...</div></template>
-                <template x-if="!historyLoading && filteredHistoryLogs.length === 0"><div class="text-center py-10 text-gray-500">No edits recorded matching filter.</div></template>
-                <table x-show="!historyLoading && filteredHistoryLogs.length > 0" class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400 sticky top-0 shadow-sm z-10">
+            <div class="overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl flex-1 custom-scrollbar bg-slate-50 dark:bg-slate-900/50">
+                <template x-if="historyLoading"><div class="text-center py-10 text-xs text-slate-500 animate-pulse">Loading history logs...</div></template>
+                <template x-if="!historyLoading && filteredHistoryLogs.length === 0"><div class="text-center py-10 text-xs text-slate-500">No edits recorded matching this filter.</div></template>
+                <table x-show="!historyLoading && filteredHistoryLogs.length > 0" class="w-full text-xs text-left text-slate-600 dark:text-slate-300">
+                    <thead class="text-[10px] text-slate-500 uppercase bg-slate-100 dark:bg-slate-800/80 sticky top-0 shadow-sm z-10 backdrop-blur-md">
                         <tr>
-                            <th class="px-4 py-3 w-40">Time</th>
-                            <th class="px-4 py-3 w-40">Modified Field</th>
-                            <th class="px-4 py-3 text-red-600">Old Value</th>
-                            <th class="px-4 py-3 text-green-600">New Value</th>
-                            <th class="px-4 py-3 w-24 text-center">Action</th>
+                            <th class="px-4 py-3 w-36 tracking-wider font-semibold">Time</th>
+                            <th class="px-4 py-3 w-36 tracking-wider font-semibold">Modified Field</th>
+                            <th class="px-4 py-3 text-rose-500 tracking-wider font-semibold">Old Value</th>
+                            <th class="px-4 py-3 text-emerald-500 tracking-wider font-semibold">New Value</th>
+                            <th class="px-4 py-3 w-24 text-center tracking-wider font-semibold">Action</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                    <tbody class="divide-y divide-slate-200 dark:divide-slate-700/50">
                         <template x-for="log in filteredHistoryLogs" :key="log.timestamp + log.field">
-                            <tr class="bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 transition-colors">
-                                <td class="px-4 py-3 whitespace-nowrap text-xs text-gray-400" x-text="log.timestamp"></td>
-                                <td class="px-4 py-3 font-mono font-bold text-gray-700 dark:text-gray-300" x-text="log.field"></td>
-                                <td class="px-4 py-3 text-red-500 line-through" x-text="log.old_value"></td>
-                                <td class="px-4 py-3 text-green-600 font-bold" x-text="log.new_value"></td>
+                            <tr class="hover:bg-white dark:hover:bg-slate-800 transition-colors group">
+                                <td class="px-4 py-3 whitespace-nowrap text-[10px] text-slate-400 font-mono" x-text="log.timestamp"></td>
+                                <td class="px-4 py-3 font-mono font-medium text-slate-700 dark:text-slate-200" x-text="log.field"></td>
+                                <td class="px-4 py-3 text-rose-500 line-through decoration-rose-500/30" x-text="log.old_value"></td>
+                                <td class="px-4 py-3 text-emerald-500 font-medium" x-text="log.new_value"></td>
                                 <td class="px-4 py-3 text-center">
-                                    <button @click="restoreHistoryValue(log)" class="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white hover:border-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-600 dark:hover:text-white rounded-md text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm">
+                                    <button @click="restoreHistoryValue(log)" class="px-3 py-1.5 bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-600 hover:text-white dark:bg-indigo-500/10 dark:border-indigo-500/20 dark:text-indigo-400 dark:hover:bg-indigo-500 dark:hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-sm">
                                         Restore
                                     </button>
                                 </td>
@@ -89,329 +109,528 @@
         </div>
     </div>
 
-    <div class="flex flex-col md:flex-row justify-between items-center mb-4 flex-shrink-0 px-4 pt-4 border-b border-gray-200 dark:border-gray-800 pb-4">
-        <div>
-            <h1 class="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                Session Results
-
-                <div x-show="ovatrCode" x-transition class="hidden md:flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 px-2 py-0.5 rounded-xl shadow-sm">
-                    <span class="text-[9px] font-bold text-indigo-400 dark:text-indigo-300 uppercase tracking-wider">Session Key</span>
-                    <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-400" x-text="ovatrCode"></span>
-                    <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse ml-1"></div>
+    <div x-show="showStatusModal" @keydown.escape.window="showStatusModal = false" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm" style="display: none" x-transition.opacity>
+        <div @click.outside="showStatusModal = false" class="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl p-6 relative flex flex-col max-h-[85vh] border border-slate-200 dark:border-slate-700">
+            <div class="flex justify-between items-start mb-5 flex-shrink-0">
+                <div>
+                    <h3 class="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <svg class="w-6 h-6 text-fuchsia-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                            ></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        Manage User Statuses
+                    </h3>
+                    <p class="text-[11px] text-slate-500 mt-1.5">Define custom status labels and map them to Excel Report formulas (COUNTIF/SUMIF).</p>
                 </div>
+                <button @click="showStatusModal = false" class="text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 p-1.5 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
 
-                <span x-show="isCached" class="px-2 py-0.5 text-[10px] bg-green-100 text-green-800 rounded-xl font-bold uppercase tracking-wider" style="display: none">Cached</span>
+            <div class="overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl flex-1 custom-scrollbar mb-5 bg-slate-50 dark:bg-slate-900/50">
+                <table class="w-full text-xs text-left text-slate-600 dark:text-slate-300">
+                    <thead class="text-[10px] text-slate-500 uppercase bg-slate-100 dark:bg-slate-800/80 sticky top-0 shadow-sm z-10 backdrop-blur-md tracking-wider font-semibold">
+                        <tr>
+                            <th class="px-4 py-3 w-1/4">Status (Dropdown)</th>
+                            <th class="px-4 py-3 w-1/3">Summary Text (Footer)</th>
+                            <th class="px-4 py-3 w-1/5">Action (Col E)</th>
+                            <th class="px-4 py-3 w-1/5 text-center">Color Tag</th>
+                            <th class="px-4 py-3 w-12 text-center"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-200 dark:divide-slate-700/50">
+                        <template x-for="(status, index) in availableStatuses" :key="index">
+                            <tr class="hover:bg-white dark:hover:bg-slate-800/80 transition-colors group">
+                                <td class="px-4 py-3 font-semibold text-slate-800 dark:text-slate-100" x-text="status.name"></td>
+                                <td class="px-4 py-3 text-slate-500 dark:text-slate-400" x-text="status.summary"></td>
+                                <td class="px-4 py-3 font-mono text-slate-500 dark:text-slate-400 text-[11px]" x-text="status.action"></td>
+                                <td class="px-4 py-3 text-center"><span class="px-3 py-1 rounded-md text-[10px] font-bold border shadow-sm" :class="getStatusColor(status.name)" x-text="status.color.toUpperCase()"></span></td>
+                                <td class="px-4 py-3 text-center">
+                                    <button @click="deleteStatus(index)" class="text-slate-400 hover:text-rose-500 bg-white hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-500/10 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all border border-transparent hover:border-rose-200 dark:hover:border-rose-500/30">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="bg-indigo-50/50 dark:bg-indigo-900/10 p-5 rounded-xl border border-indigo-100 dark:border-indigo-500/20">
+                <h4 class="text-xs font-bold text-indigo-800 dark:text-indigo-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg> Add New Configuration
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
+                    <div class="col-span-3">
+                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">New Status</label>
+                        <input type="text" x-model="newStatus.name" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. បានប្រកាស" />
+                    </div>
+                    <div class="col-span-4">
+                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Report Summary</label>
+                        <input type="text" x-model="newStatus.summary" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. ចំនួនប្រាក់អាករ..." />
+                    </div>
+                    <div class="col-span-2">
+                        <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Action (Col E)</label>
+                        <input type="text" x-model="newStatus.action" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. គួរអនុញ្ញាត" />
+                    </div>
+                    <div class="col-span-3 flex items-end gap-3">
+                        <div class="flex-1">
+                            <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Color</label>
+                            <select
+                                x-model="newStatus.color"
+                                @keydown.enter="saveNewStatus()"
+                                class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm font-bold"
+                                :class="{'text-emerald-600 dark:text-emerald-400': newStatus.color==='green', 'text-amber-500 dark:text-amber-400': newStatus.color==='orange', 'text-rose-500 dark:text-rose-400': newStatus.color==='red', 'text-blue-500 dark:text-blue-400': newStatus.color==='blue'}"
+                            >
+                                <option value="green" class="text-emerald-600 font-bold">Green</option>
+                                <option value="orange" class="text-amber-500 font-bold">Orange</option>
+                                <option value="red" class="text-rose-500 font-bold">Red</option>
+                                <option value="blue" class="text-blue-500 font-bold">Blue</option>
+                            </select>
+                        </div>
+                        <button @click="saveNewStatus()" :disabled="!newStatus.name || !newStatus.summary" class="px-5 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-xs font-bold rounded-lg hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/30 h-[36px]">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-col md:flex-row justify-between items-center mb-3 flex-shrink-0 px-4 pt-4 pb-2">
+        <div>
+            <h1 class="text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-3 tracking-tight">
+                Session Results
+                <span x-show="isCached" class="px-2.5 text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-lg font-bold uppercase tracking-wider ring-1 ring-inset ring-emerald-500/20 shadow-sm" style="display: none">Cached</span>
             </h1>
             <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Review and resolve data anomalies.</p>
         </div>
 
-        <div class="flex gap-2 mt-4 md:mt-0 items-center">
-            <div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1 mr-4 shadow-inner">
-                <button @click="undo()" :disabled="historyIndex < 0" class="p-1.5 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all" title="Undo">
-                    <svg class="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
+        <div class="flex gap-2.5 mt-3 md:mt-0 items-center">
+            <div x-show="ovatrCode" x-transition class="hidden md:flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-lg shadow-inner ring-1 ring-inset ring-indigo-500/20 mr-1 h-[30px]">
+                <span class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest opacity-80">Session ID</span>
+                <span class="text-xs font-mono font-bold text-indigo-700 dark:text-indigo-300 leading-none" x-text="ovatrCode"></span>
+                <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+            </div>
+
+            <div class="flex bg-white dark:bg-slate-800 rounded-lg p-1 mr-2 shadow-sm border border-slate-200 dark:border-slate-700 h-[30px] items-center">
+                <button @click="undo()" :disabled="historyIndex < 0" class="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300" title="Undo">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
                 </button>
-                <button @click="redo()" :disabled="historyIndex >= history.length - 1" class="p-1.5 rounded hover:bg-white dark:hover:bg-gray-600 disabled:opacity-30 transition-all" title="Redo">
-                    <svg class="w-4 h-4 text-gray-700 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>
+                <div class="w-px h-4 bg-slate-200 dark:bg-slate-700 self-center mx-0.5"></div>
+                <button @click="redo()" :disabled="historyIndex >= history.length - 1" class="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300" title="Redo">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6" /></svg>
                 </button>
             </div>
 
-            <button @click="fetchData(true)" class="px-4 py-2 text-sm font-bold text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                Refresh Cache
-            </button>
-
-            <div class="px-4 py-2 text-sm font-bold rounded-lg shadow-sm transition-all flex items-center gap-2 border" :class="isSaving ? 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800' : 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800'">
-                <svg x-show="isSaving" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <div
+                class="px-3 py-1.5 text-[11px] font-bold rounded-lg shadow-sm transition-all flex items-center gap-2 border bg-white dark:bg-slate-800 h-[30px]"
+                :class="isSaving ? 'text-amber-600 border-amber-200 dark:border-amber-500/30 dark:text-amber-400 ring-1 ring-inset ring-amber-500/10' : 'text-emerald-600 border-emerald-200 dark:border-emerald-500/30 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/10'"
+            >
+                <svg x-show="isSaving" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <svg x-show="!isSaving" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                <span x-text="isSaving ? 'Saving...' : 'All changes saved'"></span>
+                <svg x-show="!isSaving" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                <span x-text="isSaving ? 'Syncing...' : 'Saved'"></span>
             </div>
 
-            <a :href="'{% url 'crosscheck:report' %}?ovatr_code=' + ovatrCode" class="px-5 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 transition-colors flex items-center gap-2">
-                Final Report <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+            <button @click="fetchData(true)" class="px-3.5 py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5 h-[30px]">
+                <svg class="w-3.5 h-3.5 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                Refresh
+            </button>
+
+            <a :href="'{% url 'crosscheck:report' %}?ovatr_code=' + ovatrCode" class="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-indigo-600 to-violet-600 rounded-lg shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:from-indigo-500 hover:to-violet-500 transition-all flex items-center gap-1.5 ring-1 ring-inset ring-white/20 h-[30px]">
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg> Final Report
             </a>
-            <button @click="downloadFile()" class="px-5 py-2 text-sm font-bold text-white bg-brand-600 rounded-lg shadow-md hover:bg-brand-700 transition-colors flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>Export Core
+            <button @click="downloadFile()" class="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-sky-600 to-blue-600 rounded-lg shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:from-sky-500 hover:to-blue-500 transition-all flex items-center gap-1.5 ring-1 ring-inset ring-white/20 h-[30px]">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Export
             </button>
         </div>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3 flex-shrink-0 px-4">
-        <div class="bg-white dark:bg-gray-800 p-3 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-            <div class="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Rows</div>
-            <div class="text-2xl font-bold text-gray-900 dark:text-white mt-0.5" x-text="formatNumber(stats.total)">0</div>
-            <div class="flex gap-3 mt-1 text-[10px] font-mono text-gray-400">
-                <span>Local: <span x-text="stats.local_count || 0"></span></span><span>Import: <span x-text="stats.import_count || 0"></span></span>
+    <div class="flex overflow-x-auto custom-scrollbar gap-3 mb-3 pb-2 flex-shrink-0 px-4">
+        <div class="p-3 rounded-xl shadow-[0_4px_15px_-3px_rgba(0,0,0,0.1)] dark:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.4)] border bg-white dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-900 border-slate-200 dark:border-slate-700/80 min-w-[150px] flex-shrink-0 relative overflow-hidden group">
+            <div class="absolute -right-6 -top-6 w-16 h-16 bg-slate-500/10 rounded-full blur-xl transition-all"></div>
+            <div class="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Total Rows</div>
+            <div class="text-2xl font-black text-slate-800 dark:text-white leading-none mt-1.5 tracking-tight" x-text="formatNumber(stats.total)">0</div>
+            <div class="flex gap-2.5 mt-2 text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                <span>L: <span x-text="stats.local_count || 0" class="text-slate-600 dark:text-slate-300"></span></span>
+                <span>I: <span x-text="stats.import_count || 0" class="text-slate-600 dark:text-slate-300"></span></span>
             </div>
         </div>
-        <div class="bg-green-50 dark:bg-green-900/20 p-3 rounded-xl shadow-sm border border-green-100 dark:border-green-800">
-            <div class="text-xs font-bold text-green-600 uppercase tracking-wider">Matched / Shortage</div>
-            <div class="text-2xl font-bold text-green-700 dark:text-green-400 mt-0.5" x-text="formatNumber(stats.matched)">0</div>
-        </div>
-        <div class="bg-red-50 dark:bg-red-900/20 p-3 rounded-xl shadow-sm border border-red-100 dark:border-red-800">
-            <div class="text-xs font-bold text-red-600 uppercase tracking-wider">Not Found</div>
-            <div class="text-2xl font-bold text-red-700 dark:text-red-400 mt-0.5" x-text="formatNumber(stats.not_found)">0</div>
-        </div>
-        <div class="bg-orange-50 dark:bg-orange-900/20 p-3 rounded-xl shadow-sm border border-orange-100 dark:border-orange-800">
-            <div class="text-xs font-bold text-orange-600 uppercase tracking-wider">Mismatches</div>
-            <div class="text-2xl font-bold text-orange-700 dark:text-orange-400 mt-0.5" x-text="formatNumber(stats.mismatch)">0</div>
-        </div>
+
+        <template x-for="stat in orderedStats" :key="stat.name">
+            <div class="p-3 rounded-xl border min-w-[170px] flex-shrink-0 flex flex-col justify-between relative overflow-hidden group transition-all duration-300" :class="getStatusBoxColor(stat.name)">
+                <div class="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl opacity-40 transition-all duration-500 group-hover:opacity-60" :class="getAmbientGlow(stat.name)"></div>
+
+                <div class="relative z-10 text-[11px] font-bold tracking-wide truncate drop-shadow-sm" x-text="stat.name" :title="stat.name"></div>
+                <div class="relative z-10 text-2xl font-black leading-none mt-1.5 tracking-tight drop-shadow-sm" x-text="formatNumber(stat.count)">0</div>
+            </div>
+        </template>
     </div>
 
-    <div class="flex-1 mx-2 mb-2 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden relative group/table min-h-0">
-        <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center bg-gray-50 dark:bg-gray-900/50 flex-shrink-0 gap-3">
-            <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                <div class="relative w-full md:w-64">
-                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
+    <div class="flex-1 mx-4 mb-4 bg-white dark:bg-[#111827] rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden relative group/table min-h-0 z-0">
+        <div class="p-2.5 border-b border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md flex-shrink-0 gap-3 z-10">
+            <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto items-center">
+                <div class="relative w-full md:w-56">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                     </span>
-                    <input type="text" x-model="search" placeholder="Search..." class="pl-9 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-xs py-1.5 shadow-sm focus:ring-brand-500" />
+                    <input type="text" x-model="search" placeholder="Search invoices, TIN..." class="pl-9 w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white text-xs py-1.5 shadow-sm focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all" />
                 </div>
-                <div class="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-1">
-                    <button @click="switchTable('local')" class="px-3 py-1 rounded-md text-sm font-bold transition-all" :class="tableType === 'local' ? 'bg-white dark:bg-gray-600 shadow text-brand-700 dark:text-white' : 'text-gray-500 hover:text-gray-700'">Local</button>
-                    <button @click="switchTable('import')" class="px-3 py-1 rounded-md text-sm font-bold transition-all" :class="tableType === 'import' ? 'bg-white dark:bg-gray-600 shadow text-brand-700 dark:text-white' : 'text-gray-500 hover:text-gray-700'">Import</button>
+                <div class="flex bg-slate-200/50 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-inner">
+                    <button @click="switchTable('local')" class="px-4 py-1 rounded-md text-[11px] font-bold transition-all duration-200" :class="tableType === 'local' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-white ring-1 ring-slate-900/5 dark:ring-white/10' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'">Local</button>
+                    <button @click="switchTable('import')" class="px-4 py-1 rounded-md text-[11px] font-bold transition-all duration-200" :class="tableType === 'import' ? 'bg-white dark:bg-slate-600 shadow-sm text-indigo-600 dark:text-white ring-1 ring-slate-900/5 dark:ring-white/10' : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'">Import</button>
                 </div>
             </div>
-            <div class="flex gap-2 text-sm font-bold">
-                <button class="px-2 py-1 rounded-lg border transition-all text-xs" :class="filter === 'ALL' ? 'bg-gray-800 text-white' : 'bg-white hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-300'" @click="filter = 'ALL'">All</button>
-                <button class="px-2 py-1 rounded-lg border transition-all text-green-700 border-green-200 text-xs" :class="filter === 'MATCHED' ? 'bg-green-100' : 'bg-white hover:bg-green-50 dark:bg-gray-700 dark:text-green-400'" @click="filter = 'MATCHED'">Matched</button>
-                <button class="px-2 py-1 rounded-lg border transition-all text-orange-700 border-orange-200 text-xs" :class="filter === 'MISMATCH' ? 'bg-orange-100' : 'bg-white hover:bg-orange-50 dark:bg-gray-700 dark:text-orange-400'" @click="filter = 'MISMATCH'">Mismatch</button>
-                <button class="px-2 py-1 rounded-lg border transition-all text-red-700 border-red-200 text-xs" :class="filter === 'NOT FOUND' ? 'bg-red-100' : 'bg-white hover:bg-red-50 dark:bg-gray-700 dark:text-red-400'" @click="filter = 'NOT FOUND'">Not Found</button>
+
+            <div class="flex gap-3 text-[11px] font-bold items-center">
+                <button @click="showStatusModal = true" class="px-3 py-1.5 text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 hover:bg-indigo-100 dark:bg-indigo-500/10 dark:hover:bg-indigo-500/20 rounded-lg border border-indigo-200/50 dark:border-indigo-500/20 transition-all flex items-center gap-1.5 shadow-sm">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                        ></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    Manage
+                </button>
+                <div class="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-0.5"></div>
+
+                <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-widest">Filter:</span>
+                    <select x-model="filter" class="w-64 px-3 py-1.5 rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 dark:text-white shadow-sm focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 text-[11px] font-bold transition-all cursor-pointer">
+                        <option value="ALL">All Statuses</option>
+                        <template x-for="stat in orderedStats" :key="stat.name">
+                            <option :value="stat.name" x-text="stat.name + ' (' + formatNumber(stat.count) + ')'"></option>
+                        </template>
+                    </select>
+                </div>
             </div>
         </div>
 
         <div class="flex-1 overflow-auto w-full relative scroll-smooth custom-scrollbar" id="tableContainer" @scroll="handleScroll($el)">
-            <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 border-separate border-spacing-0">
-                <thead class="text-xs text-gray-700 uppercase sticky-group shadow-md">
-                    <tr class="h-6">
-                        <th class="sticky left-0 z-30 bg-gray-100 dark:bg-gray-800 border-b border-r border-gray-300 dark:border-gray-600 w-16"></th>
-                        <th colspan="7" class="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-center border-b border-r border-blue-200 dark:border-blue-800 py-1 font-bold">Purchase Invoice</th>
-                        <th colspan="6" class="bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 text-center border-b border-r border-orange-200 dark:border-orange-800 py-1 font-bold">Validation</th>
-                        <th colspan="22" class="bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-center border-b border-purple-200 dark:border-purple-800 py-1 font-bold">Tax Declaration (Matched)</th>
+            <table class="w-full text-[11px] text-left text-slate-600 dark:text-slate-300 border-separate border-spacing-0">
+                <thead class="text-[10px] text-slate-100 uppercase sticky-group z-30">
+                    <tr class="h-7 shadow-md">
+                        <th class="sticky left-0 z-40 bg-slate-200 dark:bg-slate-900 border-b border-r border-slate-300 dark:border-slate-800 w-12"></th>
+
+                        <th colspan="8" class="bg-gradient-to-r from-blue-700 to-indigo-800 text-center border-b border-r border-blue-900/50 py-1.5 font-bold tracking-widest shadow-inner relative overflow-hidden">
+                            <div class="absolute inset-0 bg-white/5 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4xKSIvPjwvc3ZnPg==')] opacity-30"></div>
+                            <span class="relative z-10 text-blue-50 drop-shadow-md">Purchase Invoice</span>
+                        </th>
+
+                        <th colspan="6" class="bg-gradient-to-r from-orange-600 to-red-700 text-center border-b border-r border-red-900/50 py-1.5 font-bold tracking-widest shadow-inner relative overflow-hidden">
+                            <div class="absolute inset-0 bg-white/5 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4xKSIvPjwvc3ZnPg==')] opacity-30"></div>
+                            <span class="relative z-10 text-orange-50 drop-shadow-md">Validation</span>
+                        </th>
+
+                        <th colspan="22" class="bg-gradient-to-r from-purple-700 to-fuchsia-800 text-center border-b border-purple-900/50 py-1.5 font-bold tracking-widest shadow-inner relative overflow-hidden">
+                            <div class="absolute inset-0 bg-white/5 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4xKSIvPjwvc3ZnPg==')] opacity-30"></div>
+                            <span class="relative z-10 text-purple-50 drop-shadow-md">Tax Declaration (Matched)</span>
+                        </th>
                     </tr>
 
-                    <tr class="bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600">
-                        <th class="px-3 py-2 sticky left-0 z-30 bg-gray-50 dark:bg-gray-700 border-r border-gray-200 dark:border-gray-600 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-16 text-center">No</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">Description</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">Supplier</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">TIN</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">Invoice #</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-blue-50 dark:bg-gray-800">Date</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-blue-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 font-bold">Amount</th>
-                        <th class="px-3 py-2 text-center bg-blue-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 font-bold w-48 min-w-[200px]">Status</th>
-                        <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">P-Clean</th>
-                        <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">D-Clean</th>
-                        <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">Inv Match</th>
-                        <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">Date Match</th>
-                        <th class="px-3 py-2 text-center whitespace-nowrap bg-orange-50 dark:bg-gray-800">TIN Match</th>
-                        <th class="px-3 py-2 text-right whitespace-nowrap bg-orange-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-600 font-bold">Diff</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Date</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Invoice #</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Credit No</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Buyer Type</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">TIN</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Buyer / Name</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800 font-bold">Total Amt</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Excl VAT</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Non VAT</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">VAT 0</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800 font-bold">VAT Local</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800 font-bold">VAT Export</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">State Burden</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Withheld</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">PLT</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Spec Goods</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Spec Serv</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Accom</th>
-                        <th class="px-3 py-2 whitespace-nowrap text-right bg-purple-50 dark:bg-gray-800">Redemption</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Notes</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Desc</th>
-                        <th class="px-3 py-2 whitespace-nowrap bg-purple-50 dark:bg-gray-800">Dec Status</th>
+                    <tr class="bg-slate-100 dark:bg-[#1e293b] border-b border-slate-300 dark:border-slate-700 leading-tight text-slate-600 dark:text-slate-400">
+                        <th class="px-2 py-2 sticky left-0 z-40 bg-slate-100 dark:bg-[#1e293b] border-r border-b border-slate-300 dark:border-slate-700 shadow-[2px_0_10px_-3px_rgba(0,0,0,0.2)] w-12 text-center">No</th>
+
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#1e293b]/50 min-w-[180px] max-w-[250px]">Description</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#1e293b]/50 min-w-[250px] max-w-[300px]">Supplier</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#1e293b]/50">TIN</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#1e293b]/50">Invoice #</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#1e293b]/50">Date</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-slate-50 dark:bg-[#1e293b]/50 font-bold">Amount</th>
+                        <th class="px-2 py-2 text-center border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#1e293b]/50 font-bold min-w-[180px]">System Status</th>
+                        <th class="px-2 py-2 text-center border-b border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#1e293b]/50 border-r dark:border-r-slate-700 font-bold min-w-[200px] text-indigo-600 dark:text-indigo-400">User Status</th>
+
+                        <th class="px-2 py-2 text-center border-b border-slate-300 dark:border-slate-700 whitespace-nowrap bg-orange-50/50 dark:bg-[#1e293b]/30">P-Clean</th>
+                        <th class="px-2 py-2 text-center border-b border-slate-300 dark:border-slate-700 whitespace-nowrap bg-orange-50/50 dark:bg-[#1e293b]/30">D-Clean</th>
+                        <th class="px-2 py-2 text-center border-b border-slate-300 dark:border-slate-700 whitespace-nowrap bg-orange-50/50 dark:bg-[#1e293b]/30">Inv</th>
+                        <th class="px-2 py-2 text-center border-b border-slate-300 dark:border-slate-700 whitespace-nowrap bg-orange-50/50 dark:bg-[#1e293b]/30">Date</th>
+                        <th class="px-2 py-2 text-center border-b border-slate-300 dark:border-slate-700 whitespace-nowrap bg-orange-50/50 dark:bg-[#1e293b]/30">TIN</th>
+                        <th class="px-2 py-2 text-right border-b border-slate-300 dark:border-slate-700 whitespace-nowrap bg-orange-50/50 dark:bg-[#1e293b]/30 border-r dark:border-r-slate-700 font-bold">Diff</th>
+
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Date</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Invoice #</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Credit No</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Buyer Type</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">TIN</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Buyer / Name</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20 font-bold">Total Amt</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">Excl VAT</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">Non VAT</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">VAT 0</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20 font-bold">VAT Local</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20 font-bold">VAT Export</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">State Burden</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">Withheld</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">PLT</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">Spec Goods</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">Spec Serv</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">Accom</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 text-right bg-purple-50/30 dark:bg-[#1e293b]/20">Redemption</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Notes</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Desc</th>
+                        <th class="px-2 py-2 whitespace-nowrap border-b border-slate-300 dark:border-slate-700 bg-purple-50/30 dark:bg-[#1e293b]/20">Dec Status</th>
                     </tr>
                 </thead>
 
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-[#0b1121]">
                     <template x-for="row in filteredRows" :key="row.no">
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors group text-xs">
-                            <td class="px-2 py-2 font-mono text-gray-400 sticky left-0 z-10 bg-white dark:bg-gray-800 group-hover:bg-gray-50 dark:group-hover:bg-gray-700/50 border-r border-gray-100 dark:border-gray-700 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)] text-center">
+                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/80 table-row-hover group">
+                            <td class="px-2 py-2 font-mono text-slate-400 sticky left-0 z-20 bg-white dark:bg-[#0b1121] group-hover:bg-slate-50 dark:group-hover:bg-slate-800/80 border-r border-slate-100 dark:border-slate-800 shadow-[2px_0_10px_-3px_rgba(0,0,0,0.1)] text-center">
                                 <div class="flex items-center justify-between h-full">
-                                    <span x-text="row.no"></span>
-                                    <button x-show="row.has_history" @click="viewHistory(row.no)" class="text-blue-300 hover:text-blue-600 transition-colors ml-1" title="View History">
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    <span x-text="row.no" class="text-[10px]"></span>
+                                    <button x-show="row.has_history" @click="viewHistory(row.no)" class="text-indigo-400 hover:text-indigo-600 dark:text-indigo-500 dark:hover:text-indigo-300 transition-colors ml-1" title="View History">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                     </button>
                                 </div>
                             </td>
 
-                            <td @click="handleCellAction(row, 'p_desc', row.p_desc)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap max-w-xs truncate text-gray-600 dark:text-gray-300 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30">
-                                <template x-if="editing.id === row.no && editing.field === 'p_desc'"><input type="text" x-model="row.p_desc" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
+                            <td @click="handleCellAction(row, 'p_desc', row.p_desc)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap max-w-[250px] min-w-[180px] truncate text-slate-600 dark:text-slate-300 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20">
+                                <template x-if="editing.id === row.no && editing.field === 'p_desc'"
+                                    ><input type="text" x-model="row.p_desc" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500" autofocus
+                                /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_desc')"><span x-text="row.p_desc"></span></template>
                             </td>
-                            <td @click="handleCellAction(row, 'p_supp', row.p_supp)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap max-w-xs truncate font-medium text-gray-800 dark:text-white cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30">
-                                <template x-if="editing.id === row.no && editing.field === 'p_supp'"><input type="text" x-model="row.p_supp" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
+                            <td @click="handleCellAction(row, 'p_supp', row.p_supp)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap min-w-[250px] max-w-[300px] truncate font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20">
+                                <template x-if="editing.id === row.no && editing.field === 'p_supp'"
+                                    ><input type="text" x-model="row.p_supp" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500" autofocus
+                                /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_supp')"><span x-text="row.p_supp"></span></template>
                             </td>
-                            <td @click="handleCellAction(row, 'p_tin', row.p_tin)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap font-mono text-blue-500 dark:text-blue-400 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30">
-                                <template x-if="editing.id === row.no && editing.field === 'p_tin'"><input type="text" x-model="row.p_tin" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
+                            <td @click="handleCellAction(row, 'p_tin', row.p_tin)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap font-mono text-blue-600 dark:text-blue-400 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20">
+                                <template x-if="editing.id === row.no && editing.field === 'p_tin'"
+                                    ><input type="text" x-model="row.p_tin" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" autofocus
+                                /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_tin')"><span x-text="row.p_tin"></span></template>
                             </td>
-                            <td @click="handleCellAction(row, 'p_inv', row.p_inv)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap font-mono text-blue-600 dark:text-blue-400 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30">
-                                <template x-if="editing.id === row.no && editing.field === 'p_inv'"><input type="text" x-model="row.p_inv" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
+                            <td @click="handleCellAction(row, 'p_inv', row.p_inv)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap font-mono text-blue-600 dark:text-blue-400 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20">
+                                <template x-if="editing.id === row.no && editing.field === 'p_inv'"
+                                    ><input type="text" x-model="row.p_inv" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" autofocus
+                                /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_inv')"><span x-text="row.p_inv"></span></template>
                             </td>
-                            <td @click="handleCellAction(row, 'p_date', row.p_date)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap font-mono text-gray-500 dark:text-gray-300 cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/30">
-                                <template x-if="editing.id === row.no && editing.field === 'p_date'"><input type="text" x-model="row.p_date" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
+                            <td @click="handleCellAction(row, 'p_date', row.p_date)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap font-mono text-slate-500 dark:text-slate-400 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20">
+                                <template x-if="editing.id === row.no && editing.field === 'p_date'"
+                                    ><input type="text" x-model="row.p_date" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono" autofocus
+                                /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_date')"><span x-text="row.p_date"></span></template>
                             </td>
-                            <td @click="handleCellAction(row, 'p_amt', row.p_amt)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold text-gray-700 dark:text-gray-200 border-r border-gray-100 dark:border-gray-700 bg-blue-50/30 dark:bg-blue-900/10 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'p_amt'"><input type="number" step="0.01" x-model="row.p_amt" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
+                            <td @click="handleCellAction(row, 'p_amt', row.p_amt)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-slate-700 dark:text-slate-200 cursor-pointer hover:bg-blue-50/80 dark:hover:bg-blue-900/30 bg-blue-50/30 dark:bg-blue-900/10">
+                                <template x-if="editing.id === row.no && editing.field === 'p_amt'"
+                                    ><input type="number" step="0.01" x-model="row.p_amt" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner font-mono text-right dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500" autofocus
+                                /></template>
                                 <template x-if="!(editing.id === row.no && editing.field === 'p_amt')"><span x-text="row.p_amt ? formatNumber(row.p_amt) : '-'"></span></template>
                             </td>
 
-                            <td class="px-3 py-2 text-center border-r border-gray-100 dark:border-gray-700">
-                                <span
-                                    class="px-2 py-1 rounded text-[10px] font-bold border shadow-sm block w-full whitespace-normal leading-tight"
-                                    :class="{ 'bg-green-50 text-green-700 border-green-200': row.status === 'MATCHED', 'bg-blue-50 text-blue-700 border-blue-200': row.status === 'SHORTAGE', 'bg-red-50 text-red-700 border-red-200': row.status === 'NOT FOUND', 'bg-orange-50 text-orange-700 border-orange-200': row.status === 'MISMATCH' }"
-                                    x-text="statusText(row.status)"
-                                ></span>
-                            </td>
-
-                            <td class="px-3 py-2 text-center whitespace-nowrap font-mono text-gray-500 dark:text-gray-300 bg-orange-50/30 dark:bg-orange-900/10"><span x-text="row.p_inv_clean"></span></td>
-                            <td class="px-3 py-2 text-center whitespace-nowrap font-mono text-gray-500 dark:text-gray-300 bg-orange-50/30 dark:bg-orange-900/10"><span x-text="row.d_inv_clean"></span></td>
-                            <td class="px-3 py-2 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_inv" class="text-green-500 text-sm">●</span><span x-show="!row.v_inv" class="text-red-500 text-sm font-bold">✕</span></td>
-                            <td class="px-3 py-2 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_date" class="text-green-500 text-sm">●</span><span x-show="!row.v_date" class="text-red-500 text-sm font-bold">✕</span></td>
-                            <td class="px-3 py-2 text-center bg-orange-50/30 dark:bg-orange-900/10"><span x-show="row.v_tin" class="text-green-500 text-sm">●</span><span x-show="!row.v_tin" class="text-red-500 text-sm font-bold">✕</span></td>
-                            <td @click="handleCellAction(row, 'v_diff', row.v_diff)" class="px-3 py-2 text-right font-mono border-r border-gray-100 dark:border-gray-700 bg-orange-50/30 dark:bg-orange-900/10 font-bold cursor-pointer" :class="row.v_diff < -0.05 ? 'text-red-500' : (row.v_diff > 0.05 ? 'text-green-500' : 'text-gray-400 dark:text-gray-500')">
-                                <template x-if="editing.id === row.no && editing.field === 'v_diff'"><input type="number" step="0.01" x-model="row.v_diff" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'v_diff')"><span x-text="Math.abs(row.v_diff) > 0.05 ? formatNumber(row.v_diff) : '-'"></span></template>
-                            </td>
-
-                            <td @click="handleCellAction(row, 'd_data.date', row.d_data.date)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap font-mono text-purple-700 dark:text-purple-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.date'"><input type="text" x-model="row.d_data.date" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.date')"><span x-text="row.d_data.date || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.invoice_no', row.d_data.invoice_no)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap font-mono text-purple-600 dark:text-purple-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.invoice_no'"><input type="text" x-model="row.d_data.invoice_no" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.invoice_no')"><span x-text="row.d_data.invoice_no || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.credit_no', row.d_data.credit_no)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap font-mono text-gray-600 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.credit_no'"><input type="text" x-model="row.d_data.credit_no" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.credit_no')"><span x-text="row.d_data.credit_no || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.buyer_type', row.d_data.buyer_type)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap max-w-[120px] truncate text-gray-600 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50" :title="row.d_data.buyer_type">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.buyer_type'"><input type="text" x-model="row.d_data.buyer_type" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.buyer_type')"><span x-text="row.d_data.buyer_type || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.tin', row.d_data.tin)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap font-mono text-blue-500 dark:text-blue-400 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.tin'"><input type="text" x-model="row.d_data.tin" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.tin')"><span x-text="row.d_data.tin || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.name', row.d_data.name)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap max-w-[180px] truncate text-gray-700 dark:text-gray-200 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50" :title="row.d_data.name">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.name'"><input type="text" x-model="row.d_data.name" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.name')"><span x-text="row.d_data.name || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.total_amt', row.d_data.total_amt)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold text-gray-700 dark:text-gray-200 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.total_amt'"><input type="number" step="0.01" x-model="row.d_data.total_amt" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.total_amt')"><span x-text="row.d_data.total_amt ? formatNumber(row.d_data.total_amt) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.excl_vat', row.d_data.excl_vat)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-600 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.excl_vat'"><input type="number" step="0.01" x-model="row.d_data.excl_vat" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.excl_vat')"><span x-text="row.d_data.excl_vat ? formatNumber(row.d_data.excl_vat) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.non_vat', row.d_data.non_vat)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.non_vat'"><input type="number" step="0.01" x-model="row.d_data.non_vat" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.non_vat')"><span x-text="row.d_data.non_vat ? formatNumber(row.d_data.non_vat) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.vat_0', row.d_data.vat_0)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.vat_0'"><input type="number" step="0.01" x-model="row.d_data.vat_0" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.vat_0')"><span x-text="row.d_data.vat_0 ? formatNumber(row.d_data.vat_0) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.vat_local', row.d_data.vat_local)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.vat_local'"><input type="number" step="0.01" x-model="row.d_data.vat_local" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.vat_local')"><span x-text="row.d_data.vat_local ? formatNumber(row.d_data.vat_local) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.vat_export', row.d_data.vat_export)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.vat_export'"><input type="number" step="0.01" x-model="row.d_data.vat_export" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.vat_export')"><span x-text="row.d_data.vat_export ? formatNumber(row.d_data.vat_export) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.state_burden', row.d_data.state_burden)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.state_burden'"><input type="number" step="0.01" x-model="row.d_data.state_burden" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.state_burden')"><span x-text="row.d_data.state_burden ? formatNumber(row.d_data.state_burden) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.withheld', row.d_data.withheld)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.withheld'"><input type="number" step="0.01" x-model="row.d_data.withheld" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.withheld')"><span x-text="row.d_data.withheld ? formatNumber(row.d_data.withheld) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.plt', row.d_data.plt)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.plt'"><input type="number" step="0.01" x-model="row.d_data.plt" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.plt')"><span x-text="row.d_data.plt ? formatNumber(row.d_data.plt) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.spec_goods', row.d_data.spec_goods)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.spec_goods'"><input type="number" step="0.01" x-model="row.d_data.spec_goods" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.spec_goods')"><span x-text="row.d_data.spec_goods ? formatNumber(row.d_data.spec_goods) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.spec_serv', row.d_data.spec_serv)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.spec_serv'"><input type="number" step="0.01" x-model="row.d_data.spec_serv" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.spec_serv')"><span x-text="row.d_data.spec_serv ? formatNumber(row.d_data.spec_serv) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.accom', row.d_data.accom)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.accom'"><input type="number" step="0.01" x-model="row.d_data.accom" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.accom')"><span x-text="row.d_data.accom ? formatNumber(row.d_data.accom) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.redemption', row.d_data.redemption)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap text-right font-mono text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.redemption'"><input type="number" step="0.01" x-model="row.d_data.redemption" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded font-mono text-right dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.redemption')"><span x-text="row.d_data.redemption ? formatNumber(row.d_data.redemption) : '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.notes', row.d_data.notes)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 max-w-[140px] truncate text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.notes'"><input type="text" x-model="row.d_data.notes" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.notes')"><span x-text="row.d_data.notes || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.desc', row.d_data.desc)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 max-w-[140px] truncate text-gray-500 dark:text-gray-300 bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.desc'"><input type="text" x-model="row.d_data.desc" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.desc')"><span x-text="row.d_data.desc || '-'"></span></template>
-                            </td>
-                            <td @click="handleCellAction(row, 'd_data.dec_status', row.d_data.dec_status)" title="Click to copy, Dbl-click to edit" class="px-3 py-2 whitespace-nowrap bg-purple-50/20 dark:bg-purple-900/20 cursor-pointer hover:bg-purple-100 dark:hover:bg-purple-900/50">
-                                <template x-if="editing.id === row.no && editing.field === 'd_data.dec_status'"><input type="text" x-model="row.d_data.dec_status" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full p-1 text-xs border rounded dark:bg-gray-700 dark:text-white dark:border-gray-600" autofocus /></template>
-                                <template x-if="!(editing.id === row.no && editing.field === 'd_data.dec_status')">
-                                    <span>
-                                        <span x-show="row.d_data.dec_status" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" x-text="row.d_data.dec_status"></span>
-                                        <span x-show="!row.d_data.dec_status" class="text-gray-300 dark:text-gray-500">-</span>
-                                    </span>
+                            <td class="px-2 py-2 text-center min-w-[180px]">
+                                <template x-if="!row.user_status">
+                                    <span class="px-3 py-1 rounded-md text-[10px] font-bold border shadow-sm block w-full whitespace-normal leading-tight" :class="getStatusColor(statusText(row.status))" x-text="statusText(row.status)"></span>
                                 </template>
+                                <template x-if="row.user_status"><span class="text-slate-300 dark:text-slate-700 font-black tracking-widest block opacity-50">...</span></template>
+                            </td>
+
+                            <td @click="editCell(row, 'user_status')" title="Click to select status" class="px-2 py-2 text-center min-w-[200px] border-r border-slate-100 dark:border-slate-800 cursor-pointer hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 bg-indigo-50/20 dark:bg-indigo-900/10 relative group/status transition-colors">
+                                <template x-if="editing.id === row.no && editing.field === 'user_status'">
+                                    <select
+                                        x-model="row.user_status"
+                                        @click.stop
+                                        @blur="$nextTick(() => stopEdit(row))"
+                                        @change="$nextTick(() => stopEdit(row))"
+                                        @keydown.enter="$nextTick(() => stopEdit(row))"
+                                        class="w-full py-1.5 px-2 text-[10px] font-bold border border-indigo-300 rounded shadow-lg dark:bg-slate-800 dark:text-white dark:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        autofocus
+                                    >
+                                        <option value="" disabled>-- Select Status --</option>
+                                        <template x-for="status in availableStatuses" :key="status.name"><option :value="status.name" x-text="status.name"></option></template>
+                                    </select>
+                                </template>
+                                <template x-if="!(editing.id === row.no && editing.field === 'user_status')">
+                                    <div class="flex items-center justify-between gap-1 w-full h-full">
+                                        <template x-if="!row.user_status">
+                                            <div
+                                                class="flex-1 px-3 py-1 rounded-md border border-dashed border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500 text-[10px] font-medium tracking-wide flex items-center justify-center gap-1 group-hover/status:border-indigo-400 group-hover/status:text-indigo-500 dark:group-hover/status:border-indigo-500 dark:group-hover/status:text-indigo-400 transition-colors"
+                                            >
+                                                <svg class="w-3 h-3 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg> Set Status
+                                            </div>
+                                        </template>
+                                        <template x-if="row.user_status">
+                                            <span x-text="row.user_status" class="px-3 py-1 flex-1 rounded-md text-[10px] font-bold border shadow-sm whitespace-normal leading-tight text-center" :class="getStatusColor(row.user_status)"></span>
+                                        </template>
+                                        <button x-show="row.user_status" @click.stop="clearUserStatus(row)" class="text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded p-1.5 transition-all flex-shrink-0" title="Clear Status">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                        </button>
+                                        <div x-show="!row.user_status" class="w-6 flex-shrink-0"></div>
+                                    </div>
+                                </template>
+                            </td>
+
+                            <td class="px-2 py-2 text-center whitespace-nowrap font-mono text-slate-400 dark:text-slate-500 bg-orange-50/20 dark:bg-orange-900/5"><span x-text="row.p_inv_clean"></span></td>
+                            <td class="px-2 py-2 text-center whitespace-nowrap font-mono text-slate-400 dark:text-slate-500 bg-orange-50/20 dark:bg-orange-900/5"><span x-text="row.d_inv_clean"></span></td>
+                            <td class="px-2 py-2 text-center bg-orange-50/20 dark:bg-orange-900/5"><span x-show="row.v_inv" class="text-emerald-500 text-xs">●</span><span x-show="!row.v_inv" class="text-rose-500 text-xs font-bold">✕</span></td>
+                            <td class="px-2 py-2 text-center bg-orange-50/20 dark:bg-orange-900/5"><span x-show="row.v_date" class="text-emerald-500 text-xs">●</span><span x-show="!row.v_date" class="text-rose-500 text-xs font-bold">✕</span></td>
+                            <td class="px-2 py-2 text-center bg-orange-50/20 dark:bg-orange-900/5"><span x-show="row.v_tin" class="text-emerald-500 text-xs">●</span><span x-show="!row.v_tin" class="text-rose-500 text-xs font-bold">✕</span></td>
+                            <td @click="handleCellAction(row, 'v_diff', row.v_diff)" class="px-2 py-2 text-right font-mono border-r border-slate-100 dark:border-slate-800 bg-orange-50/20 dark:bg-orange-900/5 font-bold cursor-pointer" :class="row.v_diff < -0.05 ? 'text-rose-500' : (row.v_diff > 0.05 ? 'text-emerald-500' : 'text-slate-400 dark:text-slate-500')">
+                                <template x-if="editing.id === row.no && editing.field === 'v_diff'"
+                                    ><input type="number" step="0.01" x-model="row.v_diff" @click.stop @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-indigo-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'v_diff')"><span x-text="Math.abs(row.v_diff) > 0.05 ? formatNumber(row.v_diff) : '-'"></span></template>
+                            </td>
+
+                            <td @click="handleCellAction(row, 'd_data.date', row.d_data.date)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap font-mono text-fuchsia-700 dark:text-fuchsia-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.date'"
+                                    ><input type="text" x-model="row.d_data.date" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.date')"><span x-text="row.d_data.date || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.invoice_no', row.d_data.invoice_no)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap font-mono text-purple-600 dark:text-purple-300 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.invoice_no'"
+                                    ><input type="text" x-model="row.d_data.invoice_no" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.invoice_no')"><span x-text="row.d_data.invoice_no || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.credit_no', row.d_data.credit_no)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.credit_no'"
+                                    ><input type="text" x-model="row.d_data.credit_no" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.credit_no')"><span x-text="row.d_data.credit_no || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.buyer_type', row.d_data.buyer_type)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap max-w-[120px] truncate text-slate-600 dark:text-slate-300 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.buyer_type'"
+                                    ><input type="text" x-model="row.d_data.buyer_type" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.buyer_type')"><span x-text="row.d_data.buyer_type || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.tin', row.d_data.tin)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap font-mono text-blue-500 dark:text-blue-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.tin'"
+                                    ><input type="text" x-model="row.d_data.tin" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.tin')"><span x-text="row.d_data.tin || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.name', row.d_data.name)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap max-w-[150px] truncate text-slate-700 dark:text-slate-200 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.name'"
+                                    ><input type="text" x-model="row.d_data.name" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.name')"><span x-text="row.d_data.name || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.total_amt', row.d_data.total_amt)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-slate-700 dark:text-slate-200 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.total_amt'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.total_amt" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.total_amt')"><span x-text="row.d_data.total_amt ? formatNumber(row.d_data.total_amt) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.excl_vat', row.d_data.excl_vat)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-600 dark:text-slate-300 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.excl_vat'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.excl_vat" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.excl_vat')"><span x-text="row.d_data.excl_vat ? formatNumber(row.d_data.excl_vat) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.non_vat', row.d_data.non_vat)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.non_vat'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.non_vat" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.non_vat')"><span x-text="row.d_data.non_vat ? formatNumber(row.d_data.non_vat) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.vat_0', row.d_data.vat_0)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.vat_0'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.vat_0" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.vat_0')"><span x-text="row.d_data.vat_0 ? formatNumber(row.d_data.vat_0) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.vat_local', row.d_data.vat_local)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-purple-700 dark:text-purple-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.vat_local'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.vat_local" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.vat_local')"><span x-text="row.d_data.vat_local ? formatNumber(row.d_data.vat_local) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.vat_export', row.d_data.vat_export)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.vat_export'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.vat_export" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.vat_export')"><span x-text="row.d_data.vat_export ? formatNumber(row.d_data.vat_export) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.state_burden', row.d_data.state_burden)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.state_burden'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.state_burden" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.state_burden')"><span x-text="row.d_data.state_burden ? formatNumber(row.d_data.state_burden) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.withheld', row.d_data.withheld)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.withheld'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.withheld" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.withheld')"><span x-text="row.d_data.withheld ? formatNumber(row.d_data.withheld) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.plt', row.d_data.plt)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.plt'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.plt" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.plt')"><span x-text="row.d_data.plt ? formatNumber(row.d_data.plt) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.spec_goods', row.d_data.spec_goods)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.spec_goods'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.spec_goods" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.spec_goods')"><span x-text="row.d_data.spec_goods ? formatNumber(row.d_data.spec_goods) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.spec_serv', row.d_data.spec_serv)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.spec_serv'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.spec_serv" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.spec_serv')"><span x-text="row.d_data.spec_serv ? formatNumber(row.d_data.spec_serv) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.accom', row.d_data.accom)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.accom'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.accom" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.accom')"><span x-text="row.d_data.accom ? formatNumber(row.d_data.accom) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.redemption', row.d_data.redemption)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap text-right font-mono text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.redemption'"
+                                    ><input type="number" step="0.01" x-model="row.d_data.redemption" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded font-mono text-right dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.redemption')"><span x-text="row.d_data.redemption ? formatNumber(row.d_data.redemption) : '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.notes', row.d_data.notes)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 max-w-[120px] truncate text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.notes'"
+                                    ><input type="text" x-model="row.d_data.notes" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.notes')"><span x-text="row.d_data.notes || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.desc', row.d_data.desc)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 max-w-[120px] truncate text-slate-500 dark:text-slate-400 bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.desc'"
+                                    ><input type="text" x-model="row.d_data.desc" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.desc')"><span x-text="row.d_data.desc || '-'"></span></template>
+                            </td>
+                            <td @click="handleCellAction(row, 'd_data.dec_status', row.d_data.dec_status)" title="Click to copy, Dbl-click to edit" class="px-2 py-2 whitespace-nowrap bg-purple-50/10 dark:bg-purple-900/10 cursor-pointer hover:bg-purple-50/50 dark:hover:bg-purple-900/30">
+                                <template x-if="editing.id === row.no && editing.field === 'd_data.dec_status'"
+                                    ><input type="text" x-model="row.d_data.dec_status" @blur="stopEdit(row)" @keydown.enter="stopEdit(row)" class="w-full px-2 py-1 text-[11px] border border-purple-300 rounded dark:bg-slate-900 dark:text-white dark:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500" autofocus /></template
+                                ><template x-if="!(editing.id === row.no && editing.field === 'd_data.dec_status')"
+                                    ><span
+                                        ><span x-show="row.d_data.dec_status" class="px-2 py-1 rounded-md text-[9px] font-bold bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/30 dark:text-fuchsia-400 border border-fuchsia-200 dark:border-fuchsia-800" x-text="row.d_data.dec_status"></span><span x-show="!row.d_data.dec_status" class="text-slate-300 dark:text-slate-600 font-bold">-</span></span
+                                    ></template
+                                >
                             </td>
                         </tr>
                     </template>
-
                     <tr x-show="rows.length === 0 && !loading" class="h-64">
-                        <td colspan="36" class="text-center text-gray-400">
-                            <div class="flex flex-col items-center justify-center gap-2">
-                                <svg class="w-12 h-12 text-gray-200 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                <span>No records found for this view.</span>
+                        <td colspan="37" class="text-center text-slate-400 dark:text-slate-500">
+                            <div class="flex flex-col items-center justify-center gap-3">
+                                <svg class="w-10 h-10 text-slate-300 dark:text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg
+                                ><span class="text-sm font-medium">No records found for this view.</span>
                             </div>
                         </td>
                     </tr>
                 </tbody>
             </table>
 
-            <div x-show="loading" class="absolute inset-0 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm flex items-center justify-center z-30">
-                <div class="flex items-center gap-3 bg-white dark:bg-gray-800 px-6 py-4 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700">
-                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-brand-600"></div>
-                    <span class="text-gray-600 dark:text-gray-300 font-medium">Loading Data...</span>
+            <div x-show="loading" class="absolute inset-0 bg-white/60 dark:bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-30 transition-all">
+                <div class="flex items-center gap-4 bg-white dark:bg-slate-800 px-8 py-5 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 ring-1 ring-inset ring-white/10">
+                    <svg class="animate-spin -ml-1 mr-3 h-6 w-6 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span class="text-slate-700 dark:text-slate-200 font-bold tracking-wide">Syncing Data...</span>
                 </div>
             </div>
         </div>
 
-        <button x-show="showScrollTop" x-transition @click="scrollToTop()" class="absolute bottom-20 right-8 z-50 p-3 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-xl hover:shadow-2xl transition-all transform hover:-translate-y-1 focus:outline-none" title="Scroll to Top" style="display: none">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+        <button x-show="showScrollTop" x-transition @click="scrollToTop()" class="absolute bottom-16 right-8 z-40 p-3.5 rounded-full bg-gradient-to-r from-indigo-500 to-blue-500 text-white shadow-xl hover:shadow-indigo-500/30 transition-all transform hover:-translate-y-1 focus:outline-none">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
         </button>
 
-        <div x-show="rows.length > 0" class="px-5 py-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 flex flex-col sm:flex-row justify-between items-center text-xs text-gray-600 dark:text-gray-300 flex-shrink-0 z-30 gap-2">
-            <div class="truncate">Showing <span class="font-bold" x-text="startRecord"></span> to <span class="font-bold" x-text="endRecord"></span> of <span class="font-bold" x-text="formatNumber(totalRows)"></span> results</div>
-            <div class="flex items-center gap-4">
+        <div x-show="rows.length > 0" class="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-600 dark:text-slate-400 flex-shrink-0 z-10 gap-3">
+            <div class="truncate font-medium">Showing <span class="font-bold text-slate-900 dark:text-white" x-text="startRecord"></span> to <span class="font-bold text-slate-900 dark:text-white" x-text="endRecord"></span> of <span class="font-bold text-indigo-600 dark:text-indigo-400" x-text="formatNumber(totalRows)"></span> results</div>
+            <div class="flex items-center gap-5">
                 <div class="flex items-center gap-2">
-                    <span class="text-gray-500 hidden sm:inline">Rows:</span>
-                    <select x-model="pageSizePreset" @change="handlePageSizeChange()" class="text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 py-1.5 pl-2 pr-6 focus:ring-indigo-500 focus:border-indigo-500">
+                    <span class="text-slate-500 hidden sm:inline uppercase tracking-wider text-[9px] font-bold">Rows/Page:</span>
+                    <select x-model="pageSizePreset" @change="handlePageSizeChange()" class="text-[11px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 pl-3 pr-7 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm">
                         <option value="50">50</option>
                         <option value="100">100</option>
                         <option value="500">500</option>
@@ -419,15 +638,15 @@
                         <option value="custom">Custom</option>
                     </select>
                     <div x-show="pageSizePreset === 'custom'" x-transition class="w-16">
-                        <input x-model.number="pageSize" @keydown.enter="changePageSize()" @blur="changePageSize()" type="number" min="1" class="w-full text-xs border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 py-1.5 px-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="#" />
+                        <input x-model.number="pageSize" @keydown.enter="changePageSize()" @blur="changePageSize()" type="number" min="1" class="w-full text-[11px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 px-3 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm" placeholder="#" />
                     </div>
                 </div>
-                <div class="flex items-center gap-2 border-l border-gray-300 dark:border-gray-600 pl-4">
-                    <button @click="changePage(page - 1)" :disabled="page <= 1" class="px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-700 transition">
+                <div class="flex items-center gap-3 border-l border-slate-300 dark:border-slate-700 pl-5">
+                    <button @click="changePage(page - 1)" :disabled="page <= 1" class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed bg-white dark:bg-slate-800 transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
                     </button>
-                    <span class="px-2 min-w-[80px] text-center font-medium">Page <span x-text="page"></span> of <span x-text="totalPages"></span></span>
-                    <button @click="changePage(page + 1)" :disabled="page >= totalPages" class="px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed bg-white dark:bg-gray-700 transition">
+                    <span class="px-2 min-w-[70px] text-center font-bold text-slate-700 dark:text-slate-300">Page <span x-text="page"></span> of <span x-text="totalPages"></span></span>
+                    <button @click="changePage(page + 1)" :disabled="page >= totalPages" class="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed bg-white dark:bg-slate-800 transition shadow-sm">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
                     </button>
                 </div>
@@ -435,22 +654,12 @@
         </div>
     </div>
 
-    <div class="fixed bottom-10 left-0 right-0 z-50 flex justify-center pointer-events-none">
-        <div
-            x-show="toastMsg"
-            x-transition:enter="transition ease-out duration-300"
-            x-transition:enter-start="opacity-0 translate-y-8 scale-95"
-            x-transition:enter-end="opacity-100 translate-y-0 scale-100"
-            x-transition:leave="transition ease-in duration-200"
-            x-transition:leave-start="opacity-100 translate-y-0 scale-100"
-            x-transition:leave-end="opacity-0 translate-y-8 scale-95"
-            class="bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-5 py-3 rounded-xl shadow-2xl text-sm font-bold flex items-center gap-3 pointer-events-auto"
-            style="display: none"
-        >
-            <div class="bg-green-500/20 text-green-400 dark:text-green-600 rounded-full p-1">
+    <div class="fixed bottom-8 left-0 right-0 z-50 flex justify-center pointer-events-none">
+        <div x-show="toastMsg" x-transition.opacity.duration.300ms class="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3.5 rounded-full shadow-2xl text-sm font-bold flex items-center gap-3 pointer-events-auto border border-slate-700 dark:border-slate-200" style="display: none">
+            <div class="bg-emerald-500/20 text-emerald-400 dark:text-emerald-600 rounded-full p-1">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
             </div>
-            <span x-text="toastMsg"></span>
+            <span x-text="toastMsg" class="tracking-wide"></span>
         </div>
     </div>
 </div>
@@ -460,7 +669,8 @@
         Alpine.data('resultsDashboard', () => ({
             ovatrCode: '{{ ovatr_code }}',
             rows: [],
-            stats: {total: 0, matched: 0, not_found: 0, mismatch: 0, local_count: 0, import_count: 0},
+            stats: {total: 0, local_count: 0, import_count: 0},
+            effCounts: {},
             search: '',
             filter: 'ALL',
             tableType: 'local',
@@ -473,7 +683,6 @@
             pageSizePreset: '50',
             totalPages: 1,
             totalRows: 0,
-            showScrollTop: false,
             showHistoryModal: false,
             historyRowId: null,
             historyLogs: [],
@@ -485,14 +694,51 @@
             unsavedChanges: new Set(),
             toastMsg: '',
 
+            showStatusModal: false,
+            availableStatuses: [],
+            newStatus: {name: '', summary: '', action: '', color: 'green'},
+
             clicks: 0,
             clickTimer: null,
             clickDelay: 250,
 
-            // SMART CLICK HANDLERS
+            // DYNAMIC COLOR MAPPER - UPGRADED TO GLASMORPHISM
+            getStatusColor(statusName) {
+                if (!statusName) return 'bg-slate-100/50 text-slate-400 border-slate-200 border-dashed dark:bg-slate-800/50 dark:border-slate-700';
+                const st = this.availableStatuses.find((s) => s.name === statusName);
+                const color = st ? st.color : 'gray';
+
+                if (color === 'green') return 'bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-900/30 dark:to-green-900/10 text-green-700 dark:text-emerald-400 border-green-200 dark:border-emerald-500/30 ring-1 ring-inset ring-green-500/10';
+                if (color === 'orange') return 'bg-gradient-to-br from-orange-50 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/10 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-500/30 ring-1 ring-inset ring-orange-500/10';
+                if (color === 'red') return 'bg-gradient-to-br from-rose-50 to-red-100 dark:from-rose-900/30 dark:to-red-900/10 text-red-700 dark:text-rose-400 border-red-200 dark:border-rose-500/30 ring-1 ring-inset ring-red-500/10';
+                if (color === 'blue') return 'bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/30 dark:to-indigo-900/10 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/30 ring-1 ring-inset ring-blue-500/10';
+                return 'bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 ring-1 ring-inset ring-slate-500/10';
+            },
+
+            getStatusBoxColor(statusName) {
+                const st = this.availableStatuses.find((s) => s.name === statusName);
+                const color = st ? st.color : 'gray';
+
+                if (color === 'green') return 'bg-gradient-to-br from-emerald-50/50 to-green-100/50 dark:from-[#064e3b] dark:to-[#065f46] text-green-900 dark:text-emerald-50 border-green-200 dark:border-emerald-500/40 shadow-[0_4px_20px_-4px_rgba(16,185,129,0.15)] ring-1 ring-inset ring-emerald-500/20';
+                if (color === 'orange') return 'bg-gradient-to-br from-orange-50/50 to-amber-100/50 dark:from-[#7c2d12] dark:to-[#9a3412] text-orange-900 dark:text-orange-50 border-orange-200 dark:border-orange-500/40 shadow-[0_4px_20px_-4px_rgba(249,115,22,0.15)] ring-1 ring-inset ring-orange-500/20';
+                if (color === 'red') return 'bg-gradient-to-br from-rose-50/50 to-red-100/50 dark:from-[#881337] dark:to-[#9f1239] text-red-900 dark:text-rose-50 border-red-200 dark:border-rose-500/40 shadow-[0_4px_20px_-4px_rgba(225,29,72,0.15)] ring-1 ring-inset ring-rose-500/20';
+                if (color === 'blue') return 'bg-gradient-to-br from-blue-50/50 to-indigo-100/50 dark:from-[#1e3a8a] dark:to-[#1e40af] text-blue-900 dark:text-blue-50 border-blue-200 dark:border-blue-500/40 shadow-[0_4px_20px_-4px_rgba(59,130,246,0.15)] ring-1 ring-inset ring-blue-500/20';
+                return 'bg-white dark:bg-gradient-to-br dark:from-slate-800 dark:to-slate-900 text-slate-900 dark:text-white border-slate-200 dark:border-slate-700 shadow-sm ring-1 ring-inset ring-slate-500/10';
+            },
+
+            getAmbientGlow(statusName) {
+                const st = this.availableStatuses.find((s) => s.name === statusName);
+                const color = st ? st.color : 'gray';
+
+                if (color === 'green') return 'bg-emerald-500/20';
+                if (color === 'orange') return 'bg-orange-500/20';
+                if (color === 'red') return 'bg-rose-500/20';
+                if (color === 'blue') return 'bg-blue-500/20';
+                return 'bg-slate-500/10';
+            },
+
             handleCellAction(row, field, textToCopy) {
                 if (this.editing.id === row.no && this.editing.field === field) return;
-
                 this.clicks++;
                 if (this.clicks === 1) {
                     this.clickTimer = setTimeout(() => {
@@ -506,10 +752,44 @@
                 }
             },
 
+            updateLocalStats() {
+                // Handled via backend effCounts initially, patched slightly on edit.
+            },
+
+            incrementStat(oldStatus, newStatus) {
+                if (oldStatus === newStatus) return;
+                if (this.effCounts[oldStatus] && this.effCounts[oldStatus] > 0) {
+                    this.effCounts[oldStatus]--;
+                    if (this.effCounts[oldStatus] === 0) {
+                        const isDefault = this.availableStatuses.find((s) => s.name === oldStatus);
+                        if (!isDefault) delete this.effCounts[oldStatus];
+                    }
+                }
+                this.effCounts[newStatus] = (this.effCounts[newStatus] || 0) + 1;
+            },
+
+            clearUserStatus(row) {
+                if (!row.user_status) return;
+                const oldValue = row.user_status;
+                row.user_status = '';
+
+                this.pushHistoryAction(row.no, 'user_status', oldValue, '');
+                this.recalculate(row);
+
+                const finalSysStatus = this.statusText(row.status);
+                this.incrementStat(oldValue, finalSysStatus);
+
+                this.autoSaveRow(row);
+                this.toastMsg = 'User Status cleared.';
+                setTimeout(() => {
+                    this.toastMsg = '';
+                }, 2000);
+            },
+
             copyToClipboard(text) {
-                if (text === null || text === undefined || text === '') return;
+                if (!text) return;
                 navigator.clipboard.writeText(String(text)).then(() => {
-                    this.toastMsg = 'Copied: ' + text;
+                    this.toastMsg = 'Copied to clipboard';
                     setTimeout(() => {
                         this.toastMsg = '';
                     }, 2000);
@@ -534,19 +814,70 @@
             },
 
             async init() {
+                await this.loadStatuses();
                 this.loadStats();
                 await this.fetchData();
             },
 
-            // --- IndexedDB Cache System ---
+            async loadStatuses() {
+                try {
+                    const res = await fetch('{% url "crosscheck:api_user_statuses" %}');
+                    const data = await res.json();
+                    if (data.status === 'success') {
+                        this.availableStatuses = data.data;
+                    }
+                } catch (e) {
+                    console.error('Failed to load statuses from DB', e);
+                }
+            },
+
+            async saveNewStatus() {
+                if (!this.newStatus.name || !this.newStatus.summary) return;
+                try {
+                    const payload = {type: 'add', ...this.newStatus};
+                    await fetch('{% url "crosscheck:api_user_statuses" %}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
+                        body: JSON.stringify(payload),
+                    });
+                    this.availableStatuses.push({...this.newStatus});
+
+                    if (this.effCounts[this.newStatus.name] === undefined) {
+                        this.effCounts[this.newStatus.name] = 0;
+                    }
+
+                    this.newStatus = {name: '', summary: '', action: '', color: 'green'};
+                    this.toastMsg = 'Status added to Database';
+                    setTimeout(() => {
+                        this.toastMsg = '';
+                    }, 2000);
+                } catch (e) {
+                    console.error(e);
+                }
+            },
+
+            async deleteStatus(index) {
+                if (confirm('Are you sure you want to completely remove this status from the Database?')) {
+                    const stat = this.availableStatuses[index];
+                    try {
+                        await fetch('{% url "crosscheck:api_user_statuses" %}', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
+                            body: JSON.stringify({type: 'delete', name: stat.name}),
+                        });
+                        this.availableStatuses.splice(index, 1);
+                    } catch (e) {
+                        console.error(e);
+                    }
+                }
+            },
+
             openDB() {
                 return new Promise((resolve, reject) => {
                     const request = indexedDB.open('AutoCrosscheck_DB', 1);
                     request.onupgradeneeded = (e) => {
                         const db = e.target.result;
-                        if (!db.objectStoreNames.contains('resultsCache')) {
-                            db.createObjectStore('resultsCache', {keyPath: 'id'});
-                        }
+                        if (!db.objectStoreNames.contains('resultsCache')) db.createObjectStore('resultsCache', {keyPath: 'id'});
                     };
                     request.onsuccess = () => resolve(request.result);
                     request.onerror = () => reject(request.error);
@@ -556,8 +887,7 @@
                 const db = await this.openDB();
                 return new Promise((resolve, reject) => {
                     const tx = db.transaction('resultsCache', 'readonly');
-                    const store = tx.objectStore('resultsCache');
-                    const req = store.get(key);
+                    const req = tx.objectStore('resultsCache').get(key);
                     req.onsuccess = () => resolve(req.result);
                     req.onerror = () => reject(req.error);
                 });
@@ -566,8 +896,7 @@
                 const db = await this.openDB();
                 return new Promise((resolve, reject) => {
                     const tx = db.transaction('resultsCache', 'readwrite');
-                    const store = tx.objectStore('resultsCache');
-                    store.put({id: key, timestamp: Date.now(), data: dataPayload});
+                    tx.objectStore('resultsCache').put({id: key, timestamp: Date.now(), data: dataPayload});
                     tx.oncomplete = () => resolve();
                     tx.onerror = () => reject(tx.error);
                 });
@@ -576,8 +905,7 @@
                 const db = await this.openDB();
                 return new Promise((resolve, reject) => {
                     const tx = db.transaction('resultsCache', 'readwrite');
-                    const store = tx.objectStore('resultsCache');
-                    const req = store.clear();
+                    const req = tx.objectStore('resultsCache').clear();
                     req.onsuccess = () => resolve();
                     req.onerror = () => reject(req.error);
                 });
@@ -598,17 +926,41 @@
             get hasUnsavedChanges() {
                 return this.unsavedChanges.size > 0;
             },
+
             get filteredRows() {
                 if (!this.search && this.filter === 'ALL') return this.rows;
                 const term = this.search.toLowerCase();
                 return this.rows.filter((row) => {
                     const matchesSearch = !term || (row.p_desc || '').toLowerCase().includes(term) || (row.p_inv || '').toLowerCase().includes(term) || (row.p_tin || '').toLowerCase().includes(term) || (row.d_data?.invoice_no || '').toLowerCase().includes(term) || (row.d_data?.tin || '').toLowerCase().includes(term);
+
                     let matchesFilter = false;
-                    if (this.filter === 'ALL') matchesFilter = true;
-                    else if (this.filter === 'MATCHED') matchesFilter = row.status === 'MATCHED' || row.status === 'SHORTAGE';
-                    else matchesFilter = row.status === this.filter;
+                    let effStatus = row.user_status ? row.user_status : this.statusText(row.status);
+
+                    if (this.filter === 'ALL') {
+                        matchesFilter = true;
+                    } else {
+                        matchesFilter = effStatus === this.filter;
+                    }
+
                     return matchesSearch && matchesFilter;
                 });
+            },
+
+            get orderedStats() {
+                let stats = [];
+                let added = new Set();
+
+                this.availableStatuses.forEach((s) => {
+                    stats.push({name: s.name, count: this.effCounts[s.name] || 0});
+                    added.add(s.name);
+                });
+
+                for (let key in this.effCounts) {
+                    if (!added.has(key)) {
+                        stats.push({name: key, count: this.effCounts[key]});
+                    }
+                }
+                return stats;
             },
 
             async loadStats() {
@@ -619,7 +971,6 @@
                     if (data.status === 'success') {
                         this.stats.local_count = data.local_count;
                         this.stats.import_count = data.import_count;
-                        this.stats.total = data.total_rows;
                     }
                 } catch (e) {
                     console.error(e);
@@ -628,56 +979,21 @@
 
             applyData(data) {
                 this.rows = data.data.map((r) => {
-                    let d = r.d_data || {
-                        date: '',
-                        invoice_no: '',
-                        credit_no: '',
-                        buyer_type: '',
-                        tin: '',
-                        name: '',
-                        total_amt: '',
-                        excl_vat: '',
-                        non_vat: '',
-                        vat_0: '',
-                        vat_local: '',
-                        vat_export: '',
-                        state_burden: '',
-                        withheld: '',
-                        plt: '',
-                        spec_goods: '',
-                        spec_serv: '',
-                        accom: '',
-                        redemption: '',
-                        notes: '',
-                        desc: '',
-                        dec_status: '',
-                    };
-
+                    let d = r.d_data || {};
                     d.date = this.formatDateStr(d.date);
-
-                    const newRow = {
-                        ...r,
-                        d_data: d,
-                        _orig_d_inv: r.d_inv,
-                        _orig_d_tin: r.d_tin,
-                        _orig_d_date: r.d_date,
-                        _session_history: {},
-                    };
+                    const newRow = {...r, user_status: r.user_status || '', d_data: d, _orig_d_inv: r.d_inv, _orig_d_tin: r.d_tin, _orig_d_date: r.d_date, _session_history: {}};
                     this.recalculate(newRow);
                     return newRow;
                 });
 
-                let m = 0,
-                    nf = 0,
-                    mm = 0;
-                this.rows.forEach((r) => {
-                    if (r.status === 'MATCHED' || r.status === 'SHORTAGE') m++;
-                    else if (r.status === 'NOT FOUND') nf++;
-                    else if (r.status === 'MISMATCH') mm++;
-                });
-                this.stats.matched = m;
-                this.stats.not_found = nf;
-                this.stats.mismatch = mm;
+                if (data.stats) {
+                    this.stats.total = data.stats.total || 0;
+                    const newEffCounts = data.stats.eff_counts || {};
+                    this.availableStatuses.forEach((s) => {
+                        if (newEffCounts[s.name] === undefined) newEffCounts[s.name] = 0;
+                    });
+                    this.effCounts = newEffCounts;
+                }
 
                 if (data.pagination) {
                     this.totalPages = data.pagination.total_pages;
@@ -688,15 +1004,13 @@
 
             async fetchData(forceRefresh = false) {
                 if (!this.ovatrCode) return;
-
                 if (!this.isSaving) this.loading = true;
                 this.isCached = false;
 
                 const cacheKey = `${this.ovatrCode}_${this.tableType}_${this.page}_${this.pageSize}`;
 
-                if (forceRefresh) {
-                    await this.clearLocalCache();
-                } else {
+                if (forceRefresh) await this.clearLocalCache();
+                else {
                     try {
                         const cached = await this.getLocalCache(cacheKey);
                         if (cached && cached.data) {
@@ -706,31 +1020,19 @@
                             this.scrollToTop();
                             return;
                         }
-                    } catch (e) {
-                        console.warn('Cache read failed', e);
-                    }
+                    } catch (e) {}
                 }
 
                 try {
                     const timestamp = new Date().getTime();
                     const url = `{% url "crosscheck:get_results_data" %}?ovatr_code=${this.ovatrCode}&page=${this.page}&page_size=${this.pageSize}&table_type=${this.tableType}&_cb=${timestamp}`;
-
-                    const res = await fetch(url, {
-                        headers: {
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            Pragma: 'no-cache',
-                            Expires: '0',
-                        },
-                    });
-
+                    const res = await fetch(url, {headers: {'Cache-Control': 'no-cache, no-store, must-revalidate', Pragma: 'no-cache', Expires: '0'}});
                     const data = await res.json();
 
                     if (data.status === 'success') {
                         if (!this.isSaving) this.rows = [];
                         this.applyData(data);
-
-                        const cleanData = JSON.parse(JSON.stringify(data));
-                        await this.setLocalCache(cacheKey, cleanData);
+                        await this.setLocalCache(cacheKey, JSON.parse(JSON.stringify(data)));
                     }
                 } catch (e) {
                     console.error(e);
@@ -776,7 +1078,6 @@
                     else row._session_history[field].new = newValue;
                 }
             },
-
             setFieldValue(row, field, value) {
                 if (field.includes('.')) {
                     const [obj, key] = field.split('.');
@@ -785,7 +1086,6 @@
                     row[field] = value;
                 }
             },
-
             undo() {
                 if (this.historyIndex < 0) return;
                 const action = this.history[this.historyIndex];
@@ -808,48 +1108,25 @@
                     this.autoSaveRow(row);
                 }
             },
-
-            // --- RESTORE SPECIFIC HISTORY LOG ---
             restoreHistoryValue(log) {
                 const row = this.rows.find((r) => r.no === String(this.historyRowId));
-                if (!row) {
-                    this.toastMsg = 'Row not found in current view.';
-                    setTimeout(() => {
-                        this.toastMsg = '';
-                    }, 3000);
-                    return;
-                }
+                if (!row) return;
 
                 const field = log.field;
-                let currentValue;
-
-                if (field.includes('.')) {
-                    const [obj, key] = field.split('.');
-                    currentValue = row[obj][key];
-                } else {
-                    currentValue = row[field];
-                }
-
+                let currentValue = field.includes('.') ? row[field.split('.')[0]][field.split('.')[1]] : row[field];
                 const restoredValue = log.old_value;
 
-                if (String(currentValue) === String(restoredValue)) {
-                    this.toastMsg = 'Value is already set to this.';
-                    setTimeout(() => {
-                        this.toastMsg = '';
-                    }, 2000);
-                    return;
-                }
+                if (String(currentValue) === String(restoredValue)) return;
+
+                let oldEffStatus = row.user_status ? row.user_status : this.statusText(row.status);
 
                 this.setFieldValue(row, field, restoredValue);
                 this.pushHistoryAction(row.no, field, currentValue, restoredValue);
                 this.recalculate(row);
 
-                this.toastMsg = `Restored ${field}`;
-                setTimeout(() => {
-                    this.toastMsg = '';
-                }, 3000);
+                let newEffStatus = row.user_status ? row.user_status : this.statusText(row.status);
+                this.incrementStat(oldEffStatus, newEffStatus);
 
-                // Run auto-save in background. When it finishes, refresh history modal silently.
                 this.autoSaveRow(row).then(() => {
                     if (this.showHistoryModal && String(this.historyRowId) === String(row.no)) {
                         this.viewHistory(row.no, true);
@@ -859,14 +1136,9 @@
 
             editCell(row, field) {
                 this.editing = {id: row.no, field};
-                if (field.includes('.')) {
-                    const [obj, key] = field.split('.');
-                    row._originalValue = row[obj][key];
-                } else {
-                    row._originalValue = row[field];
-                }
+                row._originalValue = field.includes('.') ? row[field.split('.')[0]][field.split('.')[1]] : row[field];
                 this.$nextTick(() => {
-                    const input = this.$el.querySelector('input');
+                    const input = this.$el.querySelector('input, select');
                     if (input) input.focus();
                 });
             },
@@ -874,20 +1146,23 @@
             stopEdit(row) {
                 if (this.editing.id === null) return;
                 const field = this.editing.field;
-                let newValue;
-                if (field.includes('.')) {
-                    const [obj, key] = field.split('.');
-                    newValue = row[obj][key];
-                } else {
-                    newValue = row[field];
-                }
+                let newValue = field.includes('.') ? row[field.split('.')[0]][field.split('.')[1]] : row[field];
                 const oldValue = row._originalValue;
+
+                this.editing = {id: null, field: null};
+
                 if (newValue != oldValue) {
+                    let oldEffStatus = row.user_status ? row.user_status : this.statusText(row.status);
+                    if (field === 'user_status') oldEffStatus = oldValue ? oldValue : this.statusText(row.status);
+
                     this.pushHistoryAction(row.no, field, oldValue, newValue);
                     this.recalculate(row);
+
+                    let newEffStatus = row.user_status ? row.user_status : this.statusText(row.status);
+                    this.incrementStat(oldEffStatus, newEffStatus);
+
                     this.autoSaveRow(row);
                 }
-                this.editing = {id: null, field: null};
             },
 
             cleanInvoice(val) {
@@ -909,13 +1184,9 @@
                 const P = row.v_date;
                 const Q = row.v_tin;
 
-                if (O && P && Q) {
-                    row.status = diff < -0.05 ? 'SHORTAGE' : 'MATCHED';
-                } else if (!O && !P && !Q) {
-                    row.status = 'NOT FOUND';
-                } else {
-                    row.status = 'MISMATCH';
-                }
+                if (O && P && Q) row.status = diff < -0.05 ? 'SHORTAGE' : 'MATCHED';
+                else if (!O && !P && !Q) row.status = 'NOT FOUND';
+                else row.status = 'MISMATCH';
             },
 
             statusText(st) {
@@ -926,7 +1197,6 @@
                 return st;
             },
 
-            // --- AUTO-SAVE LOGIC ---
             async autoSaveRow(row) {
                 this.autoSavePending++;
                 this.isSaving = true;
@@ -943,6 +1213,7 @@
                             p_date: row.p_date,
                             p_amt: row.p_amt,
                             p_tin: row.p_tin,
+                            user_status: row.user_status,
                             d_inv: row.d_data.invoice_no,
                             d_tin: row.d_data.tin,
                             d_name: row.d_data.name,
@@ -958,21 +1229,13 @@
 
                     const response = await fetch('{% url "crosscheck:update_result_row" %}', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
-                        },
+                        headers: {'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')},
                         body: JSON.stringify(payload),
                     });
 
-                    if (!response.ok) {
-                        const err = await response.text();
-                        throw new Error(err);
-                    }
+                    if (!response.ok) throw new Error(await response.text());
                     const resJson = await response.json();
-                    if (resJson.status !== 'success') {
-                        throw new Error(resJson.message);
-                    }
+                    if (resJson.status !== 'success') throw new Error(resJson.message);
 
                     row._session_history = {};
                     row._orig_d_inv = row.d_data.invoice_no;
@@ -980,7 +1243,6 @@
                     row._orig_d_date = row.d_data.date;
 
                     await this.clearLocalCache();
-                    await this.fetchData(true);
                 } catch (e) {
                     console.error('Auto-save failed', e);
                     this.toastMsg = 'Failed to save edit: ' + e.message.substring(0, 50);
@@ -997,14 +1259,6 @@
                 }
             },
 
-            async saveChanges() {
-                if (this.unsavedChanges.size === 0) return;
-                const dirtyRows = this.rows.filter((r) => this.unsavedChanges.has(r.no));
-                for (const row of dirtyRows) {
-                    await this.autoSaveRow(row);
-                }
-            },
-
             async viewHistory(rowId, silent = false) {
                 this.historyRowId = rowId;
                 if (!silent) {
@@ -1016,9 +1270,7 @@
                 try {
                     const res = await fetch(`{% url "crosscheck:get_row_history" %}?ovatr=${this.ovatrCode}&no=${rowId}`);
                     const data = await res.json();
-                    if (data.status === 'success') {
-                        this.historyLogs = data.data;
-                    }
+                    if (data.status === 'success') this.historyLogs = data.data;
                 } catch (e) {
                     console.error(e);
                 } finally {

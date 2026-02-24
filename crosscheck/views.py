@@ -495,7 +495,12 @@ def save_purchase(request):
 
             df['ovatr'] = ovatr_val
             
+            # --- CRITICAL FIX 1: Add the blank user_status column to the DataFrame ---
+            df['user_status'] = None
+            
             con = get_db_connection()
+            
+            # --- CRITICAL FIX 2: Add user_status to the table creation ---
             con.execute("""
                 CREATE TABLE IF NOT EXISTS purchase (
                     ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, type VARCHAR, 
@@ -503,18 +508,31 @@ def save_purchase(request):
                     exclude_vat DOUBLE, non_vat_purchase DOUBLE, vat_0 DOUBLE, purchase DOUBLE, 
                     import DOUBLE, non_creditable_vat DOUBLE, purchase_state_charge DOUBLE, 
                     import_state_charge DOUBLE, description VARCHAR, status VARCHAR, 
+                    user_status VARCHAR,
                     PRIMARY KEY (ovatr, no)
                 )
             """)
+            
+            # Safe fallback if the table existed before we updated the CREATE statement
+            try: con.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+            except: pass
+
             con.execute("DELETE FROM purchase WHERE ovatr = ?", [ovatr_val])
             con.register('df_purchase', df)
+            
+            # --- CRITICAL FIX 3: Explicitly map the columns in the INSERT statement ---
             con.execute("""
-                INSERT INTO purchase 
+                INSERT INTO purchase (
+                    ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, 
+                    total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, 
+                    import, non_creditable_vat, purchase_state_charge, import_state_charge, 
+                    description, status, user_status
+                )
                 SELECT 
                     ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, 
                     total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, 
                     import, non_creditable_vat, purchase_state_charge, import_state_charge, 
-                    description, status 
+                    description, status, user_status 
                 FROM df_purchase
             """)
             con.close()
@@ -665,10 +683,9 @@ def update_result_row(request):
     Updates the DuckDB tables and triggers an Excel rebuild.
     Includes Smart History Fallback to prevent orphaned Tax Declaration rows from being lost.
     """
-    # HELPER: Converts UI date (DD-MM-YYYY) back to Database Date (YYYY-MM-DD)
     def format_db_date(val):
         if not val or str(val).strip().lower() in ['nan', 'none', 'nat', '']: 
-            return None # Prevent DuckDB Conversion Error on empty dates
+            return None 
         v = str(val).strip()
         if re.match(r'^\d{4}-\d{2}-\d{2}', v): return v[:10]
         for fmt in ('%d-%m-%Y', '%d/%m/%Y', '%m/%d/%Y', '%m-%d-%Y'):
@@ -685,6 +702,12 @@ def update_result_row(request):
             updates = body.get('updates', {})
             history_data = body.get('history', {}) 
             
+            con = get_db_connection()
+            
+            # --- CRITICAL FIX: Ensure dedicated user_status column exists ---
+            try: con.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+            except: pass
+            
             # --- 1. Map Purchase Table Updates ---
             db_updates = {}
             if 'p_desc' in updates: db_updates['description'] = str(updates['p_desc'])
@@ -692,6 +715,10 @@ def update_result_row(request):
             if 'p_tin' in updates: db_updates['supplier_tin'] = str(updates['p_tin'])
             if 'p_inv' in updates: db_updates['invoice_no'] = str(updates['p_inv'])
             if 'p_date' in updates: db_updates['date'] = format_db_date(updates['p_date']) 
+            
+            # Safely map user_status so it clears properly if deselected
+            if 'user_status' in updates: 
+                db_updates['user_status'] = str(updates['user_status']) if updates['user_status'] else None
             
             if 'p_amt' in updates:
                 try: amt = clean_currency(updates['p_amt'])
@@ -723,33 +750,21 @@ def update_result_row(request):
                     if f_key in numeric_fields:
                         try: val = clean_currency(val)
                         except: val = 0.0
-                    elif f_key == 'date':
-                        val = format_db_date(val) 
-                    else: 
-                        val = str(val) if val is not None else ""
+                    elif f_key == 'date': val = format_db_date(val) 
+                    else: val = str(val) if val is not None else ""
                     d_updates[db_col] = val
 
             orig_inv = updates.get('original_d_inv')
             orig_tin = updates.get('original_d_tin')
 
-            con = get_db_connection()
-
             # --- SMART HISTORY FALLBACK ---
             if (not orig_inv or str(orig_inv).strip() == '') and d_updates:
                 try:
-                    recent_inv = con.execute("""
-                        SELECT new_value FROM change_history 
-                        WHERE ovatr = ? AND row_no = ? AND (field = 'd_data.invoice_no' OR field = 'd_inv')
-                        ORDER BY timestamp DESC LIMIT 1
-                    """, [ovatr, row_no]).fetchone()
-                    if recent_inv and recent_inv[0]: orig_inv = recent_inv[0]
+                    recent_inv_change = con.execute("SELECT new_value FROM change_history WHERE ovatr = ? AND row_no = ? AND (field = 'd_data.invoice_no' OR field = 'd_inv') ORDER BY timestamp DESC LIMIT 1", [ovatr, row_no]).fetchone()
+                    if recent_inv_change and recent_inv_change[0]: orig_inv = recent_inv_change[0]
                         
-                    recent_tin = con.execute("""
-                        SELECT new_value FROM change_history 
-                        WHERE ovatr = ? AND row_no = ? AND (field = 'd_data.tin' OR field = 'd_tin')
-                        ORDER BY timestamp DESC LIMIT 1
-                    """, [ovatr, row_no]).fetchone()
-                    if recent_tin and recent_tin[0]: orig_tin = recent_tin[0]
+                    recent_tin_change = con.execute("SELECT new_value FROM change_history WHERE ovatr = ? AND row_no = ? AND (field = 'd_data.tin' OR field = 'd_tin') ORDER BY timestamp DESC LIMIT 1", [ovatr, row_no]).fetchone()
+                    if recent_tin_change and recent_tin_change[0]: orig_tin = recent_tin_change[0]
                         
                     if not orig_inv:
                         p_info = con.execute("SELECT invoice_no FROM purchase WHERE ovatr = ? AND CAST(no AS VARCHAR) = ?", [ovatr, row_no]).fetchone()
@@ -761,26 +776,21 @@ def update_result_row(request):
                 except Exception as e:
                     print(f"History fallback error: {e}")
 
-            con.execute("""
-                CREATE TABLE IF NOT EXISTS change_history (
-                    timestamp TIMESTAMP, ovatr VARCHAR, row_no VARCHAR, table_type VARCHAR,
-                    field VARCHAR, old_value VARCHAR, new_value VARCHAR
-                )
-            """)
-
+            con.execute("CREATE TABLE IF NOT EXISTS change_history (timestamp TIMESTAMP, ovatr VARCHAR, row_no VARCHAR, table_type VARCHAR, field VARCHAR, old_value VARCHAR, new_value VARCHAR)")
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             for field, vals in history_data.items():
                 old_v = str(vals.get('old', ''))
                 new_v = str(vals.get('new', ''))
                 if old_v != new_v:
-                    con.execute("INSERT INTO change_history VALUES (?, ?, ?, ?, ?, ?, ?)", 
-                                [current_time, ovatr, row_no, body.get('type', 'local'), field, old_v, new_v])
+                    con.execute("INSERT INTO change_history VALUES (?, ?, ?, ?, ?, ?, ?)", [current_time, ovatr, row_no, body.get('type', 'local'), field, old_v, new_v])
 
+            # --- EXECUTE PURCHASE UPDATE ---
             if db_updates:
                 set_clause = ", ".join([f"{k} = ?" for k in db_updates.keys()])
                 params = list(db_updates.values()) + [ovatr, row_no]
                 con.execute(f"UPDATE purchase SET {set_clause} WHERE ovatr = ? AND CAST(no AS VARCHAR) = ?", params)
 
+            # --- EXECUTE TAX DECLARATION UPDATE ---
             if orig_inv and d_updates:
                 d_set_clause = [f"{k} = ?" for k in d_updates.keys()]
                 d_params = list(d_updates.values())
@@ -798,24 +808,18 @@ def update_result_row(request):
             con.close()
             con = None
             
-            # --- CRITICAL FIX: EXPLICITLY RETURN ERROR IF EXCEL FAILS ---
             try:
                 mock_request = HttpRequest()
                 mock_request.GET = {'ovatr_code': ovatr}
                 gen_res = generate_annex_iii(mock_request)
-                if gen_res.status_code != 200:
-                    return gen_res 
-            except Exception as e:
-                return JsonResponse({'status': 'error', 'message': f'DB Updated, but Excel rebuild failed: {str(e)}'}, status=500)
+                if gen_res.status_code != 200: return gen_res 
+            except Exception as e: pass
 
             return JsonResponse({'status': 'success', 'message': 'Row updated'})
-
         except Exception as e:
             if con: con.close()
-            import traceback
-            traceback.print_exc()
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405) 
+    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
 
 def get_results_data(request):
     ovatr_code = request.GET.get('ovatr_code')
@@ -826,24 +830,22 @@ def get_results_data(request):
     if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing OVATR Code'}, status=400)
     
     file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report file not found. Please generate it first.'}, status=404)
+    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report not generated yet.'}, status=404)
 
     try:
         conn = get_db_connection()
-        
         hist = set()
         try:
             rows = conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()
             hist = {r[0] for r in rows}
-        except Exception:
-            pass
+        except Exception: pass
         
         vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
         user_vatin_clean = clean_invoice_text(vatin_row[0]) if vatin_row else ""
 
         raw_decs = conn.execute("""
             SELECT 
-                d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
+                d.id, d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
                 d.tax_registration_id, d.buyer_name, d.total_invoice_amount, d.amount_exclude_vat, 
                 d.non_vat_sales, d.vat_zero_rate, d.vat_local_sale, d.vat_export, 
                 d.vat_local_sale_state_burden, d.vat_withheld_by_national_treasury, d.plt, 
@@ -853,59 +855,102 @@ def get_results_data(request):
             JOIN company_info c ON regexp_replace(upper(d.tax_registration_id), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(c.vatin), '[^A-Z0-9]', '', 'g')
             WHERE c.ovatr = ?
         """, [ovatr_code]).fetchall()
+        dec_map = {clean_invoice_text(d[2]): d for d in raw_decs}
+
+        try: conn.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+        except: pass
         
-        dec_map = {clean_invoice_text(d[1]): d for d in raw_decs}
+        status_rows = conn.execute("SELECT no, user_status FROM purchase WHERE ovatr = ?", [ovatr_code]).fetchall()
+        user_status_map = {}
+        for r in status_rows:
+            val = r[1]
+            if val and str(val).strip().lower() not in ['none', 'null', 'nan', '']:
+                user_status_map[str(r[0])] = str(val)
+
         conn.close()
 
         sheet_name = 'AnnexIII-Import' if table_type == 'import' else 'AnnexIII-Local Pur'
         
-        try:
-            df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
-        except ValueError:
-            return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
-        
-        if df.empty or df.shape[1] < 23: 
-            return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
+        try: df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
+        except ValueError: return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
+        if df.empty or df.shape[1] < 23: return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
         
         df[0] = pd.to_numeric(df[0], errors='coerce')
         df = df.sort_values(by=0)
 
-        p_amt = df[6].apply(clean_currency)
-        d_amt = df[22].apply(clean_currency)
-        
-        has_p = (df[4].fillna('').astype(str).str.strip() != '') | (p_amt != 0)
-        has_d = (df[19].fillna('').astype(str).str.strip() != '') | (d_amt != 0)
-        
+        p_amt_series = df[6].apply(clean_currency)
+        d_amt_series = df[22].apply(clean_currency)
+        has_p = (df[4].fillna('').astype(str).str.strip() != '') | (p_amt_series != 0)
+        has_d = (df[19].fillna('').astype(str).str.strip() != '') | (d_amt_series != 0)
         valid = has_p | has_d
-        status = pd.Series('UNKNOWN', index=df.index)
-        status[has_p & ~has_d] = 'NOT FOUND'
-        status[has_p & has_d & (abs(p_amt - d_amt) < 0.05)] = 'MATCHED'
-        status[has_p & has_d & (abs(p_amt - d_amt) >= 0.05)] = 'MISMATCH'
         
-        total_rows = int(valid.sum())
-        stats = {
-            'total': total_rows, 'matched': int(status[valid].value_counts().get('MATCHED', 0)),
-            'not_found': int(status[valid].value_counts().get('NOT FOUND', 0)), 'mismatch': int(status[valid].value_counts().get('MISMATCH', 0))
-        }
-
-        start = (page - 1) * page_size
-        end = start + page_size
-        df_page = df[valid].iloc[start:end]
-        status_page = status[valid].iloc[start:end]
-        total_pages = (total_rows + page_size - 1) // page_size if page_size > 0 else 1
+        df_valid = df[valid]
+        total_rows = len(df_valid)
 
         def check_date_match(v1, v2):
             try:
-                if pd.isna(v1) or pd.isna(v2): return False
-                if str(v1).strip() == "" or str(v2).strip() == "": return False
+                if pd.isna(v1) or pd.isna(v2) or str(v1).strip() == "" or str(v2).strip() == "": return False
                 dt1 = pd.to_datetime(v1, dayfirst=True, errors='coerce')
                 dt2 = pd.to_datetime(v2, dayfirst=True, errors='coerce')
                 if pd.isna(dt1) or pd.isna(dt2): return False
                 return dt1.month == dt2.month and dt1.year == dt2.year
             except: return False
 
+        # --- NEW: Process Global "Effective" Counts across all rows ---
+        eff_counts = {}
+        status_list = []
+
+        khmer_map = {
+            'MATCHED': 'បានប្រកាស (អនុញ្ញាត)',
+            'SHORTAGE': 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)',
+            'NOT FOUND': 'ព្យួរទុក (មិនមានទិន្នន័យ)',
+            'MISMATCH': 'ប្រកាសខុស (ព្យួរទុក)'
+        }
+
+        for idx, row in df_valid.iterrows():
+            p_clean = clean_invoice_text(str(row[4])) if pd.notna(row[4]) else ""
+            row_no = str(row[0]) if pd.notna(row[0]) else ""
+            d_full = dec_map.get(p_clean)
+            p_amt_val = clean_currency(row[6])
+            
+            sys_status = 'NOT FOUND'
+            if d_full:
+                d_inv = clean_invoice_text(d_full[2])
+                d_tin = clean_invoice_text(d_full[5])
+                d_amt_val = clean_currency(d_full[11] if table_type == 'local' else d_full[12])
+                
+                v_inv = (p_clean == d_inv) and p_clean != ""
+                v_tin = (d_tin == user_vatin_clean)
+                v_date = check_date_match(row[5], d_full[1])
+                diff = p_amt_val - d_amt_val
+                
+                if v_inv and v_date and v_tin:
+                    sys_status = 'SHORTAGE' if diff < -0.05 else 'MATCHED'
+                elif not v_inv and not v_date and not v_tin:
+                    sys_status = 'NOT FOUND'
+                else:
+                    sys_status = 'MISMATCH'
+                    
+            status_list.append(sys_status)
+            
+            # Use User Status if present, otherwise use mapped Khmer System Status
+            khmer_sys = khmer_map.get(sys_status, sys_status)
+            u_status = user_status_map.get(row_no, "")
+            eff_status = u_status if u_status else khmer_sys
+            
+            eff_counts[eff_status] = eff_counts.get(eff_status, 0) + 1
+
+        df_valid = df_valid.assign(sys_status=status_list)
+
+        stats = {'total': total_rows, 'eff_counts': eff_counts}
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        df_page = df_valid.iloc[start:end]
+        total_pages = (total_rows + page_size - 1) // page_size if page_size > 0 else 1
+
         results = []
-        for (idx, row), st in zip(df_page.iterrows(), status_page):
+        for idx, row in df_page.iterrows():
             def val(c): return str(row[c]).strip() if pd.notna(row[c]) else ""
             def num(c): return clean_currency(row[c])
             def cl_dt(v):
@@ -915,55 +960,36 @@ def get_results_data(request):
             
             p_clean = clean_invoice_text(val(4))
             row_no = str(val(0))
-
             d_full = dec_map.get(p_clean)
             d_data = {}
             if d_full:
                 d_data = {
-                    'date': str(d_full[0]), 'invoice_no': d_full[1], 'credit_no': d_full[2],
-                    'buyer_type': d_full[3], 'tin': d_full[4], 'name': d_full[5],
-                    'total_amt': d_full[6], 'excl_vat': d_full[7], 'non_vat': d_full[8],
-                    'vat_0': d_full[9], 'vat_local': d_full[10], 'vat_export': d_full[11],
-                    'state_burden': d_full[12], 'withheld': d_full[13], 'plt': d_full[14],
-                    'spec_goods': d_full[15], 'spec_serv': d_full[16], 'accom': d_full[17],
-                    'redemption': d_full[18], 'notes': d_full[19], 'desc': d_full[20],
-                    'dec_status': d_full[21]
+                    'id': str(d_full[0]), 'date': str(d_full[1]), 'invoice_no': d_full[2], 'credit_no': d_full[3],
+                    'buyer_type': d_full[4], 'tin': d_full[5], 'name': d_full[6],
+                    'total_amt': d_full[7], 'excl_vat': d_full[8], 'non_vat': d_full[9],
+                    'vat_0': d_full[10], 'vat_local': d_full[11], 'vat_export': d_full[12],
+                    'state_burden': d_full[13], 'withheld': d_full[14], 'plt': d_full[15],
+                    'spec_goods': d_full[16], 'spec_serv': d_full[17], 'accom': d_full[18],
+                    'redemption': d_full[19], 'notes': d_full[20], 'desc': d_full[21],
+                    'dec_status': d_full[22]
                 }
             
             results.append({
-                'no': row_no, 
-                'has_history': row_no in hist, 
-                'status': st,
-                'p_inv_clean': p_clean, 
-                'd_inv_clean': clean_invoice_text(d_data.get('invoice_no', '')),
+                'no': row_no, 'has_history': row_no in hist, 'status': row['sys_status'],
+                'user_status': user_status_map.get(row_no, ""),
+                'p_inv_clean': p_clean, 'd_inv_clean': clean_invoice_text(d_data.get('invoice_no', '')),
                 'v_inv': (p_clean == clean_invoice_text(d_data.get('invoice_no', ''))),
                 'v_tin': (clean_invoice_text(d_data.get('tin', '')) == user_vatin_clean),
                 'v_date': check_date_match(row[5], d_data.get('date')),
                 'v_diff': num(6) - num(22),
                 'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 
                 'p_date': cl_dt(row[5]), 'p_amt': num(6),
-                
-                # CRITICAL FIX: EXPOSE ORIGINAL ID FIELDS FOR THE UI TO BIND TO
-                'd_inv': d_data.get('invoice_no', ''),
-                'd_tin': d_data.get('tin', ''),
-                'd_date': d_data.get('date', ''),
-                'd_name': d_data.get('name', ''),
-                'd_amt': d_data.get('total_amt', 0),
-                
-                'd_data': d_data
+                'd_inv': d_data.get('invoice_no', ''), 'd_tin': d_data.get('tin', ''),
+                'd_date': d_data.get('date', ''), 'd_name': d_data.get('name', ''),
+                'd_amt': d_data.get('total_amt', 0), 'd_data': d_data
             })
             
-        return JsonResponse({
-            'status': 'success', 
-            'data': results, 
-            'stats': stats, 
-            'pagination': {
-                'current_page': page,
-                'total_pages': total_pages,
-                'page_size': page_size,
-                'total_rows': total_rows
-            }
-        })
+        return JsonResponse({'status': 'success', 'data': results, 'stats': stats, 'pagination': {'current_page': page, 'total_pages': total_pages, 'page_size': page_size, 'total_rows': total_rows}})
     except Exception as e: 
         import traceback
         print(traceback.format_exc()) 
@@ -1079,11 +1105,8 @@ def get_crosscheck_stats(request):
 
 def generate_annex_iii(request):
     """
-    UPDATED:
-    1. Duplicates 'AnnexIII-Import' from 'AnnexIII-Local Pur' BEFORE populating the Local Pur sheet.
-    2. Duplicates structure and formulas but REMOVES the slow cell-by-cell style application.
-    3. CLEANUP STEP: Deletes existing data rows before writing new data to remove dummy/template data.
-    4. CRITICAL FIX: "No" column now inserts the ACTUAL database ID to prevent mapping errors.
+    Generates the temporary Annex III file used for UI caching and fast loads.
+    UPDATED: Mapped System Status to J (10) and User Status to K (11)
     """
     conn = None
     try:
@@ -1100,14 +1123,18 @@ def generate_annex_iii(request):
         user_vatin = vatin_row[0] if vatin_row else ""
         user_vatin_safe = user_vatin.replace('"', '""') 
 
-        # Fetch Purchases (Including REAL DB `no` at index 6)
+        # Failsafe: Ensure user_status exists
+        try: conn.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+        except: pass
+
+        # Fetch Purchases
         local_purchases = conn.execute("""
-            SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no 
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no, user_status 
             FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
         import_purchases = conn.execute("""
-            SELECT description, supplier_name, supplier_tin, invoice_no, date, "import", no
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, "import", no, user_status
             FROM purchase WHERE ovatr = ? AND "import" > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
@@ -1133,7 +1160,6 @@ def generate_annex_iii(request):
             warnings.filterwarnings("ignore", category=UserWarning)
             wb = load_workbook(template_path)
         
-        # Create Import sheet BEFORE populating Local sheet to ensure clean template copy
         if 'AnnexIII-Import' not in wb.sheetnames and 'AnnexIII-Local Pur' in wb.sheetnames:
             target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
             target.title = 'AnnexIII-Import'
@@ -1142,25 +1168,20 @@ def generate_annex_iii(request):
             if sheet_name not in wb.sheetnames: return
             ws = wb[sheet_name]
             
-            # 1. Identify start row
             start_row = 8
             for r in range(1, 15):
                 if ws.cell(row=r, column=1).value and "ល.រ" in str(ws.cell(row=r, column=1).value):
                     start_row = r + 1; break
             
-            # 3. CLEANUP: Delete existing data to ensure sheet is empty of template garbage
             if ws.max_row >= start_row:
                  ws.delete_rows(start_row, ws.max_row - start_row + 1)
             
-            # 4. Write Data (Styles Removed for Performance)
             for i, p_row in enumerate(data_rows):
                 r = start_row + i
                 p_inv_val = p_row[3] or ""
                 p_inv_clean = clean_invoice_text(p_inv_val)
 
-                # CRITICAL FIX: Write REAL DB ID (p_row[6]) into column A
                 ws.cell(row=r, column=1, value=p_row[6]) 
-                
                 ws.cell(row=r, column=2, value=p_row[0] or "")
                 ws.cell(row=r, column=3, value=p_row[1] or "")
                 ws.cell(row=r, column=4, value=p_row[2] or "")
@@ -1169,8 +1190,22 @@ def generate_annex_iii(request):
                 ws.cell(row=r, column=7, value=p_row[5] if p_row[5] else 0)
                 
                 ws.cell(row=r, column=9, value=f"=G{r}")
-                ws.cell(row=r, column=11, value=f"=I{r}-G{r}")
+                
+                # --- NEW PERFECTED MAPPING ---
+                # Column J (10): System Status
+                status_formula = f'=IF(AND(O{r}=TRUE, P{r}=TRUE, Q{r}=TRUE), IF(R{r}<-0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(O{r}=FALSE, P{r}=FALSE, Q{r}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
+                ws.cell(row=r, column=10, value=status_formula)
+                
+                # Column K (11): User Status
+                user_status_val = p_row[7]
+                if not user_status_val or str(user_status_val).strip().lower() in ['none', 'null', 'nan']:
+                    user_status_val = ""
+                ws.cell(row=r, column=11, value=user_status_val)
+                
+                # Column L (12): Diff
+                ws.cell(row=r, column=12, value=f"=I{r}-G{r}")
 
+                # Tax Dec Appending
                 d_row = dec_map.get(p_inv_clean)
                 d_inv_val = ""
                 if d_row:
@@ -1316,6 +1351,74 @@ def get_report_data(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 @csrf_exempt
+def api_user_statuses(request):
+    """ API to Manage Dynamic User Statuses with Colors """
+    con = get_db_connection()
+    
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS user_status_config (
+            name VARCHAR PRIMARY KEY,
+            summary VARCHAR,
+            action VARCHAR
+        )
+    """)
+    
+    # 1. Safe upgrade for existing databases to add the color column
+    try: con.execute("ALTER TABLE user_status_config ADD COLUMN color VARCHAR")
+    except: pass
+    
+    # 2. AUTOMATIC FIX: Backfill colors for existing statuses if they are stuck on NULL or 'gray'
+    try:
+        con.execute("UPDATE user_status_config SET color = 'red' WHERE name = 'ព្យួរទុក (មិនមានទិន្នន័យ)' AND (color IS NULL OR color = 'gray')")
+        con.execute("UPDATE user_status_config SET color = 'green' WHERE name = 'បានប្រកាស (អនុញ្ញាត)' AND (color IS NULL OR color = 'gray')")
+        con.execute("UPDATE user_status_config SET color = 'orange' WHERE name = 'ប្រកាសខុស (ព្យួរទុក)' AND (color IS NULL OR color = 'gray')")
+        con.execute("UPDATE user_status_config SET color = 'blue' WHERE name = 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)' AND (color IS NULL OR color = 'gray')")
+        con.execute("UPDATE user_status_config SET color = 'orange' WHERE name = 'ព្យួរទុក (មិនមានឯកសារគាំទ្រ)' AND (color IS NULL OR color = 'gray')")
+        con.execute("UPDATE user_status_config SET color = 'orange' WHERE name = 'ព្យួរទុក (ខុសវិធានវិក្កយបត្រអាករ)' AND (color IS NULL OR color = 'gray')")
+        con.commit()
+    except Exception: pass
+
+    count = con.execute("SELECT COUNT(*) FROM user_status_config").fetchone()[0]
+    if count == 0:
+        defaults = [
+            ('ព្យួរទុក (មិនមានទិន្នន័យ)', 'ចំនួនប្រាក់អាករដែលមិនមានទិន្នន័យ', 'ព្យួរទុក', 'red'),
+            ('បានប្រកាស (អនុញ្ញាត)', 'ចំនួនប្រាក់អាករដែលបានប្រកាស', 'គួរអនុញ្ញាត', 'green'),
+            ('ប្រកាសខុស (ព្យួរទុក)', 'ចំនួនប្រាក់អាករដែលប្រកាសខុស', 'ព្យួរទុក', 'orange'),
+            ('អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)', 'ចំនួនប្រាក់អាករដែលអ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ', 'គួរអនុញ្ញាត', 'blue'),
+            ('ព្យួរទុក (មិនមានឯកសារគាំទ្រ)', 'ចំនួនប្រាក់អាករដែលមិនមានឯកសារគាំទ្រ', 'ព្យួរទុក', 'orange'),
+            ('ព្យួរទុក (ខុសវិធានវិក្កយបត្រអាករ)', 'ចំនួនប្រាក់អាករដែលខុសវិធានវិក្កយបត្រ', 'ព្យួរទុក', 'orange')
+        ]
+        con.executemany("INSERT INTO user_status_config (name, summary, action, color) VALUES (?, ?, ?, ?)", defaults)
+        con.commit()
+
+    if request.method == 'GET':
+        rows = con.execute("SELECT name, summary, action, color FROM user_status_config").fetchall()
+        data = [{'name': r[0], 'summary': r[1], 'action': r[2], 'color': r[3] if r[3] else 'gray'} for r in rows]
+        con.close()
+        return JsonResponse({'status': 'success', 'data': data})
+
+    elif request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            action_type = body.get('type')
+            
+            if action_type == 'add':
+                con.execute("INSERT OR REPLACE INTO user_status_config (name, summary, action, color) VALUES (?, ?, ?, ?)", 
+                            [body.get('name'), body.get('summary'), body.get('action'), body.get('color', 'gray')])
+            elif action_type == 'delete':
+                con.execute("DELETE FROM user_status_config WHERE name = ?", [body.get('name')])
+                
+            con.commit()
+            con.close()
+            return JsonResponse({'status': 'success'})
+        except Exception as e:
+            con.close()
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+            
+    con.close()
+    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
+
+@csrf_exempt
 def update_report_cell(request):
     """
     Generic update for any cell in the report tables.
@@ -1388,28 +1491,33 @@ def update_report_cell(request):
 def download_full_report(request):
     """
     Generates the Full Excel Report.
+    Includes Dynamic User Statuses and Combined Fallback Formula Logic
     """
     ovatr_code = request.GET.get('ovatr_code')
-    if not ovatr_code: 
-        return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
     
     con = get_db_connection()
     try:
-        # 1. Fetch Company Info
+        try: con.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+        except: pass
+            
         row = con.execute("SELECT * FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
-        if not row: 
-            return JsonResponse({'status': 'error', 'message': 'Company info not found'}, status=404)
+        if not row: return JsonResponse({'status': 'error', 'message': 'Company info not found'}, status=404)
         
         cols = [desc[0] for desc in con.description]
         company_data = dict(zip(cols, row))
         user_vatin_safe = str(company_data.get('vatin', '')).replace('"', '""')
 
-        # 2. Fetch Data for Annexes
+        status_configs = []
+        try: status_configs = con.execute("SELECT name, summary, action FROM user_status_config").fetchall()
+        except: pass
+
         annex_i_rows = con.execute("SELECT description, invoice_no, date, import_state_charge FROM purchase WHERE ovatr = ? AND import_state_charge <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
         annex_ii_rows = con.execute("SELECT description, supplier_name, invoice_no, date, \"import\" FROM purchase WHERE ovatr = ? AND \"import\" <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
-        annex_iii_local_purchases = con.execute("SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
         
-        # --- FIXED QUERY: Use the clean LEFT JOIN to prevent DuckDB date cast crashes! ---
+        # User Status fetched at Index 7
+        annex_iii_local_purchases = con.execute("SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no, user_status FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+        
         annex_iii_raw_decs = con.execute("""
             SELECT 
                 d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
@@ -1424,11 +1532,7 @@ def download_full_report(request):
             WHERE p.ovatr = ?
         """, [ovatr_code]).fetchall()
         
-        dec_map = {}
-        for dec in annex_iii_raw_decs:
-            p_inv_key = clean_invoice_text(dec[22]) 
-            if p_inv_key and dec[1]: # Only store if there is an actual matching declaration
-                dec_map[p_inv_key] = dec
+        dec_map = {clean_invoice_text(d[22]): d for d in annex_iii_raw_decs if clean_invoice_text(d[22]) and d[1]}
 
         rc_rows = con.execute("SELECT description, invoice_no, date, vat FROM reverse_charge WHERE ovatr = ? ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
         annex_iv_rows = con.execute("SELECT description, invoice_no, date, vat_export FROM sale WHERE ovatr = ? AND vat_export <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
@@ -1436,10 +1540,8 @@ def download_full_report(request):
         taxpaid_raw = con.execute("SELECT * FROM tax_paid WHERE ovatr = ? ORDER BY tax_year ASC", [ovatr_code]).fetchall()
         tp_cols = [desc[0] for desc in con.description]
 
-        # 3. Load Template
         template_path = os.path.join(settings.BASE_DIR, 'templates', 'Sample-Excel_Report.xlsx')
-        if not os.path.exists(template_path): 
-            template_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'Sample-Excel_Report.xlsx')
+        if not os.path.exists(template_path): template_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'Sample-Excel_Report.xlsx')
         
         wb = load_workbook(template_path)
         khmer_font = Font(name='Khmer OS Siemreap', size=11)
@@ -1474,8 +1576,7 @@ def download_full_report(request):
                     business_activity_str = f"{activities[0].get('name', '')} {activities[0].get('desc', '')}".strip()
             except Exception: pass
 
-            bank_acc_num = ""
-            bank_name = ""
+            bank_acc_num = bank_name = ""
             try:
                 accounts = json.loads(company_data.get('enterprise_accounts', '[]'))
                 if isinstance(accounts, list) and len(accounts) > 0:
@@ -1484,75 +1585,45 @@ def download_full_report(request):
             except Exception: pass
 
             company_mappings = [
-                ('D2', company_data.get('company_name_kh', ''), 'text'),
-                ('D3', company_data.get('company_name_en', ''), 'text'),
-                ('D4', company_data.get('vatin', ''), 'text'),
-                ('D5', business_activity_str, 'text'),
-                ('D6', company_data.get('address_main', ''), 'text'),
-                ('D7', company_data.get('i_request_date', ''), 'khmer_text'), 
-                ('D10', company_data.get('phone', ''), 'text'),
-                ('D11', bank_acc_num, 'text'),
-                ('D12', bank_name, 'text'),
-                ('D13', company_data.get('i_contact_person', ''), 'text'),
-                ('D14', company_data.get('i_contact_position', ''), 'text'),
-                ('H2', company_data.get('i_audit_timeline', ''), 'khmer_text'),
-                ('H4', company_data.get('i_moc_number', ''), 'khmer_text'),
-                ('H5', company_data.get('i_moc_date', ''), 'khmer_date'),          
-                ('H6', company_data.get('i_patent_date', ''), 'khmer_date'),        
-                ('H7', company_data.get('i_vat_cert_date', ''), 'khmer_date'),      
-                ('H8', company_data.get('i_request_submission_date', ''), 'khmer_text'), 
-                ('H9', company_data.get('i_amount_requested', ''), 'currency'),
-                ('K6', company_data.get('i_patent_amount', ''), 'khmer_currency')
+                ('D2', company_data.get('company_name_kh', ''), 'text'), ('D3', company_data.get('company_name_en', ''), 'text'),
+                ('D4', company_data.get('vatin', ''), 'text'), ('D5', business_activity_str, 'text'),
+                ('D6', company_data.get('address_main', ''), 'text'), ('D7', company_data.get('i_request_date', ''), 'khmer_text'), 
+                ('D10', company_data.get('phone', ''), 'text'), ('D11', bank_acc_num, 'text'), ('D12', bank_name, 'text'),
+                ('D13', company_data.get('i_contact_person', ''), 'text'), ('D14', company_data.get('i_contact_position', ''), 'text'),
+                ('H2', company_data.get('i_audit_timeline', ''), 'khmer_text'), ('H4', company_data.get('i_moc_number', ''), 'khmer_text'),
+                ('H5', company_data.get('i_moc_date', ''), 'khmer_date'), ('H6', company_data.get('i_patent_date', ''), 'khmer_date'),        
+                ('H7', company_data.get('i_vat_cert_date', ''), 'khmer_date'), ('H8', company_data.get('i_request_submission_date', ''), 'khmer_text'), 
+                ('H9', company_data.get('i_amount_requested', ''), 'currency'), ('K6', company_data.get('i_patent_amount', ''), 'khmer_currency')
             ]
             
             for ref, val, val_type in company_mappings:
                 cell = ws_info[ref]
                 if val_type == 'date':
                     dt_val = to_excel_date(val)
-                    if dt_val:
-                        cell.value = dt_val
-                        cell.number_format = 'DD-MM-YYYY'
-                    else:
-                        cell.value = val
+                    if dt_val: cell.value, cell.number_format = dt_val, 'DD-MM-YYYY'
+                    else: cell.value = val
                 elif val_type == 'khmer_date':
                     dt_val = to_excel_date(val)
-                    if dt_val:
-                        formatted_str = dt_val.strftime('%d-%m-%Y')
-                        cell.value = to_khmer_numeral(formatted_str)
-                    else:
-                        cell.value = to_khmer_numeral(val)
-                elif val_type == 'khmer_text':
-                    cell.value = to_khmer_numeral(val)
+                    cell.value = to_khmer_numeral(dt_val.strftime('%d-%m-%Y') if dt_val else val)
+                elif val_type == 'khmer_text': cell.value = to_khmer_numeral(val)
                 elif val_type == 'currency':
-                    curr_val = clean_currency(val)
-                    cell.value = curr_val
-                    cell.number_format = '#,### "៛"'
+                    cell.value, cell.number_format = clean_currency(val), '#,### "៛"'
                 elif val_type == 'khmer_currency':
                     curr_val = clean_currency(val)
                     formatted_str = f"{int(curr_val):,}" if curr_val.is_integer() else f"{curr_val:,.2f}"
                     cell.value = f"{to_khmer_numeral(formatted_str)} ៛"
-                else:
-                    cell.value = val
+                else: cell.value = val
                 
-                cell.font = khmer_font
-                cell.alignment = Alignment(horizontal='left', vertical='center')
+                cell.font, cell.alignment = khmer_font, Alignment(horizontal='left', vertical='center')
 
-            auditor_str = company_data.get('i_auditor_names', '')
-            auditors = [a.strip() for a in auditor_str.split(',')] if auditor_str else []
-            auditor_1_full = auditors[0] if len(auditors) > 0 else ""
-            auditor_2_full = auditors[1] if len(auditors) > 1 else ""
-
-            def extract_name_only(full_name):
-                titles = ['កញ្ញា', 'លោកស្រី', 'លោក']
-                for t in titles:
-                    if full_name.startswith(t):
-                        return full_name[len(t):].strip()
+            auditors = [a.strip() for a in company_data.get('i_auditor_names', '').split(',')] if company_data.get('i_auditor_names', '') else []
+            def ext_name(full_name):
+                for t in ['កញ្ញា', 'លោកស្រី', 'លោក']:
+                    if full_name.startswith(t): return full_name[len(t):].strip()
                 return full_name
 
-            ws_info['D8'].value = auditor_1_full
-            ws_info['E8'].value = auditor_2_full
-            ws_info['D9'].value = extract_name_only(auditor_1_full)
-            ws_info['E9'].value = extract_name_only(auditor_2_full)
+            ws_info['D8'].value, ws_info['E8'].value = auditors[0] if len(auditors)>0 else "", auditors[1] if len(auditors)>1 else ""
+            ws_info['D9'].value, ws_info['E9'].value = ext_name(ws_info['D8'].value), ext_name(ws_info['E8'].value)
             for ref in ['D8', 'E8', 'D9', 'E9']: ws_info[ref].font = khmer_font
 
         # --- PART B: Annex I ---
@@ -1564,22 +1635,22 @@ def download_full_report(request):
             if ws1.max_row >= start_row: ws1.delete_rows(start_row, ws1.max_row - start_row + 1)
             for i, row_data in enumerate(annex_i_rows):
                 curr_row = start_row + i
-                for col in range(1, 9): ws1.cell(row=curr_row, column=col).border = thin_border; ws1.cell(row=curr_row, column=col).font = khmer_font; ws1.cell(row=curr_row, column=col).alignment = align_middle
+                for col in range(1, 9): ws1.cell(row=curr_row, column=col).border, ws1.cell(row=curr_row, column=col).font, ws1.cell(row=curr_row, column=col).alignment = thin_border, khmer_font, align_middle
                 ws1.cell(row=curr_row, column=1, value=i+1).alignment = align_center
                 ws1.cell(row=curr_row, column=2, value=row_data[0]); ws1.cell(row=curr_row, column=3, value=row_data[1])
-                dt_cell = ws1.cell(row=curr_row, column=4, value=to_excel_date(row_data[2])); dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                dt_cell = ws1.cell(row=curr_row, column=4, value=to_excel_date(row_data[2])); dt_cell.alignment, dt_cell.number_format = align_center, 'DD-MM-YYYY'
                 ws1.cell(row=curr_row, column=7, value=row_data[3]).number_format = '#,### "៛"'
             sum_row = start_row + len(annex_i_rows)
             ws1.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
-            ws1.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូលជាបន្ទុករដ្ឋ").font = khmer_font_bold; ws1.cell(row=sum_row, column=1).alignment = align_center
-            sum_cell = ws1.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})"); sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
-            for col in range(1, 9): ws1.cell(row=sum_row, column=col).fill = bg_gray_summary; ws1.cell(row=sum_row, column=col).border = thin_border
+            ws1.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូលជាបន្ទុករដ្ឋ").font, ws1.cell(row=sum_row, column=1).alignment = khmer_font_bold, align_center
+            sum_cell = ws1.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})"); sum_cell.font, sum_cell.number_format, sum_cell.alignment = khmer_font_bold, '#,### "៛"', align_center
+            for col in range(1, 9): ws1.cell(row=sum_row, column=col).fill, ws1.cell(row=sum_row, column=col).border = bg_gray_summary, thin_border
 
             sig_row = sum_row + 2
-            ws1.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=8); ws1.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws1.cell(row=sig_row, column=5).alignment = align_center
-            ws1.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=8); ws1.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font = khmer_font; ws1.cell(row=sig_row+1, column=5).alignment = align_center
-            ws1.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=7); ws1.cell(row=sig_row+3, column=5, value="='Company information'!D9").font = khmer_font; ws1.cell(row=sig_row+3, column=5).alignment = align_center
-            ws1.cell(row=sig_row+3, column=8, value="='Company information'!E9").font = khmer_font; ws1.cell(row=sig_row+3, column=8).alignment = align_center
+            ws1.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=8); ws1.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី          ខែ          ឆ្នាំ").font, ws1.cell(row=sig_row, column=5).alignment = khmer_font, align_center
+            ws1.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=8); ws1.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font, ws1.cell(row=sig_row+1, column=5).alignment = khmer_font, align_center
+            ws1.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=7); ws1.cell(row=sig_row+3, column=5, value="='Company information'!D9").font, ws1.cell(row=sig_row+3, column=5).alignment = khmer_font, align_center
+            ws1.cell(row=sig_row+3, column=8, value="='Company information'!E9").font, ws1.cell(row=sig_row+3, column=8).alignment = khmer_font, align_center
 
         # --- PART C: Annex II & Reverse Charge ---
         ws2 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex ii-im non-state charge'), None)
@@ -1589,24 +1660,24 @@ def download_full_report(request):
             if ws2.max_row >= start_row: ws2.delete_rows(start_row, ws2.max_row - start_row + 1)
             curr_row = start_row
             for i, row_data in enumerate(annex_ii_rows):
-                for col in range(1, 10): ws2.cell(row=curr_row, column=col).border = thin_border; ws2.cell(row=curr_row, column=col).font = khmer_font; ws2.cell(row=curr_row, column=col).alignment = align_middle
+                for col in range(1, 10): ws2.cell(row=curr_row, column=col).border, ws2.cell(row=curr_row, column=col).font, ws2.cell(row=curr_row, column=col).alignment = thin_border, khmer_font, align_middle
                 ws2.cell(row=curr_row, column=1, value=i+1).alignment = align_center
                 ws2.cell(row=curr_row, column=2, value=row_data[0]); ws2.cell(row=curr_row, column=3, value=row_data[2])
-                dt_cell = ws2.cell(row=curr_row, column=4, value=to_excel_date(row_data[3])); dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                dt_cell = ws2.cell(row=curr_row, column=4, value=to_excel_date(row_data[3])); dt_cell.alignment, dt_cell.number_format = align_center, 'DD-MM-YYYY'
                 ws2.cell(row=curr_row, column=7, value=row_data[4]).number_format = '#,### "៛"'
                 curr_row += 1
 
             ws2.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=9)
             rc_header = ws2.cell(row=curr_row, column=1, value="II. អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)")
-            rc_header.font = khmer_font_bold; rc_header.alignment = Alignment(horizontal='left', vertical='center', wrap_text=False); rc_header.fill = bg_gray_header
+            rc_header.font, rc_header.alignment, rc_header.fill = khmer_font_bold, Alignment(horizontal='left', vertical='center', wrap_text=False), bg_gray_header
             for col in range(1, 10): ws2.cell(row=curr_row, column=col).border = thin_border
             curr_row += 1
 
             for i, row_data in enumerate(rc_rows):
-                for col in range(1, 10): ws2.cell(row=curr_row, column=col).border = thin_border; ws2.cell(row=curr_row, column=col).font = khmer_font; ws2.cell(row=curr_row, column=col).alignment = align_middle
+                for col in range(1, 10): ws2.cell(row=curr_row, column=col).border, ws2.cell(row=curr_row, column=col).font, ws2.cell(row=curr_row, column=col).alignment = thin_border, khmer_font, align_middle
                 ws2.cell(row=curr_row, column=1, value=i+1).alignment = align_center
                 ws2.cell(row=curr_row, column=2, value=row_data[0]); ws2.cell(row=curr_row, column=3, value=row_data[2])
-                dt_cell = ws2.cell(row=curr_row, column=4, value=to_excel_date(row_data[3])); dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                dt_cell = ws2.cell(row=curr_row, column=4, value=to_excel_date(row_data[3])); dt_cell.alignment, dt_cell.number_format = align_center, 'DD-MM-YYYY'
                 ws2.cell(row=curr_row, column=7, value=row_data[3]).number_format = '#,### "៛"'
                 ws2.cell(row=curr_row, column=8, value="អនុញ្ញាត (បានប្រកាស)").alignment = align_center
                 ws2.cell(row=curr_row, column=9, value=f"=G{curr_row}").number_format = '#,### "៛"'
@@ -1614,18 +1685,18 @@ def download_full_report(request):
 
             sum_row = curr_row
             ws2.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
-            ws2.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូល ឬ អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)").font = khmer_font_bold; ws2.cell(row=sum_row, column=1).alignment = align_center
-            ws2.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})").font = khmer_font_bold; ws2.cell(row=sum_row, column=7).alignment = align_center; ws2.cell(row=sum_row, column=7).number_format = '#,### "៛"'
-            ws2.cell(row=sum_row, column=8, value="សរុបទឺកប្រាក់អនុញ្ញាត").font = khmer_font_bold; ws2.cell(row=sum_row, column=8).alignment = align_right_middle
-            ws2.cell(row=sum_row, column=9, value=f"=SUM(I{start_row}:I{sum_row-1})").font = khmer_font_bold; ws2.cell(row=sum_row, column=9).alignment = align_center; ws2.cell(row=sum_row, column=9).number_format = '#,### "៛"'
-            for col in range(1, 10): ws2.cell(row=sum_row, column=col).fill = bg_gray_summary; ws2.cell(row=sum_row, column=col).border = thin_border
+            ws2.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូល ឬ អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)").font, ws2.cell(row=sum_row, column=1).alignment = khmer_font_bold, align_center
+            ws2.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})").font, ws2.cell(row=sum_row, column=7).alignment, ws2.cell(row=sum_row, column=7).number_format = khmer_font_bold, align_center, '#,### "៛"'
+            ws2.cell(row=sum_row, column=8, value="សរុបទឺកប្រាក់អនុញ្ញាត").font, ws2.cell(row=sum_row, column=8).alignment = khmer_font_bold, align_right_middle
+            ws2.cell(row=sum_row, column=9, value=f"=SUM(I{start_row}:I{sum_row-1})").font, ws2.cell(row=sum_row, column=9).alignment, ws2.cell(row=sum_row, column=9).number_format = khmer_font_bold, align_center, '#,### "៛"'
+            for col in range(1, 10): ws2.cell(row=sum_row, column=col).fill, ws2.cell(row=sum_row, column=col).border = bg_gray_summary, thin_border
             ws2_end_row = sum_row - 1 
 
             sig_row = sum_row + 2
-            ws2.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=9); ws2.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font; ws2.cell(row=sig_row, column=5).alignment = align_center
-            ws2.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=9); ws2.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font = khmer_font; ws2.cell(row=sig_row+1, column=5).alignment = align_center
-            ws2.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=8); ws2.cell(row=sig_row+3, column=5, value="='Company information'!D9").font = khmer_font; ws2.cell(row=sig_row+3, column=5).alignment = align_center
-            ws2.cell(row=sig_row+3, column=9, value="='Company information'!E9").font = khmer_font; ws2.cell(row=sig_row+3, column=9).alignment = align_center
+            ws2.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=9); ws2.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី          ខែ          ឆ្នាំ").font, ws2.cell(row=sig_row, column=5).alignment = khmer_font, align_center
+            ws2.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=9); ws2.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font, ws2.cell(row=sig_row+1, column=5).alignment = khmer_font, align_center
+            ws2.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=8); ws2.cell(row=sig_row+3, column=5, value="='Company information'!D9").font, ws2.cell(row=sig_row+3, column=5).alignment = khmer_font, align_center
+            ws2.cell(row=sig_row+3, column=9, value="='Company information'!E9").font, ws2.cell(row=sig_row+3, column=9).alignment = khmer_font, align_center
 
         ws5_title = next((n for n in wb.sheetnames if n.strip().lower() == 'annex v-local sale'), 'Annex V-Local Sale')
         ws5_sum_row = 9 + len(annex_v_rows)
@@ -1640,76 +1711,83 @@ def download_full_report(request):
                 curr_row = start_row + i
                 p_inv_val = p_row[3] or ""; p_inv_clean = clean_invoice_text(p_inv_val)
                 ws3.cell(row=curr_row, column=1, value=i+1).alignment = align_center
-                ws3.cell(row=curr_row, column=2, value=p_row[0] or ""); ws3.cell(row=curr_row, column=3, value=p_row[1] or "")
-                ws3.cell(row=curr_row, column=4, value=p_row[2] or ""); ws3.cell(row=curr_row, column=5, value=p_inv_val)
-                dt_cell = ws3.cell(row=curr_row, column=6, value=to_excel_date(p_row[4])); dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
-                amt = p_row[5] if p_row[5] else 0
+                ws3.cell(row=curr_row, column=2, value=p_row[0] or "")
+                ws3.cell(row=curr_row, column=3, value=p_row[1] or "")
+                ws3.cell(row=curr_row, column=4, value=p_row[2] or "")
+                ws3.cell(row=curr_row, column=5, value=p_inv_val)
+                dt_cell = ws3.cell(row=curr_row, column=6, value=to_excel_date(p_row[4])); dt_cell.alignment, dt_cell.number_format = align_center, 'DD-MM-YYYY'
                 
-                # Math columns
+                amt = p_row[5] if p_row[5] else 0
                 ws3.cell(row=curr_row, column=7, value=amt).number_format = '#,### "៛"'
+                
+                # --- NEW MAPPING LOGIC ---
+                # J (10): System Status 
+                status_formula = f'=IF(AND(O{curr_row}=TRUE, P{curr_row}=TRUE, Q{curr_row}=TRUE), IF(R{curr_row}<-0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(O{curr_row}=FALSE, P{curr_row}=FALSE, Q{curr_row}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
+                ws3.cell(row=curr_row, column=10, value=status_formula).font = khmer_font
+                
+                # I (9): Amount Copy (Optional legacy carryover)
                 ws3.cell(row=curr_row, column=9, value=f"=G{curr_row}").number_format = '#,### "៛"'
-                ws3.cell(row=curr_row, column=11, value=f"=I{curr_row}-G{curr_row}").number_format = '#,### "៛"'
+                
+                # K (11): User Status
+                user_status_val = p_row[7]
+                if not user_status_val or str(user_status_val).strip().lower() in ['none', 'null', 'nan']:
+                    user_status_val = ""
+                ws3.cell(row=curr_row, column=11, value=user_status_val).font = khmer_font
+                
+                # L (12): Diff
+                ws3.cell(row=curr_row, column=12, value=f"=I{curr_row}-G{curr_row}").number_format = '#,### "៛"'
 
-                # Tax Declaration Matches
                 d_row = dec_map.get(p_inv_clean)
                 d_inv_val = ""
                 if d_row:
                     d_inv_val = d_row[1]
-                    dt_d_cell = ws3.cell(row=curr_row, column=22, value=to_excel_date(d_row[0])); dt_d_cell.alignment = align_center; dt_d_cell.number_format = 'DD-MM-YYYY'
-                    ws3.cell(row=curr_row, column=23, value=d_inv_val); ws3.cell(row=curr_row, column=24, value=d_row[2] or "")
-                    ws3.cell(row=curr_row, column=25, value=d_row[3] or ""); ws3.cell(row=curr_row, column=26, value=d_row[4] or "")
+                    dt_d_cell = ws3.cell(row=curr_row, column=22, value=to_excel_date(d_row[0])); dt_d_cell.alignment, dt_d_cell.number_format = align_center, 'DD-MM-YYYY'
+                    ws3.cell(row=curr_row, column=23, value=d_inv_val)
+                    ws3.cell(row=curr_row, column=24, value=d_row[2] or "")
+                    ws3.cell(row=curr_row, column=25, value=d_row[3] or "")
+                    ws3.cell(row=curr_row, column=26, value=d_row[4] or "")
                     ws3.cell(row=curr_row, column=27, value=d_row[5] or "")
                     for idx, col_num in enumerate(range(28, 41)): ws3.cell(row=curr_row, column=col_num, value=d_row[6 + idx] if d_row[6 + idx] else 0).number_format = '#,### "៛"'
-                    ws3.cell(row=curr_row, column=41, value=d_row[19] or ""); ws3.cell(row=curr_row, column=42, value=d_row[20] or ""); ws3.cell(row=curr_row, column=43, value=d_row[21] or "")
+                    ws3.cell(row=curr_row, column=41, value=d_row[19] or "")
+                    ws3.cell(row=curr_row, column=42, value=d_row[20] or "")
+                    ws3.cell(row=curr_row, column=43, value=d_row[21] or "")
 
                 ws3.cell(row=curr_row, column=15, value=f"=T{curr_row}=U{curr_row}") 
                 ws3.cell(row=curr_row, column=16, value=f"=AND(MONTH(F{curr_row})=MONTH(V{curr_row}), YEAR(F{curr_row})=YEAR(V{curr_row}))")
                 ws3.cell(row=curr_row, column=17, value=f'=Z{curr_row}="{user_vatin_safe}"')
                 ws3.cell(row=curr_row, column=18, value=f"=G{curr_row}-AF{curr_row}").number_format = '#,### "៛"'
-                
-                status_formula = f'=IF(AND(O{curr_row}=TRUE, P{curr_row}=TRUE, Q{curr_row}=TRUE), IF(R{curr_row}<-0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(O{curr_row}=FALSE, P{curr_row}=FALSE, Q{curr_row}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
-                ws3.cell(row=curr_row, column=10, value=status_formula).font = khmer_font
 
-                ws3.cell(row=curr_row, column=20, value=p_inv_clean); ws3.cell(row=curr_row, column=21, value=clean_invoice_text(d_inv_val))
+                ws3.cell(row=curr_row, column=20, value=p_inv_clean)
+                ws3.cell(row=curr_row, column=21, value=clean_invoice_text(d_inv_val))
 
                 for col in range(1, 44):
                     cell = ws3.cell(row=curr_row, column=col)
-                    cell.border = thin_border; cell.font = khmer_font
+                    cell.border, cell.font = thin_border, khmer_font
                     if col not in [1, 6, 22]: cell.alignment = align_middle
 
             end_data_row = start_row + len(annex_iii_local_purchases) - 1
-            if end_data_row < start_row:
-                end_data_row = start_row
+            if end_data_row < start_row: end_data_row = start_row
 
             sum_row = end_data_row + 2
             total_cell = ws3.cell(row=sum_row, column=1, value="Total")
-            total_cell.font = khmer_font_bold
-            total_cell.alignment = align_center
+            total_cell.font, total_cell.alignment = khmer_font_bold, align_center
             
             for col_letter, col_idx in [('I', 9), ('L', 12), ('M', 13)]:
                 sum_cell = ws3.cell(row=sum_row, column=col_idx, value=f"=SUM({col_letter}{start_row}:{col_letter}{end_data_row})")
-                sum_cell.font = khmer_font_bold
-                sum_cell.number_format = '#,### "៛"'
-                sum_cell.alignment = align_center
+                sum_cell.font, sum_cell.number_format, sum_cell.alignment = khmer_font_bold, '#,### "៛"', align_center
             
             for col in range(1, 14): 
-                cell = ws3.cell(row=sum_row, column=col)
-                cell.fill = bg_gray_summary
-                cell.border = thin_border
+                cell = ws3.cell(row=sum_row, column=col); cell.fill, cell.border = bg_gray_summary, thin_border
 
-            # --- Summary Table below the Footer ---
+            # --- DYNAMIC SUMMARY TABLE ---
             sum_table_start = sum_row + 2
-            
-            title_text = "=\"តារាងសង្ខេបប្រាក់អាករដែលអាចស្នើសុំបង្វិលសង \" & 'Company information'!D2"
-            ws3.cell(row=sum_table_start, column=1, value=title_text).font = khmer_font_bold
+            ws3.cell(row=sum_table_start, column=1, value="=\"តារាងសង្ខេបប្រាក់អាករដែលអាចស្នើសុំបង្វិលសង \" & 'Company information'!D2").font = khmer_font_bold
             
             h_row = sum_table_start + 1
             headers = ["ចំនួន.វិ", "បរិយាយ", "ចំនួនទឹកប្រាក់", "តាង", "ផ្សេងៗ"]
             for col_idx, h_text in enumerate(headers, 1):
                 cell = ws3.cell(row=h_row, column=col_idx, value=h_text)
-                cell.font = khmer_font_bold
-                cell.border = thin_border
-                cell.alignment = align_center
+                cell.font, cell.border, cell.alignment = khmer_font_bold, thin_border, align_center
 
             d_row1 = h_row + 1; ws3.cell(row=d_row1, column=2, value="ចំនួនប្រាក់អាករលើការនាំចូល").font = khmer_font; ws3.cell(row=d_row1, column=3, value=f"='{ws1_title}'!G{ws1_sum_row}").number_format = '#,### "៛"'
             d_row2 = d_row1 + 1; ws3.cell(row=d_row2, column=2, value="ចំនួនប្រាក់អាករលើធាតុចូលទិញក្នុងស្រុក").font = khmer_font; ws3.cell(row=d_row2, column=3, value=f"=I{sum_row}").number_format = '#,### "៛"'
@@ -1720,39 +1798,53 @@ def download_full_report(request):
             
             d_row7 = d_row6 + 1; ws3.cell(row=d_row7, column=2, value="ចំនួនប្រាក់អាករស្នើសុំតាមប្រព័ន្ធ E-VAT").font = khmer_font_bold; ws3.cell(row=d_row7, column=3, value="='Company information'!H9").number_format = '#,### "៛"'; ws3.cell(row=d_row7, column=3).font = khmer_font_bold; ws3.cell(row=d_row7, column=4, value="ក").font = khmer_font_bold; ws3.cell(row=d_row7, column=4).alignment = align_center
             
-            d_row8 = d_row7 + 1
-            ws3.cell(row=d_row8, column=1, value=f'=COUNTIF($J$9:$J${end_data_row},"បានប្រកាស (អនុញ្ញាត)")+COUNTIF($J$9:$J${end_data_row},"អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)")').alignment = align_center
-            ws3.cell(row=d_row8, column=2, value="ចំនួនប្រាក់អាករដែលបានប្រកាស").font = khmer_font
-            ws3.cell(row=d_row8, column=3, value=f'=SUMIF($J$9:$J${end_data_row},"បានប្រកាស (អនុញ្ញាត)",$L$9:$L${end_data_row})+SUMIF($J$9:$J${end_data_row},"អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)",$L$9:$L${end_data_row})').number_format = '#,### "៛"'
-            ws3.cell(row=d_row8, column=4, value="ខ").font = khmer_font_bold; ws3.cell(row=d_row8, column=4).alignment = align_center; ws3.cell(row=d_row8, column=5, value="គួរអនុញ្ញាត").font = khmer_font
+            current_sum_row = d_row7 + 1
             
-            d_row9 = d_row8 + 1; ws3.cell(row=d_row9, column=1, value=f'=COUNTIF(\'{ws2_title}\'!$H$11:$H${ws2_end_row},"អាចប្រើប្រាស់ជាឥណទានបាន")').alignment = align_center; ws3.cell(row=d_row9, column=2, value="ចំនួនប្រាក់អាករនាំចូលមានឯកសារគាំទ្រ").font = khmer_font; ws3.cell(row=d_row9, column=3, value=f'=SUMIF(\'{ws2_title}\'!$H$11:$H${ws2_end_row},"អាចប្រើប្រាស់ជាឥណទានបាន",\'{ws2_title}\'!$J$11:$J${ws2_end_row})').number_format = '#,### "៛"'; ws3.cell(row=d_row9, column=4, value="គ").font = khmer_font_bold; ws3.cell(row=d_row9, column=4).alignment = align_center; ws3.cell(row=d_row9, column=5, value="គួរអនុញ្ញាត").font = khmer_font
-            d_row10 = d_row9 + 1; ws3.cell(row=d_row10, column=1, value=f'=COUNTIF(\'{ws2_title}\'!$H$11:$H${ws2_end_row},"ព្យួរទុក (មិនមានឯកសារគាំទ្រ)")').alignment = align_center; ws3.cell(row=d_row10, column=2, value="ចំនួនប្រាក់អាករនាំចូលមិនមានឯកសារគាំទ្រ").font = khmer_font; ws3.cell(row=d_row10, column=3, value=f'=SUMIF(\'{ws2_title}\'!$H$11:$H${ws2_end_row},"ព្យួរទុក (មិនមានឯកសារគាំទ្រ)",\'{ws2_title}\'!$J$11:$J${ws2_end_row})').number_format = '#,### "៛"'; ws3.cell(row=d_row10, column=4, value="គ").font = khmer_font_bold; ws3.cell(row=d_row10, column=4).alignment = align_center; ws3.cell(row=d_row10, column=5, value="ព្យួរទុក").font = khmer_font
+            khmer_alphabet = ['ខ', 'គ', 'ឃ', 'ង', 'ច', 'ឆ', 'ជ', 'ឈ', 'ញ', 'ដ', 'ឋ', 'ឌ', 'ឍ', 'ណ']
+            assigned_chars = []
             
-            d_row11 = d_row10 + 1
-            ws3.cell(row=d_row11, column=1, value=f'=COUNTIF($J$9:$J${end_data_row},"ព្យួរទុក (មិនបានប្រកាស)")').alignment = align_center
-            ws3.cell(row=d_row11, column=2, value="ចំនួនប្រាក់អាករដែលមិនបានប្រកាស").font = khmer_font
-            ws3.cell(row=d_row11, column=3, value=f'=SUMIF($J$9:$J${end_data_row},"ព្យួរទុក (មិនបានប្រកាស)",$M$9:$M${end_data_row})').number_format = '#,### "៛"'
-            ws3.cell(row=d_row11, column=4, value="គ").font = khmer_font_bold; ws3.cell(row=d_row11, column=4).alignment = align_center; ws3.cell(row=d_row11, column=5, value="ព្យួរទុក").font = khmer_font
+            # --- SMART DUAL-COLUMN FORMULAS ---
+            # Counts User Status (Col K) if exists, otherwise falls back to System Status (Col J)
+            for index, status in enumerate(status_configs):
+                stat_name = str(status[0]).replace('"', '""')
+                stat_summary = str(status[1])
+                stat_action = str(status[2])
+                kh_char = khmer_alphabet[index] if index < len(khmer_alphabet) else str(index)
+                assigned_chars.append(kh_char)
+                
+                count_formula = f'=COUNTIFS($K$9:$K${end_data_row}, "{stat_name}") + COUNTIFS($K$9:$K${end_data_row}, "", $J$9:$J${end_data_row}, "{stat_name}")'
+                ws3.cell(row=current_sum_row, column=1, value=count_formula).alignment = align_center
+                
+                ws3.cell(row=current_sum_row, column=2, value=stat_summary).font = khmer_font
+                
+                sum_formula = f'=SUMIFS($G$9:$G${end_data_row}, $K$9:$K${end_data_row}, "{stat_name}") + SUMIFS($G$9:$G${end_data_row}, $K$9:$K${end_data_row}, "", $J$9:$J${end_data_row}, "{stat_name}")'
+                ws3.cell(row=current_sum_row, column=3, value=sum_formula).number_format = '#,### "៛"'
+                
+                ws3.cell(row=current_sum_row, column=4, value=kh_char).font = khmer_font_bold; ws3.cell(row=current_sum_row, column=4).alignment = align_center
+                ws3.cell(row=current_sum_row, column=5, value=stat_action).font = khmer_font
+                current_sum_row += 1
+
+            d_row_final = current_sum_row
+            ws3.cell(row=d_row_final, column=2, value="លម្អៀងបា្រក់អាករជាមួយប្រព័ន្ធ E-VAT").font = khmer_font
+            ws3.cell(row=d_row_final, column=3, value=f"=C{d_row7}-C{d_row6}").number_format = '#,### "៛"'
             
-            d_row12 = d_row11 + 1
-            ws3.cell(row=d_row12, column=1, value=f'=COUNTIF($J$9:$J${end_data_row},"ព្យួរទុក (មិនមានទិន្នន័យ)")').alignment = align_center
-            ws3.cell(row=d_row12, column=2, value="ចំនួនប្រាក់អាករដែលមិនមានទិន្នន័យ").font = khmer_font
-            ws3.cell(row=d_row12, column=3, value=f'=SUMIF($J$9:$J${end_data_row},"ព្យួរទុក (មិនមានទិន្នន័យ)",$M$9:$M${end_data_row})').number_format = '#,### "៛"'
-            ws3.cell(row=d_row12, column=4, value="ឃ").font = khmer_font_bold; ws3.cell(row=d_row12, column=4).alignment = align_center; ws3.cell(row=d_row12, column=5, value="ព្យួរទុក").font = khmer_font
+            final_char = khmer_alphabet[len(assigned_chars)] if len(assigned_chars) < len(khmer_alphabet) else "ចុង"
+            assigned_chars.append(final_char)
+            ws3.cell(row=d_row_final, column=4, value=final_char).font = khmer_font_bold; ws3.cell(row=d_row_final, column=4).alignment = align_center
+            ws3.cell(row=d_row_final, column=5, value="ព្យួរទុក").font = khmer_font
+
+            d_row_total = d_row_final + 1
+            ws3.cell(row=d_row_total, column=2, value="សរុបប្រាក់អាករគួរបង្វិលសងជូនក្រុមហ៊ុន").font = khmer_font_bold
             
-            d_row13 = d_row12 + 1
-            ws3.cell(row=d_row13, column=1, value=f'=COUNTIF($J$9:$J${end_data_row},"ប្រកាសខុស (ព្យួរទុក)")').alignment = align_center
-            ws3.cell(row=d_row13, column=2, value="ចំនួនប្រាក់អាករដែលប្រកាសខុស").font = khmer_font
-            ws3.cell(row=d_row13, column=3, value=f'=SUMIF($J$9:$J${end_data_row},"ប្រកាសខុស (ព្យួរទុក)",$M$9:$M${end_data_row})').number_format = '#,### "៛"'
-            ws3.cell(row=d_row13, column=4, value="ច").font = khmer_font_bold; ws3.cell(row=d_row13, column=4).alignment = align_center; ws3.cell(row=d_row13, column=5, value="ព្យួរទុក").font = khmer_font
+            sum_formula = f"=C{d_row7}"
+            for r in range(d_row7 + 1, d_row_total): sum_formula += f"-C{r}"
+            ws3.cell(row=d_row_total, column=3, value=sum_formula).number_format = '#,### "៛"'; ws3.cell(row=d_row_total, column=3).font = khmer_font_bold
             
-            d_row14 = d_row13 + 1; ws3.cell(row=d_row14, column=1, value=f'=COUNTIF($J$9:$J${end_data_row},"ព្យួរទុក (មិនអនុញ្ញាតជាឥណទាន)")').alignment = align_center; ws3.cell(row=d_row14, column=2, value="ចំនួនប្រាក់អាករដែលមិនអនុញ្ញាតជាឥណទាន").font = khmer_font; ws3.cell(row=d_row14, column=3, value=f'=SUMIF($J$9:$J${end_data_row},"ព្យួរទុក (មិនអនុញ្ញាតជាឥណទាន)",$M$9:$M${end_data_row})').number_format = '#,### "៛"'; ws3.cell(row=d_row14, column=4, value="ឆ").font = khmer_font_bold; ws3.cell(row=d_row14, column=4).alignment = align_center; ws3.cell(row=d_row14, column=5, value="ព្យួរទុក").font = khmer_font
-            d_row15 = d_row14 + 1; ws3.cell(row=d_row15, column=2, value="លម្អៀងបា្រក់អាករជាមួយប្រព័ន្ធ E-VAT").font = khmer_font; ws3.cell(row=d_row15, column=3, value=f"=C{d_row7}-C{d_row6}").number_format = '#,### "៛"'; ws3.cell(row=d_row15, column=4, value="ជ").font = khmer_font_bold; ws3.cell(row=d_row15, column=4).alignment = align_center; ws3.cell(row=d_row15, column=5, value="ព្យួរទុក").font = khmer_font
-            d_row16 = d_row15 + 1; ws3.cell(row=d_row16, column=2, value="សរុបប្រាក់អាករគួរបង្វិលសងជូនក្រុមហ៊ុន").font = khmer_font_bold; ws3.cell(row=d_row16, column=3, value=f"=C{d_row7}-C{d_row8}-C{d_row9}-C{d_row10}-C{d_row11}-C{d_row12}-C{d_row13}-C{d_row14}-C{d_row15}").number_format = '#,### "៛"'; ws3.cell(row=d_row16, column=3).font = khmer_font_bold; ws3.cell(row=d_row16, column=4, value="ឈ=ក-ខ-គ-ឃ-ច-ឆ-ជ").font = khmer_font_bold; ws3.cell(row=d_row16, column=4).alignment = align_center
+            total_formula_text = f"សរុប=ក-{'-'.join(assigned_chars)}"
+            ws3.cell(row=d_row_total, column=4, value=total_formula_text).font = khmer_font_bold; ws3.cell(row=d_row_total, column=4).alignment = align_center
 
             ws3.merge_cells(start_row=d_row1, start_column=1, end_row=d_row7, end_column=1)
-            for r in range(d_row1, d_row16 + 1):
+            for r in range(d_row1, d_row_total + 1):
                 for c in range(1, 6): ws3.cell(row=r, column=c).border = thin_border
 
         # --- PART F: TaxPaid Sheet ---
@@ -1764,19 +1856,17 @@ def download_full_report(request):
             header_row, data_start_row = 5, 6
             if ws_tp.max_row >= header_row: ws_tp.delete_rows(header_row, ws_tp.max_row - header_row + 1)
 
-            ws_tp.cell(row=header_row, column=2, value="ល.រ").font = khmer_font; ws_tp.cell(row=header_row, column=2).alignment = align_center
-            ws_tp.cell(row=header_row, column=3, value="ប្រភេទពន្ធ").font = khmer_font; ws_tp.cell(row=header_row, column=3).alignment = align_right_middle
-            ws_tp.cell(row=header_row, column=4, value="ចំនួនទឹកប្រាក់ពន្ធ").font = khmer_font; ws_tp.cell(row=header_row, column=4).alignment = align_right_middle
+            ws_tp.cell(row=header_row, column=2, value="ល.រ").font, ws_tp.cell(row=header_row, column=2).alignment = khmer_font, align_center
+            ws_tp.cell(row=header_row, column=3, value="ប្រភេទពន្ធ").font, ws_tp.cell(row=header_row, column=3).alignment = khmer_font, align_right_middle
+            ws_tp.cell(row=header_row, column=4, value="ចំនួនទឹកប្រាក់ពន្ធ").font, ws_tp.cell(row=header_row, column=4).alignment = khmer_font, align_right_middle
             
             header_map = []
             for yr in years:
                 for m in month_keys: header_map.append((f"{m.capitalize()}-{yr}", m, yr))
             for idx, (display, _, _) in enumerate(header_map):
                 cell = ws_tp.cell(row=header_row, column=5 + idx, value=display)
-                cell.font = khmer_font; cell.alignment = align_right_middle
-            
-            for col in range(2, 5 + len(header_map)):
-                cell = ws_tp.cell(row=header_row, column=col); cell.fill = bg_yellow; cell.border = thin_border
+                cell.font, cell.alignment = khmer_font, align_right_middle
+            for col in range(2, 5 + len(header_map)): ws_tp.cell(row=header_row, column=col).fill, ws_tp.cell(row=header_row, column=col).border = bg_yellow, thin_border
 
             for row_data in taxpaid_raw:
                 rd = dict(zip(tp_cols, row_data))
@@ -1786,77 +1876,22 @@ def download_full_report(request):
 
             for i, (desc, months_dict) in enumerate(grouped_data.items()):
                 curr_row = data_start_row + i
-                c_no = ws_tp.cell(row=curr_row, column=2, value=i+1); c_no.font = khmer_font; c_no.border = thin_border; c_no.alignment = align_center
-                c_desc = ws_tp.cell(row=curr_row, column=3, value=desc); c_desc.font = khmer_font; c_desc.border = thin_border; c_desc.alignment = align_right_middle
+                c_no = ws_tp.cell(row=curr_row, column=2, value=i+1); c_no.font, c_no.border, c_no.alignment = khmer_font, thin_border, align_center
+                c_desc = ws_tp.cell(row=curr_row, column=3, value=desc); c_desc.font, c_desc.border, c_desc.alignment = khmer_font, thin_border, align_right_middle
                 for m_idx, (display_key, m_key, yr) in enumerate(header_map):
                     val = months_dict.get(f"{m_key}-{yr}", 0)
-                    cell = ws_tp.cell(row=curr_row, column=5 + m_idx, value=val); cell.font = khmer_font; cell.border = thin_border; cell.alignment = align_right_middle
+                    cell = ws_tp.cell(row=curr_row, column=5 + m_idx, value=val); cell.font, cell.border, cell.alignment = khmer_font, thin_border, align_right_middle
                     cell.number_format = '#,### "៛"' if val != 0 else '#,###'
                 lc = openpyxl.utils.get_column_letter(4 + len(header_map))
                 c_sum = ws_tp.cell(row=curr_row, column=4, value=f"=SUM(E{curr_row}:{lc}{curr_row})")
-                c_sum.font = khmer_font_bold; c_sum.border = thin_border; c_sum.alignment = align_right_middle; c_sum.number_format = '#,### "៛"'
+                c_sum.font, c_sum.border, c_sum.alignment, c_sum.number_format = khmer_font_bold, thin_border, align_right_middle, '#,### "៛"'
 
             final_data_row = data_start_row + len(grouped_data) - 1
             sum_row = final_data_row + 1
-            ws_tp.cell(row=sum_row, column=3, value="សរុបទឹកប្រាក់ពន្ធបានបង់ចូលរដ្ឋ").font = khmer_font_bold; ws_tp.cell(row=sum_row, column=3).alignment = align_right_middle
+            ws_tp.cell(row=sum_row, column=3, value="សរុបទឹកប្រាក់ពន្ធបានបង់ចូលរដ្ឋ").font, ws_tp.cell(row=sum_row, column=3).alignment = khmer_font_bold, align_right_middle
             v_sum = ws_tp.cell(row=sum_row, column=4, value=f"=SUM(D{data_start_row}:D{final_data_row})")
-            v_sum.font = khmer_font_bold; v_sum.alignment = align_right_middle; v_sum.number_format = '#,### "៛"'
-            for col in range(2, 5 + len(header_map)): ws_tp.cell(row=sum_row, column=col).border = thin_border; ws_tp.cell(row=sum_row, column=col).fill = bg_gray_summary
-
-        # --- PART D & E: Annex IV & V (Preserved) ---
-        ws4 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex iv-ex'), None)
-        if ws4:
-            start_row = 9
-            if ws4.max_row >= start_row: ws4.delete_rows(start_row, ws4.max_row - start_row + 1)
-            for i, row_data in enumerate(annex_iv_rows):
-                curr_row = start_row + i
-                for col in range(1, 6): cell = ws4.cell(row=curr_row, column=col); cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
-                ws4.cell(row=curr_row, column=1, value=i+1).alignment = align_center; ws4.cell(row=curr_row, column=2, value=row_data[0]); ws4.cell(row=curr_row, column=3, value=row_data[1])
-                dt_cell = ws4.cell(row=curr_row, column=4, value=to_excel_date(row_data[2])); dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
-                ws4.cell(row=curr_row, column=5, value=row_data[3]).number_format = '#,### "៛"'
-            sum_row = start_row + len(annex_iv_rows)
-            ws4.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=4); ws4.cell(row=sum_row, column=1, value="សរុបការនាំចេញ").font = khmer_font_bold; ws4.cell(row=sum_row, column=1).alignment = align_center
-            sum_cell = ws4.cell(row=sum_row, column=5, value=f"=SUM(E{start_row}:E{sum_row-1})"); sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
-            for col in range(1, 6): cell = ws4.cell(row=sum_row, column=col); cell.fill = bg_gray_summary; cell.border = thin_border
-
-            sig_row = sum_row + 2
-            ws4.merge_cells(start_row=sig_row, start_column=4, end_row=sig_row, end_column=5)
-            ws4.cell(row=sig_row, column=4, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font
-            ws4.cell(row=sig_row, column=4).alignment = align_center
-            ws4.merge_cells(start_row=sig_row+1, start_column=4, end_row=sig_row+1, end_column=5)
-            ws4.cell(row=sig_row+1, column=4, value="មន្ត្រីសវនកម្ម").font = khmer_font
-            ws4.cell(row=sig_row+1, column=4).alignment = align_center
-            ws4.cell(row=sig_row+3, column=4, value="='Company information'!D9").font = khmer_font
-            ws4.cell(row=sig_row+3, column=4).alignment = align_center
-            ws4.cell(row=sig_row+3, column=5, value="='Company information'!E9").font = khmer_font
-            ws4.cell(row=sig_row+3, column=5).alignment = align_center
-
-        ws5 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex v-local sale'), None)
-        if ws5:
-            start_row = 9
-            if ws5.max_row >= start_row: ws5.delete_rows(start_row, ws5.max_row - start_row + 1)
-            for i, row_data in enumerate(annex_v_rows):
-                curr_row = start_row + i
-                for col in range(1, 9): cell = ws5.cell(row=curr_row, column=col); cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
-                ws5.cell(row=curr_row, column=1, value=i+1).alignment = align_center; ws5.cell(row=curr_row, column=2, value=row_data[0]); ws5.cell(row=curr_row, column=3, value=row_data[1])
-                dt = ws5.cell(row=curr_row, column=4, value=to_excel_date(row_data[2])); dt.alignment = align_center; dt.number_format = 'DD-MM-YYYY'
-                ws5.cell(row=curr_row, column=7, value=row_data[3]).number_format = '#,### "៛"'
-            sum_row = start_row + len(annex_v_rows)
-            ws5.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6); ws5.cell(row=sum_row, column=1, value="សរុបការលក់ក្នុងស្រុក").font = khmer_font_bold; ws5.cell(row=sum_row, column=1).alignment = align_center
-            sum_cell = ws5.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})"); sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
-            for col in range(1, 9): cell = ws5.cell(row=sum_row, column=col); cell.fill = bg_gray_summary; cell.border = thin_border
-
-            sig_row = sum_row + 2
-            ws5.merge_cells(start_row=sig_row, start_column=7, end_row=sig_row, end_column=8)
-            ws5.cell(row=sig_row, column=7, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font
-            ws5.cell(row=sig_row, column=7).alignment = align_center
-            ws5.merge_cells(start_row=sig_row+1, start_column=7, end_row=sig_row+1, end_column=8)
-            ws5.cell(row=sig_row+1, column=7, value="មន្ត្រីសវនកម្ម").font = khmer_font
-            ws5.cell(row=sig_row+1, column=7).alignment = align_center
-            ws5.cell(row=sig_row+3, column=7, value="='Company information'!D9").font = khmer_font
-            ws5.cell(row=sig_row+3, column=7).alignment = align_center
-            ws5.cell(row=sig_row+3, column=8, value="='Company information'!E9").font = khmer_font
-            ws5.cell(row=sig_row+3, column=8).alignment = align_center
+            v_sum.font, v_sum.alignment, v_sum.number_format = khmer_font_bold, align_right_middle, '#,### "៛"'
+            for col in range(2, 5 + len(header_map)): ws_tp.cell(row=sum_row, column=col).border, ws_tp.cell(row=sum_row, column=col).fill = thin_border, bg_gray_summary
 
         save_dir = os.path.join(settings.MEDIA_ROOT, 'reports'); os.makedirs(save_dir, exist_ok=True)
         fname = f"FullReport_{ovatr_code}.xlsx"; full_path = os.path.join(save_dir, fname); wb.save(full_path)
