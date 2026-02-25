@@ -7,8 +7,8 @@ import time
 import duckdb
 import warnings
 import openpyxl
-import ast
 import pandas as pd
+import threading
 from copy import copy
 from datetime import datetime
 from django.conf import settings
@@ -20,25 +20,40 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, Border, Side, Alignment, PatternFill
 from docxtpl import DocxTemplate
 
+# --- GLOBAL DUCKDB CONNECTION ---
+# DuckDB only allows ONE write-connection per process. 
+# We maintain a single master connection and hand out cursors to threads to prevent locking.
+_GLOBAL_DUCKDB_CONN = None
+_DB_LOCK = threading.Lock()
+
 # --- Helpers ---
 
 def get_db_connection():
-    con = duckdb.connect(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
+    global _GLOBAL_DUCKDB_CONN
     
-    # Ensure Sessions Table Exists
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS sessions (
-            ovatr VARCHAR PRIMARY KEY,
-            company_name VARCHAR,
-            tin VARCHAR,
-            status VARCHAR,
-            total_rows INTEGER,
-            match_rate DOUBLE,
-            created_at TIMESTAMP,
-            last_modified TIMESTAMP
-        )
-    """)
-    return con
+    with _DB_LOCK:
+        if _GLOBAL_DUCKDB_CONN is None:
+            db_path = str(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
+            _GLOBAL_DUCKDB_CONN = duckdb.connect(db_path)
+            
+            # Ensure Sessions Table Exists
+            _GLOBAL_DUCKDB_CONN.execute("""
+                CREATE TABLE IF NOT EXISTS sessions (
+                    ovatr VARCHAR PRIMARY KEY,
+                    company_name VARCHAR,
+                    tin VARCHAR,
+                    status VARCHAR,
+                    total_rows INTEGER,
+                    match_rate DOUBLE,
+                    created_at TIMESTAMP,
+                    last_modified TIMESTAMP
+                )
+            """)
+            
+    # Return a lightweight cursor for the thread to use.
+    # It acts exactly like a connection, but when you call conn.close() later in your views, 
+    # it only safely closes the thread's cursor without killing the master connection!
+    return _GLOBAL_DUCKDB_CONN.cursor()
 
 def update_session_metadata(con, ovatr, company_name=None, tin=None, status=None, total_rows=None, match_rate=None):
     """ Helper to upsert session metadata into DuckDB """
@@ -89,10 +104,16 @@ def clean_invoice_text(val):
     Removes all special characters (dashes, spaces, dots, etc.).
     Keeps only Alphanumeric characters (A-Z, 0-9).
     """
-    if not val:
+    if pd.isna(val) or not val:
         return ""
+    
+    s = str(val).strip()
+    # CRITICAL FIX: Prevent DuckDB/Excel float bug (e.g., 2001007.0 -> 2001007)
+    if s.endswith('.0'):
+        s = s[:-2]
+        
     # Regex: Replace anything that is NOT a-z, A-Z, or 0-9 with empty string
-    return re.sub(r'[^a-zA-Z0-9]', '', str(val))
+    return re.sub(r'[^a-zA-Z0-9]', '', s)
 
 def cleanup_old_files():
     """ Deletes files in temp_uploads/reports older than 24 hours. """
@@ -822,178 +843,245 @@ def update_result_row(request):
     return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
 
 def get_results_data(request):
+    """
+    REFACTORED: The 'Dumb & Fast' API.
+    Reads pre-calculated Khmer statuses directly from DuckDB.
+    """
     ovatr_code = request.GET.get('ovatr_code')
     table_type = request.GET.get('table_type', 'local')
     page = int(request.GET.get('page', 1))
     page_size = int(request.GET.get('page_size', 500))
     
-    if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing OVATR Code'}, status=400)
-    
-    file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-    if not os.path.exists(file_path): return JsonResponse({'status': 'error', 'message': 'Report not generated yet.'}, status=404)
+    if not ovatr_code: 
+        return JsonResponse({'status': 'error', 'message': 'Missing OVATR Code'}, status=400)
 
     try:
         conn = get_db_connection()
+        
         hist = set()
         try:
             rows = conn.execute("SELECT DISTINCT row_no FROM change_history WHERE ovatr = ?", [ovatr_code]).fetchall()
-            hist = {r[0] for r in rows}
-        except Exception: pass
-        
-        vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
-        user_vatin_clean = clean_invoice_text(vatin_row[0]) if vatin_row else ""
-
-        raw_decs = conn.execute("""
-            SELECT 
-                d.id, d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
-                d.tax_registration_id, d.buyer_name, d.total_invoice_amount, d.amount_exclude_vat, 
-                d.non_vat_sales, d.vat_zero_rate, d.vat_local_sale, d.vat_export, 
-                d.vat_local_sale_state_burden, d.vat_withheld_by_national_treasury, d.plt, 
-                d.special_tax_on_goods, d.special_tax_on_services, d.accommodation_tax, 
-                d.income_tax_redemption_rate, d.notes, d.description, d.tax_declaration_status
-            FROM tax_declaration d
-            JOIN company_info c ON regexp_replace(upper(d.tax_registration_id), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(c.vatin), '[^A-Z0-9]', '', 'g')
-            WHERE c.ovatr = ?
-        """, [ovatr_code]).fetchall()
-        dec_map = {clean_invoice_text(d[2]): d for d in raw_decs}
-
-        try: conn.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+            hist = {str(r[0]) for r in rows}
         except: pass
-        
-        status_rows = conn.execute("SELECT no, user_status FROM purchase WHERE ovatr = ?", [ovatr_code]).fetchall()
-        user_status_map = {}
-        for r in status_rows:
-            val = r[1]
-            if val and str(val).strip().lower() not in ['none', 'null', 'nan', '']:
-                user_status_map[str(r[0])] = str(val)
 
+        amt_col = '"import"' if table_type == 'import' else 'purchase'
+
+        sql = f"""
+            SELECT 
+                p.no, p.description, p.supplier_name, p.supplier_tin, p.invoice_no, p.date, p.{amt_col}, p.user_status,
+                d.id, d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.total_invoice_amount, 
+                d.vat_local_sale, d.vat_export, 
+                p.sys_status, p.v_inv, p.v_tin, p.v_date, p.v_diff,
+                d.credit_notification_letter_number, d.buyer_type, d.amount_exclude_vat, d.non_vat_sales, 
+                d.vat_zero_rate, d.vat_local_sale_state_burden, d.vat_withheld_by_national_treasury, 
+                d.plt, d.special_tax_on_goods, d.special_tax_on_services, d.accommodation_tax, 
+                d.income_tax_redemption_rate, d.notes, d.description as d_desc, d.tax_declaration_status
+            FROM purchase p
+            LEFT JOIN tax_declaration d ON p.matched_d_id = CAST(d.id AS VARCHAR)
+            WHERE p.ovatr = ? AND p.{amt_col} > 0
+            ORDER BY CAST(p.no AS INTEGER) ASC
+        """
+        
+        db_rows = conn.execute(sql, [ovatr_code]).fetchall()
         conn.close()
 
-        sheet_name = 'AnnexIII-Import' if table_type == 'import' else 'AnnexIII-Local Pur'
+        results = []
+        stats = {'total': len(db_rows), 'matched': 0, 'not_found': 0, 'mismatch': 0, 'eff_counts': {}}
         
-        try: df = pd.read_excel(file_path, sheet_name=sheet_name, header=None, skiprows=8)
-        except ValueError: return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
-        if df.empty or df.shape[1] < 23: return JsonResponse({'status': 'success', 'data': [], 'stats': {'total':0}, 'pagination': {'total_pages': 0, 'current_page': 1}})
-        
-        df[0] = pd.to_numeric(df[0], errors='coerce')
-        df = df.sort_values(by=0)
+        def cl_dt(v):
+            if pd.isna(v) or str(v).strip() == "" or v is None: return ""
+            try: return pd.to_datetime(v, dayfirst=True).strftime('%d-%m-%Y')
+            except: return str(v).split(' ')[0]
 
-        p_amt_series = df[6].apply(clean_currency)
-        d_amt_series = df[22].apply(clean_currency)
-        has_p = (df[4].fillna('').astype(str).str.strip() != '') | (p_amt_series != 0)
-        has_d = (df[19].fillna('').astype(str).str.strip() != '') | (d_amt_series != 0)
-        valid = has_p | has_d
-        
-        df_valid = df[valid]
-        total_rows = len(df_valid)
+        khmer_matched = 'បានប្រកាស (អនុញ្ញាត)'
+        khmer_shortage = 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)'
+        khmer_not_found = 'ព្យួរទុក (មិនមានទិន្នន័យ)'
 
-        def check_date_match(v1, v2):
-            try:
-                if pd.isna(v1) or pd.isna(v2) or str(v1).strip() == "" or str(v2).strip() == "": return False
-                dt1 = pd.to_datetime(v1, dayfirst=True, errors='coerce')
-                dt2 = pd.to_datetime(v2, dayfirst=True, errors='coerce')
-                if pd.isna(dt1) or pd.isna(dt2): return False
-                return dt1.month == dt2.month and dt1.year == dt2.year
-            except: return False
-
-        # --- NEW: Process Global "Effective" Counts across all rows ---
-        eff_counts = {}
-        status_list = []
-
-        khmer_map = {
-            'MATCHED': 'បានប្រកាស (អនុញ្ញាត)',
-            'SHORTAGE': 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)',
-            'NOT FOUND': 'ព្យួរទុក (មិនមានទិន្នន័យ)',
-            'MISMATCH': 'ប្រកាសខុស (ព្យួរទុក)'
-        }
-
-        for idx, row in df_valid.iterrows():
-            p_clean = clean_invoice_text(str(row[4])) if pd.notna(row[4]) else ""
-            row_no = str(row[0]) if pd.notna(row[0]) else ""
-            d_full = dec_map.get(p_clean)
-            p_amt_val = clean_currency(row[6])
+        # 3. Process Data
+        for r in db_rows:
+            sys_status = str(r[16]) if r[16] else khmer_not_found
+            u_status = str(r[7]).strip() if r[7] and str(r[7]).strip().lower() not in ['none', 'null', 'nan', ''] else ""
             
-            sys_status = 'NOT FOUND'
-            if d_full:
-                d_inv = clean_invoice_text(d_full[2])
-                d_tin = clean_invoice_text(d_full[5])
-                d_amt_val = clean_currency(d_full[11] if table_type == 'local' else d_full[12])
-                
-                v_inv = (p_clean == d_inv) and p_clean != ""
-                v_tin = (d_tin == user_vatin_clean)
-                v_date = check_date_match(row[5], d_full[1])
-                diff = p_amt_val - d_amt_val
-                
-                if v_inv and v_date and v_tin:
-                    sys_status = 'SHORTAGE' if diff < -0.05 else 'MATCHED'
-                elif not v_inv and not v_date and not v_tin:
-                    sys_status = 'NOT FOUND'
-                else:
-                    sys_status = 'MISMATCH'
-                    
-            status_list.append(sys_status)
-            
-            # Use User Status if present, otherwise use mapped Khmer System Status
-            khmer_sys = khmer_map.get(sys_status, sys_status)
-            u_status = user_status_map.get(row_no, "")
-            eff_status = u_status if u_status else khmer_sys
-            
-            eff_counts[eff_status] = eff_counts.get(eff_status, 0) + 1
+            # Global Stats Counting using Khmer logic
+            if sys_status in [khmer_matched, khmer_shortage]: stats['matched'] += 1
+            elif sys_status == khmer_not_found: stats['not_found'] += 1
+            else: stats['mismatch'] += 1
 
-        df_valid = df_valid.assign(sys_status=status_list)
+            eff_status = u_status if u_status else sys_status
+            stats['eff_counts'][eff_status] = stats['eff_counts'].get(eff_status, 0) + 1
 
-        stats = {'total': total_rows, 'eff_counts': eff_counts}
+            d_data = {}
+            if r[8]:
+                d_data = {
+                    'id': str(r[8]), 'date': cl_dt(r[9]), 'invoice_no': str(r[10]) if r[10] else "", 'credit_no': r[21],
+                    'buyer_type': r[22], 'tin': str(r[11]) if r[11] else "", 'name': str(r[12]) if r[12] else "",
+                    'total_amt': r[13], 'excl_vat': r[23], 'non_vat': r[24],
+                    'vat_0': r[25], 'vat_local': r[14], 'vat_export': r[15],
+                    'state_burden': r[26], 'withheld': r[27], 'plt': r[28],
+                    'spec_goods': r[29], 'spec_serv': r[30], 'accom': r[31],
+                    'redemption': r[32], 'notes': r[33], 'desc': r[34],
+                    'dec_status': r[35]
+                }
 
+            results.append({
+                'no': str(r[0]), 
+                'has_history': str(r[0]) in hist, 
+                'status': sys_status,
+                'user_status': u_status,
+                'p_inv_clean': clean_invoice_text(r[4]), 
+                'd_inv_clean': clean_invoice_text(r[10]) if r[10] else "",
+                'v_inv': bool(r[17]),
+                'v_tin': bool(r[18]),
+                'v_date': bool(r[19]),
+                'v_diff': float(r[20]) if r[20] else 0.0,
+                'p_desc': str(r[1]) if r[1] else "", 
+                'p_supp': str(r[2]) if r[2] else "", 
+                'p_tin': str(r[3]) if r[3] else "", 
+                'p_inv': str(r[4]) if r[4] else "", 
+                'p_date': cl_dt(r[5]), 
+                'p_amt': float(r[6]) if r[6] else 0.0,
+                'd_inv': str(r[10]) if r[10] else "", 
+                'd_tin': d_data.get('tin', ''),
+                'd_date': d_data.get('date', ''), 
+                'd_name': d_data.get('name', ''),
+                'd_amt': float(r[14] if table_type == 'local' else r[15]) if r[8] else 0.0, 
+                'd_data': d_data
+            })
+
+        total_pages = (stats['total'] + page_size - 1) // page_size if page_size > 0 else 1
         start = (page - 1) * page_size
         end = start + page_size
-        df_page = df_valid.iloc[start:end]
-        total_pages = (total_rows + page_size - 1) // page_size if page_size > 0 else 1
-
-        results = []
-        for idx, row in df_page.iterrows():
-            def val(c): return str(row[c]).strip() if pd.notna(row[c]) else ""
-            def num(c): return clean_currency(row[c])
-            def cl_dt(v):
-                if pd.isna(v) or str(v).strip() == "": return ""
-                try: return pd.to_datetime(v, dayfirst=True).strftime('%d-%m-%Y')
-                except: return str(v).split(' ')[0]
-            
-            p_clean = clean_invoice_text(val(4))
-            row_no = str(val(0))
-            d_full = dec_map.get(p_clean)
-            d_data = {}
-            if d_full:
-                d_data = {
-                    'id': str(d_full[0]), 'date': str(d_full[1]), 'invoice_no': d_full[2], 'credit_no': d_full[3],
-                    'buyer_type': d_full[4], 'tin': d_full[5], 'name': d_full[6],
-                    'total_amt': d_full[7], 'excl_vat': d_full[8], 'non_vat': d_full[9],
-                    'vat_0': d_full[10], 'vat_local': d_full[11], 'vat_export': d_full[12],
-                    'state_burden': d_full[13], 'withheld': d_full[14], 'plt': d_full[15],
-                    'spec_goods': d_full[16], 'spec_serv': d_full[17], 'accom': d_full[18],
-                    'redemption': d_full[19], 'notes': d_full[20], 'desc': d_full[21],
-                    'dec_status': d_full[22]
-                }
-            
-            results.append({
-                'no': row_no, 'has_history': row_no in hist, 'status': row['sys_status'],
-                'user_status': user_status_map.get(row_no, ""),
-                'p_inv_clean': p_clean, 'd_inv_clean': clean_invoice_text(d_data.get('invoice_no', '')),
-                'v_inv': (p_clean == clean_invoice_text(d_data.get('invoice_no', ''))),
-                'v_tin': (clean_invoice_text(d_data.get('tin', '')) == user_vatin_clean),
-                'v_date': check_date_match(row[5], d_data.get('date')),
-                'v_diff': num(6) - num(22),
-                'p_desc': val(1), 'p_supp': val(2), 'p_tin': val(3), 'p_inv': val(4), 
-                'p_date': cl_dt(row[5]), 'p_amt': num(6),
-                'd_inv': d_data.get('invoice_no', ''), 'd_tin': d_data.get('tin', ''),
-                'd_date': d_data.get('date', ''), 'd_name': d_data.get('name', ''),
-                'd_amt': d_data.get('total_amt', 0), 'd_data': d_data
-            })
-            
-        return JsonResponse({'status': 'success', 'data': results, 'stats': stats, 'pagination': {'current_page': page, 'total_pages': total_pages, 'page_size': page_size, 'total_rows': total_rows}})
+        
+        return JsonResponse({
+            'status': 'success', 
+            'data': results[start:end], 
+            'stats': stats, 
+            'pagination': {
+                'current_page': page, 'total_pages': total_pages,
+                'page_size': page_size, 'total_rows': stats['total']
+            }
+        })
     except Exception as e: 
         import traceback
-        print(traceback.format_exc()) 
+        print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@csrf_exempt
+def run_processing_engine(request):
+    """
+    WRITE-TIME ENGINE: 
+    Runs the matching logic ONCE and saves the KHMER results directly into DuckDB.
+    """
+    import json
+    import re
+    import pandas as pd
+    
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            ovatr_code = body.get('ovatr_code')
+            if not ovatr_code:
+                return JsonResponse({'status': 'error', 'message': 'Missing OVATR'}, status=400)
+
+            conn = get_db_connection()
+            
+            # 1. Add Result Columns to Purchase table if they don't exist
+            new_cols = [
+                ("matched_d_id", "VARCHAR"), ("sys_status", "VARCHAR"), 
+                ("v_inv", "BOOLEAN"), ("v_tin", "BOOLEAN"), 
+                ("v_date", "BOOLEAN"), ("v_diff", "DOUBLE")
+            ]
+            for col_name, col_type in new_cols:
+                try: conn.execute(f"ALTER TABLE purchase ADD COLUMN {col_name} {col_type}")
+                except: pass
+
+            # 2. Fetch User VATIN
+            vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
+            user_vatin_clean = clean_invoice_text(vatin_row[0]).upper() if vatin_row else ""
+
+            # 3. Fetch Declarations & Build Memory Map (ENFORCING .upper() ON KEYS)
+            raw_decs = conn.execute("""
+                SELECT id, date, invoice_number, tax_registration_id, vat_local_sale, vat_export
+                FROM tax_declaration d
+                JOIN company_info c ON regexp_replace(upper(CAST(d.tax_registration_id AS VARCHAR)), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(CAST(c.vatin AS VARCHAR)), '[^A-Z0-9]', '', 'g')
+                WHERE c.ovatr = ?
+            """, [ovatr_code]).fetchall()
+            
+            dec_map = {clean_invoice_text(d[2]).upper(): d for d in raw_decs if clean_invoice_text(d[2])}
+
+            # 4. Fetch Purchases
+            purchases = conn.execute("SELECT no, invoice_no, date, purchase, \"import\" FROM purchase WHERE ovatr = ?", [ovatr_code]).fetchall()
+
+            def check_date_match(v1, v2):
+                try:
+                    if pd.isna(v1) or pd.isna(v2) or str(v1).strip() == "" or str(v2).strip() == "": return False
+                    dt1 = pd.to_datetime(v1, dayfirst=True, errors='coerce')
+                    dt2 = pd.to_datetime(v2, dayfirst=True, errors='coerce')
+                    if pd.isna(dt1) or pd.isna(dt2): return False
+                    return dt1.month == dt2.month and dt1.year == dt2.year
+                except: return False
+
+            # KHMER MAPPING DICTIONARY
+            khmer_map = {
+                'MATCHED': 'បានប្រកាស (អនុញ្ញាត)',
+                'SHORTAGE': 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)',
+                'NOT FOUND': 'ព្យួរទុក (មិនមានទិន្នន័យ)',
+                'MISMATCH': 'ប្រកាសខុស (ព្យួរទុក)'
+            }
+
+            # 5. Process & Build Bulk Update List
+            update_data = []
+            for p in purchases:
+                p_no = str(p[0])
+                p_inv_clean = clean_invoice_text(p[1])
+                p_amt = float(p[3] if p[3] else (p[4] if p[4] else 0.0))
+                
+                # Fetch matching using UPPERCASE
+                d_full = dec_map.get(p_inv_clean.upper() if p_inv_clean else "")
+                
+                if d_full:
+                    d_id = str(d_full[0])
+                    d_inv_clean = clean_invoice_text(d_full[2])
+                    d_tin_clean = clean_invoice_text(d_full[3])
+                    d_amt = float(d_full[4] if d_full[4] else (d_full[5] if d_full[5] else 0.0))
+                    
+                    v_inv = (p_inv_clean.upper() == d_inv_clean.upper()) and p_inv_clean != ""
+                    v_tin = (d_tin_clean.upper() == user_vatin_clean)
+                    v_date = check_date_match(p[2], d_full[1])
+                    v_diff = d_amt - p_amt
+                    
+                    if v_inv and v_date and v_tin:
+                        eng_status = 'SHORTAGE' if v_diff < -0.05 else 'MATCHED'
+                    elif not v_inv and not v_date and not v_tin:
+                        eng_status = 'NOT FOUND'
+                    else:
+                        eng_status = 'MISMATCH'
+                        
+                    sys_status = khmer_map[eng_status]
+                else:
+                    d_id = None
+                    sys_status = khmer_map['NOT FOUND']
+                    v_inv = v_tin = v_date = False
+                    v_diff = p_amt
+                
+                update_data.append([d_id, sys_status, v_inv, v_tin, v_date, v_diff, ovatr_code, p_no])
+
+            # 6. Bulk Update using DuckDB
+            conn.executemany("""
+                UPDATE purchase 
+                SET matched_d_id = ?, sys_status = ?, v_inv = ?, v_tin = ?, v_date = ?, v_diff = ?
+                WHERE ovatr = ? AND CAST(no AS VARCHAR) = ?
+            """, update_data)
+            
+            update_session_metadata(conn, ovatr_code, status="Completed")
+            conn.close()
+
+            return JsonResponse({'status': 'success', 'message': 'Processing complete. Results saved to database.'})
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
 
 def get_row_history(request):
     """
@@ -1105,29 +1193,42 @@ def get_crosscheck_stats(request):
 
 def generate_annex_iii(request):
     """
-    Generates the temporary Annex III file used for UI caching and fast loads.
-    UPDATED: Mapped System Status to J (10) and User Status to K (11)
+    REFACTORED: We no longer cache results in Excel. 
+    DuckDB is now the Single Source of Truth. 
+    This simply fast-forwards the UI to the Results view.
     """
+    ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
+    if not ovatr_code: 
+        return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
+        
+    return JsonResponse({'status': 'success', 'redirect_url': f"/crosscheck/results/?ovatr_code={ovatr_code}"})
+
+def download_report(request):
+    """
+    REFACTORED: Generates the Annex III Excel file dynamically on-demand.
+    Guarantees the file contains the freshest edits applied by the user in the UI.
+    """
+    import math
+    import re
+    
+    ovatr_code = request.GET.get('ovatr_code')
+    if not ovatr_code:
+        return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
+    
     conn = None
     try:
         template_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'CC - guide.xlsx')
-        if not os.path.exists(template_path): template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
+        if not os.path.exists(template_path): 
+            template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
         
-        ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-        if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
-
         conn = get_db_connection()
 
         # FETCH USER VATIN
         vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
         user_vatin = vatin_row[0] if vatin_row else ""
-        user_vatin_safe = user_vatin.replace('"', '""') 
+        user_vatin_safe = user_vatin.replace('"', '""')
 
-        # Failsafe: Ensure user_status exists
-        try: conn.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
-        except: pass
-
-        # Fetch Purchases
+        # Fetch Purchases (Live Data)
         local_purchases = conn.execute("""
             SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no, user_status 
             FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC
@@ -1138,9 +1239,16 @@ def generate_annex_iii(request):
             FROM purchase WHERE ovatr = ? AND "import" > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
-        # Fetch Matched Declarations
+        # Fetch Declarations
         raw_decs = conn.execute("""
-            SELECT d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.vat_local_sale, d.vat_export, p.invoice_no
+            SELECT 
+                d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
+                d.tax_registration_id, d.buyer_name, d.total_invoice_amount, d.amount_exclude_vat, 
+                d.non_vat_sales, d.vat_zero_rate, d.vat_local_sale, d.vat_export, 
+                d.vat_local_sale_state_burden, d.vat_withheld_by_national_treasury, d.plt, 
+                d.special_tax_on_goods, d.special_tax_on_services, d.accommodation_tax, 
+                d.income_tax_redemption_rate, d.notes, d.description, d.tax_declaration_status, 
+                p.invoice_no
             FROM tax_declaration d
             JOIN purchase p ON 
                 regexp_replace(upper(d.invoice_number), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(p.invoice_no), '[^A-Z0-9]', '', 'g')
@@ -1153,7 +1261,7 @@ def generate_annex_iii(request):
         
         dec_map = {}
         for dec in raw_decs:
-            p_inv_key = clean_invoice_text(dec[6])
+            p_inv_key = clean_invoice_text(dec[22])  
             if p_inv_key: dec_map[p_inv_key] = dec
 
         with warnings.catch_warnings():
@@ -1164,9 +1272,28 @@ def generate_annex_iii(request):
             target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
             target.title = 'AnnexIII-Import'
 
+        # Safely convert to float
+        def clean_num(val):
+            if val is None or val == "": return 0.0
+            try:
+                f = float(val)
+                if math.isnan(f) or math.isinf(f): return 0.0
+                return f
+            except: return 0.0
+
+        # Strip illegal XML
+        def clean_text(val):
+            if pd.isna(val) or val is None: return ""
+            s = str(val).strip()
+            if s.lower() in ['nan', 'none', 'null']: return ""
+            return re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', s)
+
         def process_sheet(sheet_name, data_rows):
             if sheet_name not in wb.sheetnames: return
             ws = wb[sheet_name]
+            
+            if hasattr(ws, 'data_validations') and ws.data_validations.dataValidation:
+                ws.data_validations.dataValidation = []
             
             start_row = 8
             for r in range(1, 15):
@@ -1178,51 +1305,82 @@ def generate_annex_iii(request):
             
             for i, p_row in enumerate(data_rows):
                 r = start_row + i
-                p_inv_val = p_row[3] or ""
+                
+                p_inv_val = clean_text(p_row[3])
                 p_inv_clean = clean_invoice_text(p_inv_val)
-
-                ws.cell(row=r, column=1, value=p_row[6]) 
-                ws.cell(row=r, column=2, value=p_row[0] or "")
-                ws.cell(row=r, column=3, value=p_row[1] or "")
-                ws.cell(row=r, column=4, value=p_row[2] or "")
-                ws.cell(row=r, column=5, value=p_inv_val)
-                ws.cell(row=r, column=6, value=p_row[4] or "")
-                ws.cell(row=r, column=7, value=p_row[5] if p_row[5] else 0)
                 
-                ws.cell(row=r, column=9, value=f"=G{r}")
-                
-                # --- NEW PERFECTED MAPPING ---
-                # Column J (10): System Status
-                status_formula = f'=IF(AND(O{r}=TRUE, P{r}=TRUE, Q{r}=TRUE), IF(R{r}<-0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(O{r}=FALSE, P{r}=FALSE, Q{r}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
-                ws.cell(row=r, column=10, value=status_formula)
-                
-                # Column K (11): User Status
-                user_status_val = p_row[7]
-                if not user_status_val or str(user_status_val).strip().lower() in ['none', 'null', 'nan']:
-                    user_status_val = ""
-                ws.cell(row=r, column=11, value=user_status_val)
-                
-                # Column L (12): Diff
-                ws.cell(row=r, column=12, value=f"=I{r}-G{r}")
-
-                # Tax Dec Appending
                 d_row = dec_map.get(p_inv_clean)
-                d_inv_val = ""
-                if d_row:
-                    d_inv_val = d_row[1]
-                    ws.cell(row=r, column=19, value=d_row[0] or "")
-                    ws.cell(row=r, column=20, value=d_inv_val)
-                    ws.cell(row=r, column=21, value=d_row[2] or "")
-                    ws.cell(row=r, column=22, value=d_row[3] or "")
-                    ws.cell(row=r, column=23, value=d_row[4] or 0)
-                    ws.cell(row=r, column=24, value=d_row[5] or 0)
+                d_inv_val = clean_text(d_row[1] if d_row else "")
+                d_inv_clean = clean_invoice_text(d_inv_val)
 
-                ws.cell(row=r, column=13, value=p_inv_clean)
-                ws.cell(row=r, column=14, value=clean_invoice_text(d_inv_val))
-                ws.cell(row=r, column=15, value=f"=M{r}=N{r}") 
-                ws.cell(row=r, column=16, value=f"=AND(MONTH(F{r})=MONTH(S{r}), YEAR(F{r})=YEAR(S{r}))")
-                ws.cell(row=r, column=17, value=f'=U{r}="{user_vatin_safe}"')
-                ws.cell(row=r, column=18, value=f"=G{r}-W{r}")
+                v_inv = (p_inv_clean == d_inv_clean) if (p_inv_clean and d_inv_clean) else False
+                v_date = True if d_row else False # Since SQL matches on date
+                v_tin = (clean_invoice_text(p_row[2]) == clean_invoice_text(d_row[4])) if (d_row and d_row[4] and p_row[2]) else False
+                
+                i_val = clean_num(p_row[5])
+                ag_val = clean_num(d_row[10] if d_row else 0)
+                u_val = ag_val - i_val
+
+                if v_inv and v_date and v_tin:
+                    j_status = "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)" if u_val < -0.05 else "បានប្រកាស (អនុញ្ញាត)"
+                elif not v_inv and not v_date and not v_tin:
+                    j_status = "ព្យួរទុក (មិនមានទិន្នន័យ)"
+                else:
+                    j_status = "ប្រកាសខុស (ព្យួរទុក)"
+
+                # A9 to F9
+                ws.cell(row=r, column=1, value=clean_text(p_row[6])) 
+                ws.cell(row=r, column=2, value=clean_text(p_row[0]))
+                ws.cell(row=r, column=3, value=clean_text(p_row[1]))
+                ws.cell(row=r, column=4, value=clean_text(p_row[2]))
+                ws.cell(row=r, column=5, value=p_inv_val)
+                ws.cell(row=r, column=6, value=clean_text(p_row[4]))
+                ws.cell(row=r, column=9, value=i_val)
+                status_formula = f'=IF(AND(R{r}=TRUE, S{r}=TRUE, T{r}=TRUE), IF(U{r}<0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(R{r}=FALSE, S{r}=FALSE, T{r}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
+                ws.cell(row=r, column=10, value=status_formula)
+                ws.cell(row=r, column=11, value=clean_text(p_row[7]))
+                ws.cell(row=r, column=12, value=None)
+                ws.cell(row=r, column=13, value=f"=I{r}")
+                ws.cell(row=r, column=14, value=f"=I{r}-L{r}")
+                ws.cell(row=r, column=15, value=None)
+                ws.cell(row=r, column=16, value=p_inv_clean)
+                ws.cell(row=r, column=17, value=d_inv_clean)
+                ws.cell(row=r, column=18, value=f"=P{r}=Q{r}")
+                ws.cell(row=r, column=19, value=f"=AND(MONTH(F{r})=MONTH(W{r}), YEAR(F{r})=YEAR(W{r}))")
+                ws.cell(row=r, column=20, value=f'=AA{r}="{user_vatin_safe}"')
+                ws.cell(row=r, column=21, value=f"=AG{r}-I{r}")
+                ws.cell(row=r, column=22, value=None)
+
+                w_date_val = str(d_row[0]).split()[0] if d_row and d_row[0] else ""
+                ws.cell(row=r, column=23, value=clean_text(w_date_val))  
+                ws.cell(row=r, column=24, value=d_inv_val)  
+                ws.cell(row=r, column=25, value=clean_text(d_row[2] if d_row else ""))  
+                ws.cell(row=r, column=26, value=clean_text(d_row[3] if d_row else ""))  
+                ws.cell(row=r, column=27, value=clean_text(d_row[4] if d_row else ""))  
+                ws.cell(row=r, column=28, value=clean_text(d_row[5] if d_row else ""))  
+                
+                ws.cell(row=r, column=29, value=clean_num(d_row[6] if d_row else 0)) 
+                ws.cell(row=r, column=30, value=clean_num(d_row[7] if d_row else 0)) 
+                ws.cell(row=r, column=31, value=clean_num(d_row[8] if d_row else 0)) 
+                ws.cell(row=r, column=32, value=clean_num(d_row[9] if d_row else 0)) 
+                ws.cell(row=r, column=33, value=ag_val) 
+                ws.cell(row=r, column=34, value=clean_num(d_row[11] if d_row else 0)) 
+                ws.cell(row=r, column=35, value=clean_num(d_row[12] if d_row else 0)) 
+                ws.cell(row=r, column=36, value=clean_num(d_row[13] if d_row else 0)) 
+                ws.cell(row=r, column=37, value=clean_num(d_row[14] if d_row else 0)) 
+                ws.cell(row=r, column=38, value=clean_num(d_row[15] if d_row else 0)) 
+                ws.cell(row=r, column=39, value=clean_num(d_row[16] if d_row else 0)) 
+                ws.cell(row=r, column=40, value=clean_num(d_row[17] if d_row else 0)) 
+                ws.cell(row=r, column=41, value=clean_num(d_row[18] if d_row else 0)) 
+                
+                ws.cell(row=r, column=42, value=clean_text(d_row[19] if d_row else "")) 
+                ws.cell(row=r, column=43, value=clean_text(d_row[20] if d_row else "")) 
+                ws.cell(row=r, column=44, value=clean_text(d_row[21] if d_row else "")) 
+
+                # Set number formats
+                format_cols = [9, 13, 14, 21] + list(range(29, 42))
+                for col_idx in format_cols:
+                    ws.cell(row=r, column=col_idx).number_format = '#,##0.00'
 
         process_sheet('AnnexIII-Local Pur', local_purchases)
         process_sheet('AnnexIII-Import', import_purchases)
@@ -1230,29 +1388,18 @@ def generate_annex_iii(request):
         save_dir = os.path.join(settings.MEDIA_ROOT, 'temp_reports')
         os.makedirs(save_dir, exist_ok=True)
         filename = f"AnnexIII_{ovatr_code}.xlsx"
-        wb.save(os.path.join(save_dir, filename))
-        
-        return JsonResponse({'status': 'success', 'redirect_url': f"/crosscheck/results/?ovatr_code={ovatr_code}"})
+        file_path = os.path.join(save_dir, filename)
+        wb.save(file_path)
 
-    except Exception as e: return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        return FileResponse(open(file_path, 'rb'), as_attachment=True, filename=filename)
+
+    except Exception as e: 
+        import traceback
+        print(traceback.format_exc())
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     finally:
-        if conn: conn.close()
-
-def download_report(request):
-    """
-    Serves the generated Excel file for download.
-    """
-    ovatr_code = request.GET.get('ovatr_code')
-    if not ovatr_code:
-        return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
-    
-    file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-    
-    if os.path.exists(file_path):
-        response = FileResponse(open(file_path, 'rb'), as_attachment=True, filename=f"AnnexIII_{ovatr_code}.xlsx")
-        return response
-    else:
-        return JsonResponse({'status': 'error', 'message': 'File not found'}, status=404)
+        if conn: 
+            conn.close()
     
 def get_report_data(request):
     """

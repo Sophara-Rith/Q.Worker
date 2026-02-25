@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/update-row/', views.update_result_row, name='update_result_row'),
     path('api/get-row-history/', views.get_row_history, name='get_row_history'),
     path('api/upload-init/', views.upload_init, name='upload_init'),
+    path('api/run-processing/', views.run_processing_engine, name='run_processing_engine'),
     
     # --- Save APIs (Existing) ---
     path('save-company-info/', views.save_company_info, name='save_company_info'),

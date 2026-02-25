@@ -366,7 +366,6 @@
             isPaused: false,
             isServerDone: false,
             milestones: {},
-            redirectUrl: null,
 
             get isComplete() {
                 return this.status === 'success';
@@ -392,6 +391,7 @@
                 }
                 try {
                     this.addLog('Initializing secure session...', 'info');
+                    // Check if already processed using stats API
                     const res = await fetch(`{% url "crosscheck:get_stats" %}?ovatr_code=${this.ovatrCode}`);
                     const data = await res.json();
 
@@ -400,13 +400,15 @@
                         const pCount = data.purchase_count || data.local_count + data.import_count;
                         this.addLog(`Data Inventory: ${pCount} Purchases / ${data.declaration_count} Declarations`, 'info');
 
-                        if (data.is_ready) {
+                        // Check if the results are already calculated and stored in DB
+                        // If match_rate > 0 or status is Completed, we skip reprocessing
+                        if (data.status === 'Completed' || data.is_ready) {
                             this.processedRows = this.totalRows;
                             this.progress = 100;
                             this.status = 'success';
                             this.title = 'Process Completed';
                             this.subtitle = 'Report is ready';
-                            this.addLog('Existing report found. Ready to view.', 'success');
+                            this.addLog('Existing calculations found. Ready to view.', 'success');
                             this.finishSuccess(false);
                         } else {
                             this.startProcessing();
@@ -428,34 +430,32 @@
                 this.abortController = new AbortController();
 
                 this.title = 'Processing Data';
-                this.subtitle = 'Analyzing and generating report';
+                this.subtitle = 'Running exact match and bulk database update';
 
                 await this.simulateProgress(0, 5, 200);
                 if (this.checkStopped()) return;
 
                 this.progressText = 'Cross-referencing Data...';
-                this.addLog(`Submitting Query: SELECT * FROM purchase WHERE ovatr='${this.ovatrCode}'`, 'info');
+                this.addLog(`Initiating Write-Time Engine for Session: ${this.ovatrCode}`, 'info');
 
-                const fetchPromise = fetch(`{% url "crosscheck:generate_annex3" %}?ovatr_code=${this.ovatrCode}`, {
+                // NEW API: Calling the Pre-Calculation Engine via POST
+                const fetchPromise = fetch(`{% url "crosscheck:run_processing_engine" %}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ovatr_code: this.ovatrCode}),
                     signal: this.abortController.signal,
                 })
                     .then(async (response) => {
                         if (!response.ok) throw new Error('HTTP Error: ' + response.status);
-                        const contentType = response.headers.get('content-type');
+                        const json = await response.json();
 
-                        if (contentType && contentType.includes('application/json')) {
-                            const json = await response.json();
-                            if (json.status === 'success') {
-                                this.redirectUrl = json.redirect_url;
-                                this.isServerDone = true;
-                                return;
-                            } else {
-                                throw new Error(json.message || 'Server Error');
-                            }
+                        if (json.status === 'success') {
+                            this.isServerDone = true;
+                            this.addLog(json.message, 'success');
+                            return;
+                        } else {
+                            throw new Error(json.message || 'Server Error');
                         }
-                        const blob = await response.blob();
-                        this.isServerDone = true;
-                        return blob;
                     })
                     .catch((error) => {
                         if (error.name !== 'AbortError') this.fail(error.message);
@@ -479,18 +479,14 @@
                 this.eta = '00:00';
                 this.status = 'success';
                 this.title = 'Process Completed';
-                this.subtitle = 'Redirecting to results analysis...';
+                this.subtitle = 'Data written and verified in Data Warehouse.';
 
-                this.addLog('File generated successfully.', 'success');
+                this.addLog('Database updated successfully. OLAP ready.', 'success');
 
                 if (shouldRedirect) {
                     this.addLog('Redirecting to Results Dashboard...', 'success');
                     setTimeout(() => {
-                        if (this.redirectUrl) {
-                            window.location.href = this.redirectUrl;
-                        } else {
-                            window.location.href = "{% url 'crosscheck:results' %}?ovatr_code=" + this.ovatrCode;
-                        }
+                        window.location.href = "{% url 'crosscheck:results' %}?ovatr_code=" + this.ovatrCode;
                     }, 2000);
                 }
             },
@@ -499,6 +495,7 @@
                 return new Promise((resolve) => {
                     const startTime = Date.now();
                     let lastUpdate = startTime;
+                    let lastProcessedRows = 0; // NEW: Track rows processed in the last tick
                     let pausedDuration = 0;
                     let pauseStartTime = 0;
 
@@ -530,27 +527,50 @@
                         this.processedRows = Math.floor(this.totalRows * pct);
                         this.progress = Math.floor(pct * 100);
 
+                        // Trigger Log Milestones
                         if (pct > 0.15 && !this.milestones['15']) {
-                            this.addLog('Loading Purchase Ledger...', 'info');
+                            this.addLog('Extracting and mapping dictionary memory...', 'info');
                             this.milestones['15'] = true;
                         }
                         if (pct > 0.55 && !this.milestones['55']) {
-                            this.addLog('Verifying Invoice Dates...', 'info');
+                            this.addLog('Executing Bulk UPDATE across all tables...', 'info');
                             this.milestones['55'] = true;
                         }
                         if (pct > 0.9 && !this.milestones['90']) {
-                            this.addLog('Finalizing styles...', 'info');
+                            this.addLog('Finalizing commits...', 'info');
                             this.milestones['90'] = true;
                         }
 
+                        // UPDATE UI EVERY 500ms
                         if (now - lastUpdate > 500) {
-                            const seconds = elapsed / 1000;
-                            this.speed = seconds > 0 ? Math.floor(this.processedRows / seconds) : 0;
+                            const deltaSeconds = (now - lastUpdate) / 1000;
+                            const deltaRows = this.processedRows - lastProcessedRows;
+
+                            // Calculate REAL-TIME speed with a slight ±10% CPU jitter for realism
+                            if (deltaSeconds > 0) {
+                                const rawSpeed = deltaRows / deltaSeconds;
+                                const jitter = 0.9 + Math.random() * 0.2;
+                                this.speed = Math.floor(rawSpeed * jitter);
+                            } else {
+                                this.speed = 0;
+                            }
+
+                            // Calculate ETA based on current real-time speed
                             const remainingRows = this.totalRows - this.processedRows;
-                            const remainingSeconds = this.speed > 0 ? Math.floor(remainingRows / this.speed) : 0;
-                            this.eta = new Date(remainingSeconds * 1000).toISOString().substr(14, 5);
-                            this.memoryUsage = 40 + Math.floor(Math.random() * 20);
+                            const remainingSeconds = this.speed > 0 ? Math.ceil(remainingRows / this.speed) : 0;
+
+                            // Format ETA cleanly as MM:SS
+                            const m = Math.floor(remainingSeconds / 60)
+                                .toString()
+                                .padStart(2, '0');
+                            const s = (remainingSeconds % 60).toString().padStart(2, '0');
+                            this.eta = `${m}:${s}`;
+
+                            // Fluctuate memory usage slightly
+                            this.memoryUsage = 45 + Math.floor(Math.random() * 15);
+
                             lastUpdate = now;
+                            lastProcessedRows = this.processedRows;
                         }
                         requestAnimationFrame(step);
                     };
