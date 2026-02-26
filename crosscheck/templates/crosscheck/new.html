@@ -1,6 +1,49 @@
 {% extends 'base.html' %} {% load static %} {% block title %}New Crosscheck{% endblock %} {% block content %}
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+<link rel="stylesheet" type="text/css" href="https://npmcdn.com/flatpickr/dist/themes/dark.css" />
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
 <style>
+    /* --- Flatpickr Compact UI Overrides --- */
+    .flatpickr-calendar {
+        font-family: inherit !important; /* Match your dashboard font */
+        width: 260px !important; /* Shrink width from 315px */
+        padding: 5px !important;
+        border-radius: 12px !important;
+    }
+    .flatpickr-innerContainer,
+    .flatpickr-rContainer,
+    .dayContainer,
+    .flatpickr-days {
+        width: 250px !important;
+        min-width: 250px !important;
+        max-width: 250px !important;
+    }
+    .flatpickr-day {
+        max-width: 35px !important;
+        height: 35px !important;
+        line-height: 35px !important;
+        font-size: 12px !important; /* Smaller dates */
+    }
+    .flatpickr-month {
+        height: 40px !important;
+    }
+    .flatpickr-current-month {
+        font-size: 13px !important; /* Smaller month/year header */
+        padding-top: 4px !important;
+    }
+    .flatpickr-current-month .flatpickr-monthDropdown-months,
+    .flatpickr-current-month input.cur-year {
+        font-size: 13px !important; /* Fix the massive dropdown text */
+        font-weight: 700 !important;
+        padding: 0 !important;
+    }
+    span.flatpickr-weekday {
+        font-size: 10px !important; /* Smaller Mon-Sun headers */
+        font-weight: 800 !important;
+        letter-spacing: 0.05em;
+    }
     /* Custom Scrollbar */
     .custom-scrollbar::-webkit-scrollbar {
         width: 6px;
@@ -15,6 +58,17 @@
     }
     .custom-scrollbar::-webkit-scrollbar-thumb:hover {
         background: #475569;
+    }
+
+    /* Hide default date picker calendar icon in webkit */
+    input[type='date']::-webkit-calendar-picker-indicator {
+        opacity: 0;
+        position: absolute;
+        right: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
     }
 </style>
 
@@ -139,7 +193,7 @@
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Auditor Names (សវនករ)</label>
                             <template x-for="(auditor, idx) in uiState.auditors" :key="idx">
                                 <div class="flex gap-2 mb-2.5">
-                                    <select x-model="auditor.title" class="w-1/3 text-xs font-bold border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
+                                    <select x-model="auditor.title" class="w-1/3 text-xs font-bold border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all cursor-pointer">
                                         <option value="លោក">លោក</option>
                                         <option value="លោកស្រី">លោកស្រី</option>
                                         <option value="កញ្ញា">កញ្ញា</option>
@@ -154,44 +208,63 @@
                         <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Contact Person (អ្នកតំណាង)</label>
                             <div class="flex gap-2 mb-3">
-                                <select x-model="uiState.contact_title" class="w-1/3 text-xs font-bold border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
+                                <select x-model="uiState.contact_title" class="w-1/3 text-xs font-bold border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all cursor-pointer">
                                     <option value="លោក">លោក</option>
                                     <option value="លោកស្រី">លោកស្រី</option>
+                                    <option value="កញ្ញា">កញ្ញា</option>
                                 </select>
                                 <input type="text" x-model="uiState.contact_name" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 font-khmer focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="ឈ្មោះតំណាងក្រុមហ៊ុន..." />
                             </div>
                             <input type="text" x-model="formData.i_contact_position" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 font-khmer focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="តួនាទី (ឧ. ប្រធានគណនេយ្យ)" />
                         </div>
 
-                        <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
+                        <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner" x-data="{ currentYear: new Date().getFullYear() }">
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Requested Period (រយៈពេលស្នើសុំ)</label>
                             <div class="flex items-center gap-3 mb-3">
                                 <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">ចាប់ពី៖</span>
-                                <select x-model="uiState.req_from_month" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
+                                <select x-model="uiState.req_from_month" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all cursor-pointer">
                                     <option value="">ជ្រើសរើសខែ...</option>
                                     <template x-for="m in khmerMonths" :key="m"><option :value="m" x-text="m"></option></template>
                                 </select>
-                                <input type="text" x-model="uiState.req_from_year" class="w-24 text-xs font-bold font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 text-center focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="YYYY" maxlength="4" />
+                                <select x-model="uiState.req_from_year" class="w-24 text-xs font-bold font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all cursor-pointer text-center">
+                                    <option value="" disabled selected>YYYY</option>
+                                    <template x-for="i in 15"><option :value="currentYear - i + 1" x-text="currentYear - i + 1"></option></template>
+                                </select>
                             </div>
                             <div class="flex items-center gap-3">
                                 <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">ដល់៖</span>
-                                <select x-model="uiState.req_to_month" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all">
+                                <select x-model="uiState.req_to_month" class="w-full text-xs font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm font-khmer transition-all cursor-pointer">
                                     <option value="">ជ្រើសរើសខែ...</option>
                                     <template x-for="m in khmerMonths" :key="m"><option :value="m" x-text="m"></option></template>
                                 </select>
-                                <input type="text" x-model="uiState.req_to_year" class="w-24 text-xs font-bold font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 text-center focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" placeholder="YYYY" maxlength="4" />
+                                <select x-model="uiState.req_to_year" class="w-24 text-xs font-bold font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all cursor-pointer text-center">
+                                    <option value="" disabled selected>YYYY</option>
+                                    <template x-for="i in 15"><option :value="currentYear - i + 1" x-text="currentYear - i + 1"></option></template>
+                                </select>
                             </div>
                         </div>
 
                         <div class="lg:col-span-2 bg-white/50 dark:bg-[#0b1121]/50 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner">
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-3">Audit Timeline (កាលបរិច្ឆេទចុះសវនកម្ម)</label>
-                            <div class="flex items-center gap-3 mb-3">
+                            <div class="flex items-center gap-3 mb-3 relative">
                                 <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">ថ្ងៃចុះ៖</span>
-                                <input type="date" x-model="uiState.audit_start" class="w-full text-xs font-mono font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                                <input
+                                    type="text"
+                                    x-model="uiState.audit_start"
+                                    x-init="flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' })"
+                                    class="w-full text-xs font-mono font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all cursor-pointer bg-white"
+                                    placeholder="DD-MM-YYYY"
+                                />
                             </div>
-                            <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-3 relative">
                                 <span class="text-xs font-bold text-slate-500 dark:text-slate-400 w-12 text-right">បញ្ច​ប់៖</span>
-                                <input type="date" x-model="uiState.audit_end" class="w-full text-xs font-mono font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                                <input
+                                    type="text"
+                                    x-model="uiState.audit_end"
+                                    x-init="flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' })"
+                                    class="w-full text-xs font-mono font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all cursor-pointer bg-white"
+                                    placeholder="DD-MM-YYYY"
+                                />
                             </div>
                         </div>
 
@@ -200,31 +273,90 @@
                                 <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">MOC Num</label>
                                 <input type="text" x-model="formData.i_moc_number" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" placeholder="No..." />
                             </div>
-                            <div>
+                            <div class="relative">
                                 <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">MOC Date</label>
-                                <input type="date" x-model="formData.i_moc_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                                <input
+                                    type="text"
+                                    x-model="formData.i_moc_date"
+                                    x-init="flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' })"
+                                    class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm cursor-pointer bg-white"
+                                    placeholder="DD-MM-YYYY"
+                                />
                             </div>
-                            <div>
+
+                            <div class="relative">
                                 <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Patent Date</label>
-                                <input type="date" x-model="formData.i_patent_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                                <input
+                                    type="text"
+                                    x-model="formData.i_patent_date"
+                                    x-init="flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' })"
+                                    class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm cursor-pointer bg-white"
+                                    placeholder="DD-MM-YYYY"
+                                />
                             </div>
-                            <div>
+
+                            <div
+                                x-data="{ 
+                                get formattedAmt() { 
+                                    let val = this.formData.i_patent_amount ? String(this.formData.i_patent_amount).replace(/[^0-9]/g, '') : '';
+                                    return val ? new Intl.NumberFormat('en-US').format(val) : '';
+                                },
+                                set formattedAmt(val) {
+                                    this.formData.i_patent_amount = val ? val.replace(/[^0-9]/g, '') : '';
+                                }
+                            }"
+                            >
                                 <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Patent Amt</label>
-                                <input type="text" x-model="formData.i_patent_amount" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" placeholder="1,140,000" />
+                                <div class="relative flex items-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 focus-within:border-indigo-500 transition-all shadow-sm">
+                                    <input type="text" x-model="formattedAmt" class="w-full py-2.5 pl-3 pr-2 text-xs font-mono text-right text-slate-900 dark:text-white bg-transparent border-none focus:ring-0" placeholder="0" />
+                                    <div class="px-2.5 py-2.5 bg-slate-50 dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                                        <span class="text-slate-500 font-bold font-khmer text-[11px]">៛</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div>
+
+                            <div class="relative">
                                 <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">VAT Cert Date</label>
-                                <input type="date" x-model="formData.i_vat_cert_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                                <input
+                                    type="text"
+                                    x-model="formData.i_vat_cert_date"
+                                    x-init="flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' })"
+                                    class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm cursor-pointer bg-white"
+                                    placeholder="DD-MM-YYYY"
+                                />
                             </div>
-                            <div>
+
+                            <div class="relative">
                                 <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Request Date</label>
-                                <input type="date" x-model="uiState.request_submission_date" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm" />
+                                <input
+                                    type="text"
+                                    x-model="uiState.request_submission_date"
+                                    x-init="flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' })"
+                                    class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm cursor-pointer bg-white"
+                                    placeholder="DD-MM-YYYY"
+                                />
                             </div>
                         </div>
 
-                        <div class="lg:col-span-4 mt-2">
+                        <div
+                            class="lg:col-span-4 mt-2"
+                            x-data="{ 
+                            get formattedReqAmt() { 
+                                let val = this.formData.i_amount_requested ? String(this.formData.i_amount_requested).replace(/[^0-9]/g, '') : '';
+                                return val ? new Intl.NumberFormat('en-US').format(val) : '';
+                            },
+                            set formattedReqAmt(val) {
+                                this.formData.i_amount_requested = val ? val.replace(/[^0-9]/g, '') : '';
+                            }
+                        }"
+                        >
                             <label class="block text-[10px] font-extrabold text-amber-600 dark:text-amber-500 uppercase tracking-widest mb-2">Amount Requested (ទឹកប្រាក់ស្នើសុំបង្វិលសង)</label>
-                            <input type="text" x-model="formData.i_amount_requested" class="w-full text-xl font-mono font-black border border-amber-300 dark:border-amber-500/50 rounded-xl px-5 py-4 text-amber-900 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-300 focus:ring-2 focus:ring-amber-500 shadow-inner transition-shadow" placeholder="Ex: 931,937,106" />
+                            <div class="relative flex items-center bg-amber-50 dark:bg-amber-500/10 border border-amber-300 dark:border-amber-500/50 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-amber-500 transition-shadow shadow-inner">
+                                <input type="text" x-model="formattedReqAmt" class="w-full py-4 pl-5 pr-2 text-xl font-mono font-black text-amber-900 dark:text-amber-300 bg-transparent border-none focus:ring-0 text-right" placeholder="0" />
+                                <div class="px-5 py-4 bg-amber-100/50 dark:bg-amber-900/30 border-l border-amber-200 dark:border-amber-500/30 flex items-center justify-center">
+                                    <span class="text-amber-700 dark:text-amber-400 font-bold font-khmer text-lg">៛</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -294,7 +426,7 @@
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Registered Entity</label>
-                            <input type="text" x-model="formData.registered_entity" class="w-full text-xs font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            <input type="text" x-model="formData.registered_entity" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
                         </div>
                     </div>
                 </div>
@@ -309,11 +441,12 @@
                     </h4>
                     <div class="grid grid-cols-2 gap-5 mb-5">
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Phone</label
-                            ><input type="text" x-model="formData.phone" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Phone</label>
+                            <input type="text" x-model="formData.phone" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Email</label><input type="text" x-model="formData.email" class="w-full text-sm border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Email</label>
+                            <input type="text" x-model="formData.email" class="w-full text-sm border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
                         </div>
                     </div>
                     <div class="space-y-5">
@@ -334,22 +467,71 @@
                         D. Operational Metrics
                     </h4>
                     <div class="grid grid-cols-2 gap-5">
-                        <div>
+                        <div
+                            x-data="{ 
+                            get formattedEmp() { 
+                                let val = this.formData.employee_count ? String(this.formData.employee_count).replace(/[^0-9]/g, '') : '';
+                                return val ? new Intl.NumberFormat('en-US').format(val) : '';
+                            },
+                            set formattedEmp(val) {
+                                this.formData.employee_count = val ? val.replace(/[^0-9]/g, '') : '';
+                            }
+                        }"
+                        >
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Employees</label>
-                            <input type="text" x-model="formData.employee_count" class="w-full text-sm font-mono border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-right text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            <div class="flex items-center bg-white dark:bg-[#0b1121] border border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 transition-all shadow-sm">
+                                <input type="text" x-model="formattedEmp" class="flex-1 w-full py-3.5 pl-4 pr-2 text-sm font-mono text-right text-slate-800 dark:text-white bg-transparent border-none focus:ring-0" placeholder="0" />
+                                <div class="px-3 py-3.5 bg-slate-50 dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                                    <span class="text-slate-500 font-bold font-khmer text-xs">នាក់</span>
+                                </div>
+                            </div>
                         </div>
-                        <div>
+
+                        <div
+                            x-data="{ 
+                            get formattedSal() { 
+                                let val = this.formData.total_salary ? String(this.formData.total_salary).replace(/[^0-9]/g, '') : '';
+                                return val ? new Intl.NumberFormat('en-US').format(val) : '';
+                            },
+                            set formattedSal(val) {
+                                this.formData.total_salary = val ? val.replace(/[^0-9]/g, '') : '';
+                            }
+                        }"
+                        >
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Total Salary (KHR)</label>
-                            <input type="text" x-model="formData.total_salary" class="w-full text-sm font-mono font-bold border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-right text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            <div class="flex items-center bg-white dark:bg-[#0b1121] border border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 transition-all shadow-sm">
+                                <input type="text" x-model="formattedSal" class="flex-1 w-full py-3.5 pl-4 pr-2 text-sm font-mono font-bold text-right text-slate-800 dark:text-white bg-transparent border-none focus:ring-0" placeholder="0" />
+                                <div class="px-3 py-3.5 bg-slate-50 dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                                    <span class="text-slate-500 font-bold font-khmer text-xs">រៀល</span>
+                                </div>
+                            </div>
                         </div>
+
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Property Type</label>
                             <input type="text" x-model="formData.property_type" class="w-full text-sm font-khmer border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
                         </div>
-                        <div>
+
+                        <div
+                            x-data="{ 
+                            get formattedRent() { 
+                                let val = this.formData.rent_per_month ? String(this.formData.rent_per_month).replace(/[^0-9]/g, '') : '';
+                                return val ? new Intl.NumberFormat('en-US').format(val) : '';
+                            },
+                            set formattedRent(val) {
+                                this.formData.rent_per_month = val ? val.replace(/[^0-9]/g, '') : '';
+                            }
+                        }"
+                        >
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Rent (KHR)</label>
-                            <input type="text" x-model="formData.rent_per_month" class="w-full text-sm font-mono font-bold border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 text-right text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
+                            <div class="flex items-center bg-white dark:bg-[#0b1121] border border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 transition-all shadow-sm">
+                                <input type="text" x-model="formattedRent" class="flex-1 w-full py-3.5 pl-4 pr-2 text-sm font-mono font-bold text-right text-slate-800 dark:text-white bg-transparent border-none focus:ring-0" placeholder="0" />
+                                <div class="px-3 py-3.5 bg-slate-50 dark:bg-slate-800/50 border-l border-slate-200 dark:border-slate-700 flex items-center justify-center">
+                                    <span class="text-slate-500 font-bold font-khmer text-xs">រៀល</span>
+                                </div>
+                            </div>
                         </div>
+
                         <div class="col-span-2">
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Enterprise Form</label>
                             <input type="text" x-model="formData.enterprise_form" class="w-full text-sm font-khmer border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 mb-2.5 text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
@@ -484,7 +666,7 @@
                         </h4>
                     </div>
 
-                    <div class="flex items-center justify-between gap-4 mb-6 bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20 ring-1 ring-inset ring-amber-500/10">
+                    <div class="flex items-center justify-between gap-4 mb-6 bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20 ring-1 ring-inset ring-amber-500/10 relative">
                         <label class="text-[11px] font-bold text-amber-800 dark:text-amber-500 uppercase tracking-widest font-khmer whitespace-nowrap">កាលបរិច្ឆេទផ្គត់ផ្គង់</label>
                         <input type="text" x-model="formData.h_date" class="w-48 text-sm font-mono font-black text-center border border-amber-300 dark:border-amber-500/50 rounded-lg px-3 py-2 bg-white dark:bg-[#0b1121] text-amber-900 dark:text-amber-400 focus:ring-2 focus:ring-amber-500 shadow-inner transition-all" />
                     </div>
@@ -501,20 +683,61 @@
                             <tbody>
                                 <tr>
                                     <td class="p-3 text-[11px] font-bold text-slate-700 dark:text-slate-300 font-khmer border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">ផលរបរផ្គត់ផ្គង់រយ:ពេល</td>
-                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]">
-                                        <input type="text" x-model="formData.h_real_12m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+
+                                    <td
+                                        class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]"
+                                        x-data="{ 
+                                        get formattedVal() { let v = this.formData.h_real_12m ? String(this.formData.h_real_12m).replace(/[^0-9]/g, '') : ''; return v ? new Intl.NumberFormat('en-US').format(v) : ''; },
+                                        set formattedVal(v) { this.formData.h_real_12m = v ? v.replace(/[^0-9]/g, '') : ''; }
+                                    }"
+                                    >
+                                        <div class="flex items-center w-full group focus-within:ring-1 focus-within:ring-indigo-500 rounded transition-all">
+                                            <input type="text" x-model="formattedVal" class="flex-1 w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200 p-1" placeholder="0" />
+                                            <span class="text-[11px] font-bold font-khmer text-slate-400 ml-1 mr-2 select-none">រៀល</span>
+                                        </div>
                                     </td>
-                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]">
-                                        <input type="text" x-model="formData.h_real_3m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+
+                                    <td
+                                        class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]"
+                                        x-data="{ 
+                                        get formattedVal() { let v = this.formData.h_real_3m ? String(this.formData.h_real_3m).replace(/[^0-9]/g, '') : ''; return v ? new Intl.NumberFormat('en-US').format(v) : ''; },
+                                        set formattedVal(v) { this.formData.h_real_3m = v ? v.replace(/[^0-9]/g, '') : ''; }
+                                    }"
+                                    >
+                                        <div class="flex items-center w-full group focus-within:ring-1 focus-within:ring-indigo-500 rounded transition-all">
+                                            <input type="text" x-model="formattedVal" class="flex-1 w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200 p-1" placeholder="0" />
+                                            <span class="text-[11px] font-bold font-khmer text-slate-400 ml-1 mr-2 select-none">រៀល</span>
+                                        </div>
                                     </td>
                                 </tr>
+
                                 <tr>
                                     <td class="p-3 text-[11px] font-bold text-slate-700 dark:text-slate-300 font-khmer border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 rounded-bl-xl">ការប៉ាន់ស្មានផលរបររយ:ពេល</td>
-                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]">
-                                        <input type="text" x-model="formData.h_est_12m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+
+                                    <td
+                                        class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121]"
+                                        x-data="{ 
+                                        get formattedVal() { let v = this.formData.h_est_12m ? String(this.formData.h_est_12m).replace(/[^0-9]/g, '') : ''; return v ? new Intl.NumberFormat('en-US').format(v) : ''; },
+                                        set formattedVal(v) { this.formData.h_est_12m = v ? v.replace(/[^0-9]/g, '') : ''; }
+                                    }"
+                                    >
+                                        <div class="flex items-center w-full group focus-within:ring-1 focus-within:ring-indigo-500 rounded transition-all">
+                                            <input type="text" x-model="formattedVal" class="flex-1 w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200 p-1" placeholder="0" />
+                                            <span class="text-[11px] font-bold font-khmer text-slate-400 ml-1 mr-2 select-none">រៀល</span>
+                                        </div>
                                     </td>
-                                    <td class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121] rounded-br-xl">
-                                        <input type="text" x-model="formData.h_est_3m" class="w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200" placeholder="0" />
+
+                                    <td
+                                        class="p-2 border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0b1121] rounded-br-xl"
+                                        x-data="{ 
+                                        get formattedVal() { let v = this.formData.h_est_3m ? String(this.formData.h_est_3m).replace(/[^0-9]/g, '') : ''; return v ? new Intl.NumberFormat('en-US').format(v) : ''; },
+                                        set formattedVal(v) { this.formData.h_est_3m = v ? v.replace(/[^0-9]/g, '') : ''; }
+                                    }"
+                                    >
+                                        <div class="flex items-center w-full group focus-within:ring-1 focus-within:ring-indigo-500 rounded transition-all">
+                                            <input type="text" x-model="formattedVal" class="flex-1 w-full text-sm font-mono font-bold text-right border-none bg-transparent focus:ring-0 text-slate-800 dark:text-slate-200 p-1" placeholder="0" />
+                                            <span class="text-[11px] font-bold font-khmer text-slate-400 ml-1 mr-2 select-none">រៀល</span>
+                                        </div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -540,34 +763,37 @@
 <script>
     document.addEventListener('alpine:init', () => {
         Alpine.data('crosscheckWorkflow', () => ({
-            state: 'locked', // locked | upload | preview
+            state: 'locked', // locked, upload, preview
             inputCode: '',
-            ovatrCode: '',
             codeError: '',
+            ovatrCode: '',
             isDragging: false,
             isProcessing: false,
+            progressMessage: '',
             isSaving: false,
             saveMessage: '',
-            tempFilePath: '',
             showScrollButton: false,
+
+            // For the dropdown menus
             khmerMonths: ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'],
 
             uiState: {
                 auditors: [{title: 'លោក', name: ''}],
+                contact_title: 'លោក',
+                contact_name: '',
                 req_from_month: '',
                 req_from_year: '',
                 req_to_month: '',
                 req_to_year: '',
                 audit_start: '',
                 audit_end: '',
-                contact_title: 'លោក',
-                contact_name: '',
                 request_submission_date: '',
             },
 
             formData: {
-                company_name_en: '',
+                // Core
                 company_name_kh: '',
+                company_name_en: '',
                 vatin: '',
                 old_vatin: '',
                 enterprise_id: '',
@@ -578,10 +804,14 @@
                 taxpayer_type: '',
                 tax_year: '',
                 registered_entity: '',
+
+                // Contact
                 phone: '',
                 email: '',
                 address_main: '',
                 address_office: '',
+
+                // Operations
                 employee_count: '',
                 total_salary: '',
                 property_type: '',
@@ -589,26 +819,27 @@
                 enterprise_form: '',
                 add_ent_form: '',
                 signage: '',
-                h_date: '',
-                h_real_12m: '',
-                h_real_3m: '',
-                h_est_12m: '',
-                h_est_3m: '',
-                i_auditor_names: '',
-                i_request_date: '',
-                i_contact_person: '',
-                i_contact_position: '',
-                i_audit_timeline: '',
-                i_amount_requested: '',
+
+                // Tables
+                business_activities: [],
+                enterprise_accounts: [],
+                related_institutions: [],
+
+                // Report Info specific fields
                 i_moc_number: '',
                 i_moc_date: '',
                 i_patent_date: '',
                 i_patent_amount: '',
                 i_vat_cert_date: '',
-                i_request_submission_date: '',
-                business_activities: [],
-                enterprise_accounts: [],
-                related_institutions: [],
+                i_contact_position: '',
+                i_amount_requested: '',
+
+                // Estimates
+                h_date: '',
+                h_real_12m: '',
+                h_real_3m: '',
+                h_est_12m: '',
+                h_est_3m: '',
             },
 
             init() {
@@ -732,29 +963,47 @@
                 }
                 this.isSaving = true;
                 this.saveMessage = 'Saving Company Info...';
-                this.formData.OVATR = this.ovatrCode;
 
-                this.formData.i_auditor_names = this.uiState.auditors
+                // CREATE A COPY OF FORM DATA to safely manipulate before sending
+                let payload = {...this.formData};
+                payload.OVATR = this.ovatrCode;
+
+                // 1. Process Auditors
+                payload.i_auditor_names = this.uiState.auditors
                     .filter((a) => a.name.trim() !== '')
                     .map((a) => `${a.title} ${a.name}`)
                     .join(', ');
+
+                // 2. Process Requested Period
                 let reqDate = '';
                 if (this.uiState.req_from_month && this.uiState.req_from_year) {
                     reqDate = `ខែ${this.uiState.req_from_month} ឆ្នាំ${this.uiState.req_from_year}`;
                     if (this.uiState.req_to_month && this.uiState.req_to_year) reqDate += ` ដល់ខែ${this.uiState.req_to_month} ឆ្នាំ${this.uiState.req_to_year}`;
                 }
-                this.formData.i_request_date = reqDate;
+                payload.i_request_date = reqDate;
 
+                // 3. Process Audit Timeline
                 let auditTimeline = '';
                 if (this.uiState.audit_start) {
                     auditTimeline = `ពី${this.formatKhmerDate(this.uiState.audit_start)}`;
                     if (this.uiState.audit_end) auditTimeline += ` ដល់${this.formatKhmerDate(this.uiState.audit_end)}`;
                 }
-                this.formData.i_audit_timeline = auditTimeline;
-                this.formData.i_contact_person = this.uiState.contact_name.trim() !== '' ? `${this.uiState.contact_title} ${this.uiState.contact_name}` : '';
-                this.formData.i_request_submission_date = this.uiState.request_submission_date ? `ស្នើសុំបង្វិលសងអាករលើតម្លៃបន្ថែមតាមអនឡាញចុះ${this.formatKhmerDate(this.uiState.request_submission_date)}` : '';
+                payload.i_audit_timeline = auditTimeline;
 
-                fetch('{% url "crosscheck:save_company_info" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify(this.formData)})
+                // 4. Process Contact & Submission Date
+                payload.i_contact_person = this.uiState.contact_name.trim() !== '' ? `${this.uiState.contact_title} ${this.uiState.contact_name}` : '';
+                payload.i_request_submission_date = this.uiState.request_submission_date ? `ស្នើសុំបង្វិលសងអាករលើតម្លៃបន្ថែមតាមអនឡាញចុះ${this.formatKhmerDate(this.uiState.request_submission_date)}` : '';
+
+                // 5. STRIP COMMAS FROM ALL NUMERIC FIELDS BEFORE SENDING TO DB
+                const numericFields = ['i_patent_amount', 'i_amount_requested', 'employee_count', 'total_salary', 'rent_per_month', 'h_real_12m', 'h_real_3m', 'h_est_12m', 'h_est_3m'];
+                numericFields.forEach((field) => {
+                    if (payload[field]) {
+                        payload[field] = String(payload[field]).replace(/,/g, '');
+                    }
+                });
+
+                // Send the payload instead of this.formData
+                fetch('{% url "crosscheck:save_company_info" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify(payload)})
                     .then((response) => response.json())
                     .then((data) => {
                         if (data.status !== 'success') throw new Error(data.message);

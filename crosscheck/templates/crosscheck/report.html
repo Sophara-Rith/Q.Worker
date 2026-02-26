@@ -106,7 +106,7 @@
         </div>
     </div>
 
-    <div class="flex flex-col md:flex-row justify-between items-center mb-4 flex-shrink-0 px-5 pt-5 relative z-10">
+    <div class="flex flex-col md:flex-row justify-between items-center mb-4 flex-shrink-0 px-5 pt-5 relative z-50">
         <div>
             <h2 class="text-3xl font-extrabold text-slate-900 dark:text-white mb-1 tracking-tight flex items-center gap-3">Session Report</h2>
             <p class="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">Review, edit, and finalize your audit data.</p>
@@ -120,13 +120,13 @@
                 <input type="text" x-model="searchInput" @keydown.enter="searchSession()" placeholder="Search OVATR ID..." class="pl-11 pr-4 w-full rounded-xl border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0b1121] dark:text-white text-sm py-2.5 shadow-inner focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder-slate-400" />
             </div>
 
-            <div x-show="ovatr" x-transition class="hidden md:flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-4 py-2 rounded-xl shadow-inner ring-1 ring-inset ring-indigo-500/20 h-[42px]">
+            <div x-show="ovatr" x-transition class="relative z-50 hidden md:flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 px-4 py-2 rounded-xl shadow-inner ring-1 ring-inset ring-indigo-500/20 h-[35px]">
                 <span class="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest opacity-80">Session ID</span>
                 <span class="text-sm font-mono font-bold text-indigo-700 dark:text-indigo-300 leading-none mt-0.5" x-text="ovatr"></span>
                 <div class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse ml-1 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
             </div>
 
-            <div x-show="ovatr" class="flex bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm ring-1 ring-inset ring-slate-200 dark:ring-slate-700 h-[42px] items-center">
+            <div x-show="ovatr" class="flex bg-white dark:bg-slate-800 rounded-xl p-1 shadow-sm ring-1 ring-inset ring-slate-200 dark:ring-slate-700 h-[35px] items-center">
                 <button @click="undo()" :disabled="historyIndex < 0" class="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 transition-all text-slate-600 dark:text-slate-300" title="Undo Last Edit">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" /></svg>
                 </button>
@@ -136,8 +136,8 @@
                 </button>
             </div>
 
-            <div x-show="ovatr" class="relative inline-block text-left" @click.away="openExport = false">
-                <button @click="openExport = !openExport" class="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 text-sm font-bold transition-all flex items-center gap-2 focus:outline-none ring-1 ring-inset ring-white/20 h-[42px]">
+            <div x-show="ovatr" class="relative inline-block text-left z-50" @click.away="openExport = false">
+                <button @click="openExport = !openExport" class="relative z-50 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 text-sm font-bold transition-all flex items-center gap-2 focus:outline-none ring-1 ring-inset ring-white/20 h-[42px]">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                     Export
                     <svg class="w-4 h-4 opacity-70 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
@@ -151,16 +151,17 @@
                     x-transition:leave="transition ease-in duration-100"
                     x-transition:leave-start="transform opacity-100 scale-100 translate-y-0"
                     x-transition:leave-end="transform opacity-0 scale-95 translate-y-2"
-                    class="absolute right-0 mt-3 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 overflow-hidden z-50 ring-1 ring-black/5 dark:ring-white/10"
+                    class="absolute right-0 mt-3 w-52 bg-white dark:bg-slate-800 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] border border-slate-200 dark:border-slate-700 overflow-hidden z-[9999] ring-1 ring-black/5 dark:ring-white/10"
+                    style="min-width: max-content"
                     x-cloak
                 >
-                    <a :href="'/crosscheck/download_full_report/?ovatr_code=' + ovatr" class="px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-700/50 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 transition-colors group" target="_blank" @click="openExport = false">
+                    <a :href="'/crosscheck/download_full_report/?ovatr_code=' + ovatr" class="block px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-700/50 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 transition-colors group relative z-[10000]" target="_blank" @click="openExport = false">
                         <div class="p-1.5 bg-emerald-100 dark:bg-emerald-500/20 rounded-md group-hover:scale-110 transition-transform">
                             <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         </div>
                         Export Excel
                     </a>
-                    <a :href="'/crosscheck/download_word_report/?ovatr_code=' + ovatr" class="px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors group" target="_blank" @click="openExport = false">
+                    <a :href="'/crosscheck/download_word_report/?ovatr_code=' + ovatr" class="block px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors group relative z-[10000]" target="_blank" @click="openExport = false">
                         <div class="p-1.5 bg-blue-100 dark:bg-blue-500/20 rounded-md group-hover:scale-110 transition-transform">
                             <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         </div>
@@ -195,29 +196,18 @@
                 </div>
             </div>
 
-            <table class="text-xs text-left border-separate border-spacing-0 table-fixed w-full">
+            <table class="text-xs text-left border-separate border-spacing-0 w-full min-w-max">
                 <colgroup>
-                    <col class="w-16" />
+                    <col style="width: 50px; min-width: 50px" />
                     <template x-if="currentTab === 'company'">
-                        <col class="w-1/3" />
-                        <col class="w-2/3" />
+                        <col style="width: 20%" />
+                        <col style="width: 80%" />
                     </template>
-                    <template x-if="['annex_1', 'annex_2', 'annex_4', 'annex_5'].includes(currentTab)">
-                        <col class="w-2/5" />
-                        <col class="w-1/5" />
-                        <col class="w-1/5" />
-                        <col class="w-1/5" />
-                    </template>
-                    <template x-if="currentTab === 'annex_3'">
-                        <col class="w-32" />
-                        <col class="w-48" />
-                        <col class="w-auto" />
-                        <col class="w-32" />
-                        <col class="w-32" />
-                        <col class="w-32" />
-                    </template>
-                    <template x-if="!['company', 'annex_1', 'annex_2', 'annex_3', 'annex_4', 'annex_5'].includes(currentTab)">
-                        <template x-for="col in displayColumns" :key="col.key"><col class="w-auto" /></template>
+
+                    <template x-if="currentTab !== 'company'">
+                        <template x-for="col in displayColumns" :key="col.key">
+                            <col :style="getColumnStyle(currentTab, col.key)" />
+                        </template>
                     </template>
                 </colgroup>
 
@@ -284,7 +274,7 @@
 
                             <template x-if="currentTab !== 'company'">
                                 <template x-for="col in displayColumns" :key="col.key">
-                                    <td @click="handleCellAction(row, col.key, row[col.key])" title="Click to copy, Dbl-click to edit" class="p-0 border-r border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors">
+                                    <td @click="handleCellAction(row, col.key, row[getDynamicKey(row, col.key)])" title="Click to copy, Dbl-click to edit" class="p-0 border-r border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors">
                                         <div class="w-full h-full relative group/cell">
                                             <div x-show="!isEditing(row, col.key)" class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 text-indigo-400 transition-opacity pointer-events-none">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
@@ -293,22 +283,43 @@
                                             <template x-if="isEditing(row, col.key)">
                                                 <input
                                                     type="text"
-                                                    x-model="row[col.key]"
+                                                    x-model="row[getDynamicKey(row, col.key.toLowerCase() === 'status' ? 'user_status' : col.key)]"
                                                     @click.stop
                                                     @blur="stopEdit(row, col.key)"
                                                     @keydown.enter.prevent="stopEdit(row, col.key)"
                                                     class="edit-input w-full h-full min-h-[3rem] px-3 py-3 bg-white dark:bg-[#090e17] ring-2 ring-indigo-500 border-0 text-xs font-medium text-slate-900 dark:text-slate-100 shadow-xl z-10 relative rounded-md"
-                                                    :class="{'text-right font-mono font-bold': isAmountCol(col.key)}"
+                                                    :class="{'text-right font-mono font-bold': isAmountCol(col.key), 'text-center': col.key.toLowerCase() === 'status'}"
                                                     autofocus
                                                 />
                                             </template>
+
                                             <template x-if="!isEditing(row, col.key)">
                                                 <div
-                                                    class="px-3 py-3 w-full h-full flex items-center overflow-hidden truncate whitespace-nowrap text-slate-600 dark:text-slate-300"
-                                                    :class="{'justify-end font-mono font-bold text-slate-700 dark:text-slate-200': isAmountCol(col.key), 'justify-start font-medium': !isAmountCol(col.key)}"
-                                                    x-text="formatValue(row[col.key], col.key)"
-                                                    :title="isModified(row, col.key) ? 'Original: ' + formatValue(row._orig[col.key], col.key) : row[col.key]"
-                                                ></div>
+                                                    class="px-3 py-3 h-full flex items-center overflow-hidden text-slate-600 dark:text-slate-300"
+                                                    :class="{
+                                                        'truncate max-w-[300px]': col.key.toLowerCase() === 'description',
+                                                        'whitespace-nowrap w-full': col.key.toLowerCase() !== 'description',
+                                                        'justify-end font-mono font-bold text-slate-700 dark:text-slate-200': isAmountCol(col.key), 
+                                                        'justify-center': col.key.toLowerCase() === 'status', 
+                                                        'justify-start font-medium': !isAmountCol(col.key) && col.key.toLowerCase() !== 'status'
+                                                    }"
+                                                    :title="isModified(row, col.key) ? 'Original: ' + formatValue(row._orig[getDynamicKey(row, col.key)], col.key) : row[getDynamicKey(row, col.key)]"
+                                                >
+                                                    <template x-if="col.key.toLowerCase() !== 'status'">
+                                                        <span x-text="formatValue(row[getDynamicKey(row, col.key)], col.key)"></span>
+                                                    </template>
+
+                                                    <template x-if="col.key.toLowerCase() === 'status'">
+                                                        <div class="flex items-center justify-center w-full h-full">
+                                                            <template x-if="getEffectiveStatus(row) !== ''">
+                                                                <span class="px-3 py-1.5 rounded-md font-bold text-[11px] tracking-wider uppercase border inline-block whitespace-nowrap" :class="getStatusColor(getEffectiveStatus(row))" x-text="getEffectiveStatus(row)"> </span>
+                                                            </template>
+                                                            <template x-if="getEffectiveStatus(row) === ''">
+                                                                <span class="text-slate-300 dark:text-slate-600 text-xs font-bold">--</span>
+                                                            </template>
+                                                        </div>
+                                                    </template>
+                                                </div>
                                             </template>
                                         </div>
                                     </td>
@@ -383,11 +394,9 @@
             openExport: false,
             showScrollTop: false,
 
-            // UNDO / REDO HISTORY TRACKING
             history: [],
             historyIndex: -1,
 
-            // HISTORY MODAL TRACKING
             showHistoryModal: false,
             historyRowId: null,
             displayRowId: null,
@@ -395,7 +404,6 @@
             historyLoading: false,
             historyFilter: '',
 
-            // SMART CLICK TRACKERS
             clicks: 0,
             clickTimer: null,
             clickDelay: 250,
@@ -473,7 +481,6 @@
                 }
             },
 
-            // --- LOCAL STORAGE PERSISTENCE FOR HISTORY ---
             saveLocalHistory() {
                 const data = {
                     history: this.history,
@@ -507,13 +514,12 @@
                 let idVal = null;
                 if (this.currentTab === 'company') idVal = row['key'];
                 else if (this.currentTab === 'taxpaid') idVal = row['description'];
-                else idVal = String(row['no']); // Force to string to prevent matching errors
+                else idVal = String(row['no']);
 
                 this.historyRowId = idVal;
                 this.displayRowId = (this.currentPage - 1) * this.pageSize + idx + 1;
                 this.historyFilter = '';
 
-                // Construct history logs directly from local stack
                 this.historyLogs = this.history
                     .slice(0, this.historyIndex + 1)
                     .filter((h) => String(h.idVal) === String(idVal) && h.sheet === this.currentTab)
@@ -524,7 +530,7 @@
                         old_value: h.oldValue,
                         new_value: h.newValue,
                     }))
-                    .reverse(); // Show newest edits first
+                    .reverse();
 
                 this.showHistoryModal = true;
             },
@@ -549,7 +555,6 @@
                     return;
                 }
 
-                // Apply restoration
                 row[field] = restoredValue;
                 row.has_history = true;
                 row._modified_fields[field] = true;
@@ -558,7 +563,6 @@
                 this.updateCell(row, field, restoredValue);
 
                 if (this.showHistoryModal) {
-                    // Refresh modal
                     this.historyLogs = this.history
                         .slice(0, this.historyIndex + 1)
                         .filter((h) => String(h.idVal) === String(this.historyRowId) && h.sheet === this.currentTab)
@@ -573,15 +577,19 @@
                 }
             },
 
-            // SMART CLICK HANDLERS
             handleCellAction(row, field, textToCopy) {
                 if (this.isEditing(row, field)) return;
+
+                let copyText = textToCopy;
+                if (field.toLowerCase() === 'status') {
+                    copyText = this.getEffectiveStatus(row);
+                }
 
                 this.clicks++;
                 if (this.clicks === 1) {
                     this.clickTimer = setTimeout(() => {
                         this.clicks = 0;
-                        this.copyToClipboard(textToCopy);
+                        this.copyToClipboard(copyText);
                     }, this.clickDelay);
                 } else if (this.clicks === 2) {
                     clearTimeout(this.clickTimer);
@@ -597,7 +605,6 @@
                 });
             },
 
-            // HISTORY TRACKING LOGIC
             pushHistoryAction(row, field, oldValue, newValue) {
                 if (this.historyIndex < this.history.length - 1) {
                     this.history = this.history.slice(0, this.historyIndex + 1);
@@ -726,9 +733,12 @@
                         this.loading = false;
                         if (res.status === 'success') {
                             this.rows = res.data;
-
-                            // Initialize logic + sync with Local Storage history stack
                             this.rows.forEach((r) => {
+                                const uKey = Object.keys(r).find((k) => k.toLowerCase() === 'user_status');
+                                const sKey = Object.keys(r).find((k) => k.toLowerCase() === 'sys_status');
+                                if (!uKey) r['USER_STATUS'] = '';
+                                if (!sKey) r['SYS_STATUS'] = '';
+
                                 r._orig = JSON.parse(JSON.stringify(r));
                                 r._modified_fields = {};
                                 r.has_history = false;
@@ -738,7 +748,6 @@
                                 else if (this.currentTab === 'taxpaid') idVal = r['description'];
                                 else idVal = String(r['no']);
 
-                                // Check if this specific row was modified in our history stack
                                 const rowHistory = this.history.filter((h) => String(h.idVal) === String(idVal) && h.sheet === this.currentTab && this.history.indexOf(h) <= this.historyIndex);
 
                                 if (rowHistory.length > 0) {
@@ -761,16 +770,119 @@
             },
 
             get displayColumns() {
-                return this.columns.filter((c) => c.key.toLowerCase() !== 'no' && c.key.toLowerCase() !== 'id');
+                if (this.currentTab === 'company') return [];
+
+                let availableCols = this.columns.filter((c) => {
+                    const k = c.key.toLowerCase();
+                    return !['no', 'id', 'total_amount', 'user_status', 'sys_status', 'status', 'ovatr'].includes(k);
+                });
+
+                let order = [];
+                let finalCols = [];
+
+                switch (this.currentTab) {
+                    case 'annex_1':
+                        order = ['description', 'supplier_name', 'supplier_tin', 'invoice_no', 'date', 'import_state_charge'];
+                        break;
+                    case 'annex_2':
+                        order = ['description', 'supplier_name', 'supplier_tin', 'invoice_no', 'date', 'import'];
+                        break;
+                    case 'annex_3':
+                        order = ['description', 'supplier_name', 'supplier_tin', 'invoice_no', 'date', 'amount'];
+                        break;
+                    case 'annex_4':
+                        order = ['description', 'buyer_name', 'tax_registration_id', 'invoice_no', 'date', 'vat_export'];
+                        break;
+                    case 'annex_5':
+                        order = ['description', 'buyer_name', 'tax_registration_id', 'invoice_no', 'date', 'vat_local_sale'];
+                        break;
+                    case 'taxpaid':
+                        order = ['description', 'tax_year', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'total'];
+                        break;
+                }
+
+                order.forEach((targetKey) => {
+                    let col = availableCols.find((c) => c.key.toLowerCase() === targetKey);
+                    if (col) finalCols.push(col);
+                });
+
+                availableCols.forEach((col) => {
+                    if (!order.includes(col.key.toLowerCase())) finalCols.push(col);
+                });
+
+                if (this.currentTab !== 'taxpaid') {
+                    finalCols.push({key: 'status', label: 'STATUS'});
+                }
+
+                return finalCols;
             },
+
+            // 🔴 FIX: Allows Auto-Expansion but adds sensible Minimum/Maximum bounds
+            getColumnStyle(tab, key) {
+                const k = key.toLowerCase();
+
+                // Keep description strictly capped at 300px
+                if (k === 'description') return 'max-width: 300px; min-width: 200px;';
+
+                // Allow statuses to flex a bit but don't let them shrink too small
+                if (k === 'status') return 'min-width: 140px; width: auto;';
+                if (k === 'tax_year') return 'min-width: 90px; width: auto;';
+
+                // Make sure months/amounts never get too squished
+                if (this.isAmountCol(key) || ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].includes(k)) {
+                    return 'min-width: 110px; width: auto;';
+                }
+
+                // Default auto behavior for names/TINs/Invoice numbers
+                return 'width: auto; white-space: nowrap;';
+            },
+
             formatFieldLabel(key) {
                 return this.fieldLabels[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
             },
 
+            getDynamicKey(row, targetKey) {
+                return Object.keys(row).find((k) => k.toLowerCase() === targetKey.toLowerCase()) || targetKey;
+            },
+
+            getEffectiveStatus(row) {
+                const uKey = this.getDynamicKey(row, 'user_status');
+                const sKey = this.getDynamicKey(row, 'sys_status');
+
+                const uStatus = row[uKey];
+                const sStatus = row[sKey];
+
+                if (uStatus !== null && uStatus !== undefined && String(uStatus).trim() !== '' && String(uStatus).toLowerCase() !== 'null') {
+                    return String(uStatus);
+                }
+                if (sStatus !== null && sStatus !== undefined && String(sStatus).trim() !== '' && String(sStatus).toLowerCase() !== 'null') {
+                    return String(sStatus);
+                }
+                return '';
+            },
+
+            getStatusColor(text) {
+                if (!text) return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+
+                const lower = text.toLowerCase();
+
+                if (lower.includes('valid') || lower.includes('អនុញ្ញាត') || lower.includes('ត្រឹមត្រូវ') || lower.includes('បានប្រកាស') || lower.includes('ok')) {
+                    return 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20';
+                }
+                if (lower.includes('invalid') || lower.includes('error') || lower.includes('មិន') || lower.includes('ខុស') || lower.includes('missing')) {
+                    return 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20';
+                }
+
+                return 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20';
+            },
+
             startEdit(row, key) {
                 if (this.currentTab === 'company' && key === 'label_view') return;
+
+                let actualKey = key.toLowerCase() === 'status' ? this.getDynamicKey(row, 'user_status') : this.getDynamicKey(row, key);
+
                 const idx = this.rows.indexOf(row);
-                this.editingState = {idx: idx, key: key};
+                this.editingState = {idx: idx, key: actualKey};
                 this.$nextTick(() => {
                     const input = this.$el.querySelector('input.edit-input');
                     if (input) {
@@ -779,25 +891,26 @@
                     }
                 });
             },
+
             isEditing(row, key) {
+                let actualKey = key.toLowerCase() === 'status' ? this.getDynamicKey(row, 'user_status') : this.getDynamicKey(row, key);
                 const idx = this.rows.indexOf(row);
-                return this.editingState.idx === idx && this.editingState.key === key;
+                return this.editingState.idx === idx && this.editingState.key === actualKey;
             },
 
             stopEdit(row, key) {
+                let actualKey = key.toLowerCase() === 'status' ? this.getDynamicKey(row, 'user_status') : this.getDynamicKey(row, key);
                 this.editingState = {idx: null, key: null};
-                const newValue = row[key];
 
-                // Compare to the current stored state to see if it changed during THIS specific edit
-                const oldValue = row._orig[key];
+                const newValue = row[actualKey];
+                const oldValue = row._orig[actualKey];
 
                 if (String(newValue) !== String(oldValue)) {
-                    // Activate history and keep the highlight
                     row.has_history = true;
-                    row._modified_fields[key] = true;
-
-                    this.pushHistoryAction(row, key, oldValue, newValue);
-                    this.updateCell(row, key, newValue);
+                    if (!row._modified_fields) row._modified_fields = {};
+                    row._modified_fields[actualKey] = true;
+                    this.pushHistoryAction(row, actualKey, oldValue, newValue);
+                    this.updateCell(row, actualKey, newValue);
                 }
             },
 
@@ -816,33 +929,36 @@
                     .then((res) => {
                         if (res.status === 'success') {
                             this.showToast('Change saved successfully', 'success');
-                            // Sync base so diffs calc properly, but _modified_fields keeps it highlighted
                             row._orig[field] = newValue;
                         } else {
                             this.showToast('Save Failed: ' + res.message, 'error');
-                            // Revert change on failure
                             row[field] = row._orig[field];
                             row._modified_fields[field] = false;
                         }
                     });
             },
 
-            isModified(row, key) {
-                if (!row._orig) return false;
-                // Note: Removing actual color highlight but keeping the hover tooltip logic
-                return String(row[key]) !== String(row._orig[key]) || (row._modified_fields && row._modified_fields[key]);
-            },
-
             isAmountCol(key) {
                 const k = key.toLowerCase();
-                if (k.includes('year') || k.includes('date') || k.includes('no') || k.includes('id') || k.includes('count') || k.includes('phone') || k.includes('code') || k.includes('tin')) return false;
+
+                const exactMonths = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+                if (exactMonths.includes(k)) return true;
+
+                if (k === 'no' || k === 'invoice_no' || k.endsWith('_no') || k.includes('id') || k.includes('date') || k.includes('year') || k.includes('count') || k.includes('phone') || k.includes('code') || k.includes('tin') || k.includes('status') || k === 'description' || k === 'ovatr') {
+                    return false;
+                }
+
                 return ['amount', 'vat', 'tax', 'salary', 'value', 'price', 'total', 'charge', 'cost', 'balance', 'rent', 'real', 'est', 'import'].some((t) => k.includes(t)) && !k.includes('rate');
             },
+
             formatValue(val, key) {
-                if (!val) return '';
+                if (val === null || val === undefined || val === '') return '';
                 if (this.isAmountCol(key)) {
                     const num = parseFloat(String(val).replace(/,/g, ''));
-                    if (!isNaN(num)) return new Intl.NumberFormat('en-US').format(num) + ' ៛';
+                    if (!isNaN(num)) {
+                        if (num === 0) return '-';
+                        return new Intl.NumberFormat('en-US').format(num) + ' ៛';
+                    }
                 }
                 return val;
             },

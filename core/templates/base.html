@@ -5,8 +5,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>AuditCore - {% block title %}Dashboard{% endblock %}</title>
-
-        <link rel="icon" type="image/svg+xml" href="{% static 'img/favicon.svg' %}" />
+        <link rel="icon" type="image/svg+xml" href="static/img/favicon.svg" />
 
         <script>
             // 1. Dark Mode Logic
@@ -120,8 +119,8 @@
         <aside class="relative flex flex-col transition-all duration-300 ease-in-out z-30 w-64 glass-panel border-r border-gray-200 dark:border-gray-800/50 shadow-2xl shadow-gray-200/20 dark:shadow-none [.sidebar-closed_&]:w-20">
             <div class="h-20 flex items-center px-6 flex-shrink-0 transition-all duration-300 ease-in-out [.sidebar-closed_&]:px-0 [.sidebar-closed_&]:justify-center">
                 <div class="flex items-center gap-3 overflow-hidden whitespace-nowrap">
-                    <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 text-white shadow-lg shadow-brand-500/30 transition-all duration-300 [.sidebar-closed_&]:w-8 [.sidebar-closed_&]:h-8 relative overflow-hidden ring-1 ring-white/20">
-                        <svg class="w-full h-full" width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                    <div class="w-10 h-10 flex items-center justify-center flex-shrink-0 text-white shadow-lg shadow-brand-500/30 transition-all duration-300 [.sidebar-closed_&]:w-8 [.sidebar-closed_&]:h-8 relative">
+                        <svg class="w-full h-full" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
                             <defs>
                                 <linearGradient id="chipGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                                     <stop offset="0%" stop-color="#0f172a" />
@@ -136,15 +135,18 @@
                                     </feMerge>
                                 </filter>
                             </defs>
-                            <rect x="0" y="0" width="200" height="200" fill="url(#chipGradient)" />
+                            <rect x="20" y="20" width="160" height="160" rx="30" fill="url(#chipGradient)" stroke="#475569" stroke-width="2" />
                             <g transform="translate(100, 100)">
-                                <path d="M-45 0 A 45 45 0 0 1 45 0" stroke="#38bdf8" stroke-width="6" fill="none" stroke-linecap="round" filter="url(#neonGlow)">
+                                <circle cx="0" cy="0" r="45" stroke="#94a3b8" stroke-width="2" fill="none" opacity="0.3" />
+                                <path d="M-45 0 A 45 45 0 0 1 45 0" stroke="#38bdf8" stroke-width="4" fill="none" stroke-linecap="round" filter="url(#neonGlow)">
                                     <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="10s" repeatCount="indefinite" />
                                 </path>
+                                <circle cx="0" cy="0" r="6" fill="#f8fafc"><animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" /></circle>
                             </g>
-                            <path d="M85 105 L 100 120 L 140 70" stroke="#10b981" stroke-width="10" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)">
-                                <animate attributeName="stroke-dasharray" from="0,100" to="100,0" dur="2s" fill="freeze" />
+                            <path d="M85 105 L 100 120 L 140 70" stroke="#10b981" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)">
+                                <animate attributeName="stroke-dasharray" from="0,100" to="100,0" dur="1.2s" fill="freeze" />
                             </path>
+                            <path d="M125 125 L 145 145" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" opacity="0.8" />
                         </svg>
                     </div>
                     <div class="overflow-hidden transition-all duration-300 ease-in-out max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">

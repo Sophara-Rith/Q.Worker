@@ -9,6 +9,7 @@ import warnings
 import openpyxl
 import pandas as pd
 import threading
+import calendar
 from copy import copy
 from datetime import datetime
 from django.conf import settings
@@ -1048,9 +1049,12 @@ def run_processing_engine(request):
                     v_inv = (p_inv_clean.upper() == d_inv_clean.upper()) and p_inv_clean != ""
                     v_tin = (d_tin_clean.upper() == user_vatin_clean)
                     v_date = check_date_match(p[2], d_full[1])
-                    v_diff = d_amt - p_amt
+                    
+                    # 🔴 EXACT FIX: Tax Declaration - Purchase
+                    v_diff = d_amt - p_amt 
                     
                     if v_inv and v_date and v_tin:
+                        # If negative, the supplier declared less (Shortage)
                         eng_status = 'SHORTAGE' if v_diff < -0.05 else 'MATCHED'
                     elif not v_inv and not v_date and not v_tin:
                         eng_status = 'NOT FOUND'
@@ -1062,7 +1066,9 @@ def run_processing_engine(request):
                     d_id = None
                     sys_status = khmer_map['NOT FOUND']
                     v_inv = v_tin = v_date = False
-                    v_diff = p_amt
+                    
+                    # 🔴 EXACT FIX: 0 (No Tax Dec) - Purchase
+                    v_diff = 0.0 - p_amt 
                 
                 update_data.append([d_id, sys_status, v_inv, v_tin, v_date, v_diff, ovatr_code, p_no])
 
@@ -1339,8 +1345,8 @@ def download_report(request):
                 status_formula = f'=IF(AND(R{r}=TRUE, S{r}=TRUE, T{r}=TRUE), IF(U{r}<0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(R{r}=FALSE, S{r}=FALSE, T{r}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
                 ws.cell(row=r, column=10, value=status_formula)
                 ws.cell(row=r, column=11, value=clean_text(p_row[7]))
-                ws.cell(row=r, column=12, value=None)
-                ws.cell(row=r, column=13, value=f"=I{r}")
+                ws.cell(row=r, column=12, value=f"=AG{r}")
+                ws.cell(row=r, column=13, value=f"=IF(U{r}<0,AG{r},I{r})")
                 ws.cell(row=r, column=14, value=f"=I{r}-L{r}")
                 ws.cell(row=r, column=15, value=None)
                 ws.cell(row=r, column=16, value=p_inv_clean)
@@ -1378,9 +1384,9 @@ def download_report(request):
                 ws.cell(row=r, column=44, value=clean_text(d_row[21] if d_row else "")) 
 
                 # Set number formats
-                format_cols = [9, 13, 14, 21] + list(range(29, 42))
+                format_cols = [9, 12, 13, 14, 21] + list(range(29, 42))
                 for col_idx in format_cols:
-                    ws.cell(row=r, column=col_idx).number_format = '#,##0.00'
+                    ws.cell(row=r, column=col_idx).number_format = '#,###'
 
         process_sheet('AnnexIII-Local Pur', local_purchases)
         process_sheet('AnnexIII-Import', import_purchases)
@@ -1432,7 +1438,7 @@ def get_report_data(request):
         elif sheet == 'annex_1': # State Charge (Imports)
             # Assumption: Type='Import' and import_state_charge > 0 or specific logic
             res = con.execute("""
-                SELECT no, description, invoice_no, date, import_state_charge
+                SELECT no, description, invoice_no, supplier_name, supplier_tin, date, import_state_charge, user_status, sys_status
                 FROM purchase 
                 WHERE ovatr = ? AND import_state_charge <> 0
                 ORDER BY CAST(no AS INTEGER)
@@ -1443,7 +1449,7 @@ def get_report_data(request):
             
         elif sheet == 'annex_2': # Non-State Charge (Imports)
             res = con.execute("""
-                SELECT no, description, invoice_no, date, import
+                SELECT no, description, invoice_no, supplier_name, supplier_tin, date, import, user_status, sys_status
                 FROM purchase 
                 WHERE ovatr = ? AND import <> 0
                 ORDER BY CAST(no AS INTEGER)
@@ -1454,7 +1460,7 @@ def get_report_data(request):
             
         elif sheet == 'annex_3': # Local Purchase
             res = con.execute("""
-                SELECT no, date, invoice_no, supplier_name, supplier_tin, total_amount, purchase as amount
+                SELECT no, description, date, invoice_no, supplier_name, supplier_tin, purchase as amount, user_status, sys_status
                 FROM purchase 
                 WHERE ovatr = ? AND purchase > 0
                 ORDER BY CAST(no AS INTEGER)
@@ -1465,7 +1471,7 @@ def get_report_data(request):
             
         elif sheet == 'annex_4': # Export (Sales)
             res = con.execute("""
-                SELECT no, description, invoice_no, date, vat_export
+                SELECT no, description, invoice_no, buyer_name, tax_registration_id, date, vat_export
                 FROM sale 
                 WHERE ovatr = ? AND vat_export <> 0
                 ORDER BY CAST(no AS INTEGER)
@@ -1476,7 +1482,7 @@ def get_report_data(request):
             
         elif sheet == 'annex_5': # Local Sales
             res = con.execute("""
-                SELECT no, description, invoice_no, date, vat_local_sale
+                SELECT no, description, invoice_no, buyer_name, tax_registration_id, date, vat_local_sale
                 FROM sale 
                 WHERE ovatr = ? AND vat_local_sale <> 0
                 ORDER BY CAST(no AS INTEGER)
@@ -1486,9 +1492,92 @@ def get_report_data(request):
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
             
         elif sheet == 'taxpaid':
-            res = con.execute("SELECT * FROM tax_paid WHERE ovatr = ?", [ovatr])
+            company_info = con.execute("SELECT i_request_date FROM company_info WHERE ovatr = ?", [ovatr]).fetchone()
+            
+            query = "SELECT * FROM tax_paid WHERE ovatr = ?"
+            params = [ovatr]
+            
+            khmer_months = {
+                'មករា': 1, 'កុម្ភៈ': 2, 'មីនា': 3, 'មេសា': 4,
+                'ឧសភា': 5, 'មិថុនា': 6, 'កក្កដា': 7, 'សីហា': 8,
+                'កញ្ញា': 9, 'តុលា': 10, 'វិច្ឆិកា': 11, 'ធ្នូ': 12
+            }
+            month_cols = {
+                1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 
+                5: 'may', 6: 'jun', 7: 'jul', 8: 'aug', 
+                9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
+            }
+            
+            start_m, start_y, end_m, end_y = None, None, None, None
+            
+            if company_info and company_info[0]:
+                req_date_str = str(company_info[0]).strip()
+                
+                # Extract all 4-digit numbers (years)
+                years_found = re.findall(r'\b(20\d{2})\b', req_date_str)
+                
+                # Extract all matching Khmer month names
+                months_found = []
+                for k_month in khmer_months.keys():
+                    # Find all occurrences of this specific month in the string
+                    occurrences = [m.start() for m in re.finditer(k_month, req_date_str)]
+                    for idx in occurrences:
+                        months_found.append((idx, khmer_months[k_month]))
+                
+                # Sort months by where they appeared in the sentence
+                months_found.sort(key=lambda x: x[0])
+                
+                # Assign Start/End Years
+                if len(years_found) >= 1:
+                    start_y = int(years_found[0])
+                    end_y = int(years_found[-1]) # Will be same as start if only 1 year found
+                    
+                # Assign Start/End Months
+                if len(months_found) >= 1:
+                    start_m = months_found[0][1]
+                    end_m = months_found[-1][1] # Will be same as start if only 1 month found
+                    
+                # SQL FILTER: Only fetch rows where the database tax_year is between start_y and end_y
+                if start_y and end_y:
+                    query += " AND CAST(tax_year AS INTEGER) >= ? AND CAST(tax_year AS INTEGER) <= ?"
+                    params.extend([start_y, end_y])
+                        
+            # Fetch the filtered rows
+            res = con.execute(query, params)
             cols = [desc[0] for desc in con.description]
-            data = [dict(zip(cols, r)) for r in res.fetchall()]
+            raw_data = [dict(zip(cols, r)) for r in res.fetchall()]
+            
+            data = []
+            
+            # Python Post-Processing: Zero out exact out-of-bounds months
+            for row in raw_data:
+                try:
+                    t_year = int(row.get('tax_year', 0))
+                except (ValueError, TypeError):
+                    t_year = 0
+                    
+                # If we successfully parsed the requested range AND this row has a valid year
+                if start_y and end_y and t_year:
+                    new_total = 0
+                    
+                    for m_num, m_col in month_cols.items():
+                        val = row.get(m_col)
+                        val = float(val) if val is not None and str(val).strip() != '' else 0.0
+                        
+                        # Logic to block months outside the requested window
+                        is_before_start = (t_year == start_y and m_num < start_m)
+                        is_after_end = (t_year == end_y and m_num > end_m)
+                        
+                        if is_before_start or is_after_end:
+                            row[m_col] = 0 # Blank it out
+                        else:
+                            new_total += val # Keep it and accumulate new total
+                            
+                    row['total'] = new_total
+                    
+                # If total is still > 0 after trimming, or if we want to show all rows for the year anyway
+                data.append(row)
+                
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
 
         con.close()

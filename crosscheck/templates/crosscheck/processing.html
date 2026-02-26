@@ -118,63 +118,63 @@
         </div>
 
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 relative z-10">
-            <div class="relative overflow-hidden rounded-xl border border-blue-200 dark:border-blue-500/30 bg-white dark:bg-gradient-to-br dark:from-blue-900/40 dark:to-[#0b1121] p-5 shadow-[0_4px_15px_-3px_rgba(59,130,246,0.1)] dark:shadow-[0_4px_20px_-4px_rgba(59,130,246,0.15)] ring-1 ring-inset ring-blue-500/10 dark:ring-blue-500/20 group">
-                <div class="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 dark:bg-blue-500/20 rounded-full blur-2xl group-hover:bg-blue-500/20 dark:group-hover:bg-blue-500/30 transition-all duration-500"></div>
+            <div class="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#111827] p-5 shadow-sm transition-all group">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 dark:bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 dark:group-hover:bg-blue-500/20 transition-all duration-500 pointer-events-none"></div>
                 <div class="flex justify-between items-start relative z-10">
                     <div>
-                        <p class="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-1.5">Processed Records</p>
+                        <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Processed Records</p>
                         <h3 class="text-3xl font-black text-slate-800 dark:text-white tracking-tight">
                             <span x-text="formatNumber(processedRows)">0</span>
                             <span class="text-sm font-medium text-slate-400 dark:text-slate-500">/<span x-text="formatNumber(totalRows)"></span></span>
                         </h3>
                     </div>
-                    <div class="p-2 bg-blue-50 dark:bg-blue-500/10 rounded-lg">
-                        <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                    <div class="p-2 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-lg shadow-sm">
+                        <svg class="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
                     </div>
                 </div>
             </div>
 
-            <div class="relative overflow-hidden rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-white dark:bg-gradient-to-br dark:from-emerald-900/40 dark:to-[#0b1121] p-5 shadow-[0_4px_15px_-3px_rgba(16,185,129,0.1)] dark:shadow-[0_4px_20px_-4px_rgba(16,185,129,0.15)] ring-1 ring-inset ring-emerald-500/10 dark:ring-emerald-500/20 group">
-                <div class="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/10 dark:bg-emerald-500/20 rounded-full blur-2xl group-hover:bg-emerald-500/20 dark:group-hover:bg-emerald-500/30 transition-all duration-500"></div>
+            <div class="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#111827] p-5 shadow-sm transition-all group">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/10 dark:bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 dark:group-hover:bg-emerald-500/20 transition-all duration-500 pointer-events-none"></div>
                 <div class="flex justify-between items-start relative z-10">
                     <div>
-                        <p class="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-1.5">Processing Speed</p>
+                        <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Processing Speed</p>
                         <h3 class="text-3xl font-black text-slate-800 dark:text-white tracking-tight">
                             <span x-text="speed">0</span>
                             <span class="text-sm font-medium text-slate-400 dark:text-slate-500">rows/s</span>
                         </h3>
                     </div>
-                    <div class="p-2 bg-emerald-50 dark:bg-emerald-500/10 rounded-lg">
-                        <svg class="w-5 h-5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    <div class="p-2 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 rounded-lg shadow-sm">
+                        <svg class="w-5 h-5 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </div>
                 </div>
             </div>
 
-            <div class="relative overflow-hidden rounded-xl border border-orange-200 dark:border-orange-500/30 bg-white dark:bg-gradient-to-br dark:from-orange-900/40 dark:to-[#0b1121] p-5 shadow-[0_4px_15px_-3px_rgba(249,115,22,0.1)] dark:shadow-[0_4px_20px_-4px_rgba(249,115,22,0.15)] ring-1 ring-inset ring-orange-500/10 dark:ring-orange-500/20 group">
-                <div class="absolute -right-6 -top-6 w-24 h-24 bg-orange-500/10 dark:bg-orange-500/20 rounded-full blur-2xl group-hover:bg-orange-500/20 dark:group-hover:bg-orange-500/30 transition-all duration-500"></div>
+            <div class="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#111827] p-5 shadow-sm transition-all group">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-orange-500/10 dark:bg-orange-500/10 rounded-full blur-2xl group-hover:bg-orange-500/20 dark:group-hover:bg-orange-500/20 transition-all duration-500 pointer-events-none"></div>
                 <div class="flex justify-between items-start relative z-10">
                     <div>
-                        <p class="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-widest mb-1.5">Est. Remaining</p>
+                        <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Est. Remaining</p>
                         <h3 class="text-3xl font-black text-slate-800 dark:text-white tracking-tight" x-text="eta">00:00</h3>
                     </div>
-                    <div class="p-2 bg-orange-50 dark:bg-orange-500/10 rounded-lg">
-                        <svg class="w-5 h-5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    <div class="p-2 bg-orange-50 dark:bg-orange-500/10 border border-orange-100 dark:border-orange-500/20 rounded-lg shadow-sm">
+                        <svg class="w-5 h-5 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     </div>
                 </div>
             </div>
 
-            <div class="relative overflow-hidden rounded-xl border border-fuchsia-200 dark:border-fuchsia-500/30 bg-white dark:bg-gradient-to-br dark:from-fuchsia-900/40 dark:to-[#0b1121] p-5 shadow-[0_4px_15px_-3px_rgba(217,70,239,0.1)] dark:shadow-[0_4px_20px_-4px_rgba(217,70,239,0.15)] ring-1 ring-inset ring-fuchsia-500/10 dark:ring-fuchsia-500/20 group">
-                <div class="absolute -right-6 -top-6 w-24 h-24 bg-fuchsia-500/10 dark:bg-fuchsia-500/20 rounded-full blur-2xl group-hover:bg-fuchsia-500/20 dark:group-hover:bg-fuchsia-500/30 transition-all duration-500"></div>
+            <div class="relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-[#111827] p-5 shadow-sm transition-all group">
+                <div class="absolute -right-6 -top-6 w-24 h-24 bg-fuchsia-500/10 dark:bg-fuchsia-500/10 rounded-full blur-2xl group-hover:bg-fuchsia-500/20 dark:group-hover:bg-fuchsia-500/20 transition-all duration-500 pointer-events-none"></div>
                 <div class="flex justify-between items-start relative z-10">
                     <div>
-                        <p class="text-[10px] font-bold text-fuchsia-600 dark:text-fuchsia-400 uppercase tracking-widest mb-1.5">Memory Usage</p>
+                        <p class="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">Memory Usage</p>
                         <h3 class="text-3xl font-black text-slate-800 dark:text-white tracking-tight">
                             <span x-text="memoryUsage">0</span>
                             <span class="text-sm font-medium text-slate-400 dark:text-slate-500">MB</span>
                         </h3>
                     </div>
-                    <div class="p-2 bg-fuchsia-50 dark:bg-fuchsia-500/10 rounded-lg">
-                        <svg class="w-5 h-5 text-fuchsia-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
+                    <div class="p-2 bg-fuchsia-50 dark:bg-fuchsia-500/10 border border-fuchsia-100 dark:border-fuchsia-500/20 rounded-lg shadow-sm">
+                        <svg class="w-5 h-5 text-fuchsia-600 dark:text-fuchsia-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"></path></svg>
                     </div>
                 </div>
             </div>
@@ -385,6 +385,19 @@
             },
 
             async initialize() {
+                window.addEventListener('beforeunload', (e) => {
+                    if (this.status === 'processing' && !this.isServerDone) {
+                        e.preventDefault();
+                        e.returnValue = 'Database update in progress. Leaving now will interrupt the process and cause data loss.';
+                        return e.returnValue;
+                    }
+                });
+
+                if (!this.ovatrCode) {
+                    this.fail('Session ID (OVATR) is missing. Please start a New Crosscheck.');
+                    return;
+                }
+
                 if (!this.ovatrCode) {
                     this.fail('Session ID (OVATR) is missing. Please start a New Crosscheck.');
                     return;
@@ -462,8 +475,9 @@
                         this.isServerDone = true;
                     });
 
-                const simulatedSpeed = 1500;
-                const estimatedDuration = Math.max(3000, (this.totalRows / simulatedSpeed) * 1000);
+                // 🔴 FIX 1: Slow down the simulated speed so it matches backend reality better
+                const simulatedSpeed = 800; // Rows per second estimate
+                const estimatedDuration = Math.max(5000, (this.totalRows / simulatedSpeed) * 1000); // Give it at least 5 seconds
 
                 await this.simulateMetrics(estimatedDuration);
 
@@ -495,104 +509,121 @@
                 return new Promise((resolve) => {
                     const startTime = Date.now();
                     let lastUpdate = startTime;
-                    let lastProcessedRows = 0; // NEW: Track rows processed in the last tick
+                    let lastProcessedRows = 0;
                     let pausedDuration = 0;
                     let pauseStartTime = 0;
 
-                    const step = () => {
+                    const interval = setInterval(() => {
                         if (this.checkStopped()) {
+                            clearInterval(interval);
                             resolve();
                             return;
                         }
-                        if (this.isServerDone) {
-                            this.progress = 100;
-                            this.processedRows = this.totalRows;
-                            resolve();
-                            return;
-                        }
+
+                        // 🔴 CRITICAL FIX: Always check if the UI is paused FIRST.
+                        // This forces the loop to wait for the user to click Resume
+                        // before acknowledging the server's completion signal.
                         if (this.isPaused) {
                             if (!pauseStartTime) pauseStartTime = Date.now();
-                            requestAnimationFrame(step);
                             return;
                         }
+
                         if (pauseStartTime) {
                             pausedDuration += Date.now() - pauseStartTime;
                             pauseStartTime = 0;
                         }
 
+                        // THEN check if the server is done
+                        if (this.isServerDone) {
+                            this.progress = 100;
+                            this.processedRows = this.totalRows;
+                            this.eta = '00:00';
+                            clearInterval(interval);
+                            resolve();
+                            return;
+                        }
+
                         const now = Date.now();
                         const elapsed = now - startTime - pausedDuration;
-                        const pct = Math.min(elapsed / duration, 0.99);
 
-                        this.processedRows = Math.floor(this.totalRows * pct);
-                        this.progress = Math.floor(pct * 100);
+                        let simulatedPct = 0;
+                        if (elapsed <= duration) {
+                            simulatedPct = (elapsed / duration) * 0.85;
+                        } else {
+                            const overTime = elapsed - duration;
+                            simulatedPct = 0.85 + 0.14 * (1 - Math.exp(-overTime / 3000));
+                        }
 
-                        // Trigger Log Milestones
-                        if (pct > 0.15 && !this.milestones['15']) {
+                        this.processedRows = Math.floor(this.totalRows * simulatedPct);
+                        this.progress = Math.floor(simulatedPct * 100);
+
+                        if (simulatedPct > 0.15 && !this.milestones['15']) {
                             this.addLog('Extracting and mapping dictionary memory...', 'info');
                             this.milestones['15'] = true;
                         }
-                        if (pct > 0.55 && !this.milestones['55']) {
+                        if (simulatedPct > 0.5 && !this.milestones['50']) {
                             this.addLog('Executing Bulk UPDATE across all tables...', 'info');
-                            this.milestones['55'] = true;
+                            this.milestones['50'] = true;
                         }
-                        if (pct > 0.9 && !this.milestones['90']) {
-                            this.addLog('Finalizing commits...', 'info');
-                            this.milestones['90'] = true;
+                        if (simulatedPct > 0.85 && !this.milestones['85']) {
+                            this.addLog('Finalizing commits to DuckDB...', 'warning');
+                            this.milestones['85'] = true;
                         }
 
-                        // UPDATE UI EVERY 500ms
-                        if (now - lastUpdate > 500) {
+                        if (now - lastUpdate > 300) {
                             const deltaSeconds = (now - lastUpdate) / 1000;
                             const deltaRows = this.processedRows - lastProcessedRows;
 
-                            // Calculate REAL-TIME speed with a slight ±10% CPU jitter for realism
                             if (deltaSeconds > 0) {
                                 const rawSpeed = deltaRows / deltaSeconds;
-                                const jitter = 0.9 + Math.random() * 0.2;
-                                this.speed = Math.floor(rawSpeed * jitter);
+                                const jitter = 0.85 + Math.random() * 0.3;
+                                this.speed = Math.max(1, Math.floor(rawSpeed * jitter));
                             } else {
-                                this.speed = 0;
+                                this.speed = 1;
                             }
 
-                            // Calculate ETA based on current real-time speed
                             const remainingRows = this.totalRows - this.processedRows;
-                            const remainingSeconds = this.speed > 0 ? Math.ceil(remainingRows / this.speed) : 0;
+                            let remainingSeconds = this.speed > 0 ? Math.ceil(remainingRows / this.speed) : 0;
 
-                            // Format ETA cleanly as MM:SS
+                            if (remainingSeconds < 1 && !this.isServerDone) {
+                                remainingSeconds = 1;
+                            }
+
                             const m = Math.floor(remainingSeconds / 60)
                                 .toString()
                                 .padStart(2, '0');
                             const s = (remainingSeconds % 60).toString().padStart(2, '0');
                             this.eta = `${m}:${s}`;
 
-                            // Fluctuate memory usage slightly
-                            this.memoryUsage = 45 + Math.floor(Math.random() * 15);
+                            const baseMem = 45;
+                            const ramSpike = Math.sin(simulatedPct * Math.PI) * 110;
+                            const memJitter = Math.random() * 8 - 4;
+                            this.memoryUsage = Math.max(baseMem, Math.floor(baseMem + Math.max(0, ramSpike) + memJitter));
 
                             lastUpdate = now;
                             lastProcessedRows = this.processedRows;
                         }
-                        requestAnimationFrame(step);
-                    };
-                    requestAnimationFrame(step);
+                    }, 50);
                 });
             },
 
             simulateProgress(start, end, duration) {
                 return new Promise((resolve) => {
                     const startTime = Date.now();
-                    const step = () => {
+                    const interval = setInterval(() => {
                         if (this.checkStopped()) {
+                            clearInterval(interval);
                             resolve();
                             return;
                         }
                         const elapsed = Date.now() - startTime;
                         const pct = Math.min(elapsed / duration, 1);
                         this.progress = Math.floor(start + (end - start) * pct);
-                        if (pct < 1) requestAnimationFrame(step);
-                        else resolve();
-                    };
-                    requestAnimationFrame(step);
+                        if (pct >= 1) {
+                            clearInterval(interval);
+                            resolve();
+                        }
+                    }, 50);
                 });
             },
 

@@ -207,6 +207,19 @@
             taskId: null,
             pollInterval: null,
 
+            // 🔴 FIX: Add init() to create the Navigation Lock when the component loads
+            init() {
+                window.addEventListener('beforeunload', (e) => {
+                    // If processing is active and not yet completed, block navigation!
+                    if (this.processing && !this.completed) {
+                        e.preventDefault();
+                        // Most modern browsers ignore the custom string, but it's required by the API
+                        e.returnValue = 'Data consolidation is currently in progress. Leaving this page will interrupt the engine and may corrupt the output file. Are you sure you want to leave?';
+                        return e.returnValue;
+                    }
+                });
+            },
+
             handleDrop(e) {
                 this.dragOver = false;
                 this.handleFiles(e.dataTransfer.files);
@@ -261,6 +274,7 @@
             startPolling() {
                 if (this.pollInterval) clearInterval(this.pollInterval);
 
+                // Polling is already using setInterval, so it naturally survives tab switching!
                 this.pollInterval = setInterval(async () => {
                     if (!this.taskId) return;
                     try {
@@ -284,6 +298,7 @@
                             clearInterval(this.pollInterval);
                             setTimeout(() => {
                                 this.completed = true;
+                                this.processing = false; // Turn off the processing lock
                                 this.files = [];
                             }, 800);
                         }
