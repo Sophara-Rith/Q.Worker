@@ -120,33 +120,60 @@
             <div class="h-20 flex items-center px-6 flex-shrink-0 transition-all duration-300 ease-in-out [.sidebar-closed_&]:px-0 [.sidebar-closed_&]:justify-center">
                 <div class="flex items-center gap-3 overflow-hidden whitespace-nowrap">
                     <div class="w-10 h-10 flex items-center justify-center flex-shrink-0 text-white shadow-lg shadow-brand-500/30 transition-all duration-300 [.sidebar-closed_&]:w-8 [.sidebar-closed_&]:h-8 relative">
-                        <svg class="w-full h-full" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                        <svg width="100" height="100" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
                             <defs>
                                 <linearGradient id="chipGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" stop-color="#0f172a" />
-                                    <stop offset="50%" stop-color="#1e293b" />
-                                    <stop offset="100%" stop-color="#334155" />
+                                    <stop offset="0%" stop-color="#0f172a"></stop>
+                                    <stop offset="50%" stop-color="#1e293b"></stop>
+                                    <stop offset="100%" stop-color="#334155"></stop>
                                 </linearGradient>
+
+                                <linearGradient id="traceGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.1"></stop>
+                                    <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.8"></stop>
+                                    <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.1"></stop>
+                                </linearGradient>
+
                                 <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
+                                    <feGaussianBlur stdDeviation="2.5" result="coloredBlur"></feGaussianBlur>
                                     <feMerge>
-                                        <feMergeNode in="coloredBlur" />
-                                        <feMergeNode in="SourceGraphic" />
+                                        <feMergeNode in="coloredBlur"></feMergeNode>
+                                        <feMergeNode in="SourceGraphic"></feMergeNode>
                                     </feMerge>
                                 </filter>
                             </defs>
-                            <rect x="20" y="20" width="160" height="160" rx="30" fill="url(#chipGradient)" stroke="#475569" stroke-width="2" />
-                            <g transform="translate(100, 100)">
-                                <circle cx="0" cy="0" r="45" stroke="#94a3b8" stroke-width="2" fill="none" opacity="0.3" />
-                                <path d="M-45 0 A 45 45 0 0 1 45 0" stroke="#38bdf8" stroke-width="4" fill="none" stroke-linecap="round" filter="url(#neonGlow)">
-                                    <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="10s" repeatCount="indefinite" />
-                                </path>
-                                <circle cx="0" cy="0" r="6" fill="#f8fafc"><animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite" /></circle>
+
+                            <rect x="20" y="20" width="160" height="160" rx="30" fill="url(#chipGradient)" stroke="#475569" stroke-width="2"></rect>
+
+                            <g stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.3">
+                                <path d="M20 60 H 50 L 70 80"></path>
+                                <path d="M180 140 H 150 L 130 120"></path>
+                                <path d="M100 20 V 40"></path>
+                                <path d="M100 180 V 160"></path>
+                                <circle cx="50" cy="60" r="2" fill="#38bdf8"></circle>
+                                <circle cx="150" cy="140" r="2" fill="#38bdf8"></circle>
                             </g>
+
+                            <g transform="translate(100, 100)">
+                                <circle cx="0" cy="0" r="45" stroke="#94a3b8" stroke-width="2" fill="none" opacity="0.3"></circle>
+
+                                <path d="M-45 0 A 45 45 0 0 1 45 0" stroke="#38bdf8" stroke-width="4" fill="none" stroke-linecap="round" filter="url(#neonGlow)">
+                                    <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="10s" repeatCount="indefinite"></animateTransform>
+                                </path>
+                                <path d="M-35 0 A 35 35 0 0 0 35 0" stroke="#0ea5e9" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7">
+                                    <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="7s" repeatCount="indefinite"></animateTransform>
+                                </path>
+
+                                <circle cx="0" cy="0" r="6" fill="#f8fafc">
+                                    <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"></animate>
+                                </circle>
+                            </g>
+
                             <path d="M85 105 L 100 120 L 140 70" stroke="#10b981" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)">
-                                <animate attributeName="stroke-dasharray" from="0,100" to="100,0" dur="1.2s" fill="freeze" />
+                                <animate attributeName="stroke-dasharray" from="0,100" to="100,0" dur="1.2s" fill="freeze"></animate>
                             </path>
-                            <path d="M125 125 L 145 145" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" opacity="0.8" />
+
+                            <path d="M125 125 L 145 145" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" opacity="0.8"></path>
                         </svg>
                     </div>
                     <div class="overflow-hidden transition-all duration-300 ease-in-out max-w-[200px] opacity-100 [.sidebar-closed_&]:max-w-0 [.sidebar-closed_&]:opacity-0">
@@ -491,30 +518,60 @@
                                         <div class="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-brand-500/10 rounded-full blur-3xl"></div>
 
                                         <div class="relative z-10 flex flex-col items-center text-center">
-                                            <svg width="75" height="75" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                                            <svg width="100" height="100" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
                                                 <defs>
-                                                    <linearGradient id="chipGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
-                                                        <stop offset="0%" stop-color="#0f172a" />
-                                                        <stop offset="50%" stop-color="#1e293b" />
-                                                        <stop offset="100%" stop-color="#334155" />
+                                                    <linearGradient id="chipGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                        <stop offset="0%" stop-color="#0f172a"></stop>
+                                                        <stop offset="50%" stop-color="#1e293b"></stop>
+                                                        <stop offset="100%" stop-color="#334155"></stop>
                                                     </linearGradient>
-                                                    <filter id="neonGlow2" x="-50%" y="-50%" width="200%" height="200%">
-                                                        <feGaussianBlur stdDeviation="2.5" result="coloredBlur" />
+
+                                                    <linearGradient id="traceGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                                        <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.1"></stop>
+                                                        <stop offset="50%" stop-color="#38bdf8" stop-opacity="0.8"></stop>
+                                                        <stop offset="100%" stop-color="#38bdf8" stop-opacity="0.1"></stop>
+                                                    </linearGradient>
+
+                                                    <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
+                                                        <feGaussianBlur stdDeviation="2.5" result="coloredBlur"></feGaussianBlur>
                                                         <feMerge>
-                                                            <feMergeNode in="coloredBlur" />
-                                                            <feMergeNode in="SourceGraphic" />
+                                                            <feMergeNode in="coloredBlur"></feMergeNode>
+                                                            <feMergeNode in="SourceGraphic"></feMergeNode>
                                                         </feMerge>
                                                     </filter>
                                                 </defs>
-                                                <rect x="20" y="20" width="160" height="160" rx="30" fill="url(#chipGradient2)" stroke="#475569" stroke-width="2" />
-                                                <g transform="translate(100, 100)">
-                                                    <path d="M-45 0 A 45 45 0 0 1 45 0" stroke="#38bdf8" stroke-width="4" fill="none" stroke-linecap="round" filter="url(#neonGlow2)">
-                                                        <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="10s" repeatCount="indefinite" />
-                                                    </path>
+
+                                                <rect x="20" y="20" width="160" height="160" rx="30" fill="url(#chipGradient)" stroke="#475569" stroke-width="2"></rect>
+
+                                                <g stroke="#38bdf8" stroke-width="1.5" fill="none" opacity="0.3">
+                                                    <path d="M20 60 H 50 L 70 80"></path>
+                                                    <path d="M180 140 H 150 L 130 120"></path>
+                                                    <path d="M100 20 V 40"></path>
+                                                    <path d="M100 180 V 160"></path>
+                                                    <circle cx="50" cy="60" r="2" fill="#38bdf8"></circle>
+                                                    <circle cx="150" cy="140" r="2" fill="#38bdf8"></circle>
                                                 </g>
-                                                <path d="M85 105 L 100 120 L 140 70" stroke="#10b981" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow2)">
-                                                    <animate attributeName="stroke-dasharray" from="0,100" to="100,0" dur="1.2s" fill="freeze" />
+
+                                                <g transform="translate(100, 100)">
+                                                    <circle cx="0" cy="0" r="45" stroke="#94a3b8" stroke-width="2" fill="none" opacity="0.3"></circle>
+
+                                                    <path d="M-45 0 A 45 45 0 0 1 45 0" stroke="#38bdf8" stroke-width="4" fill="none" stroke-linecap="round" filter="url(#neonGlow)">
+                                                        <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="10s" repeatCount="indefinite"></animateTransform>
+                                                    </path>
+                                                    <path d="M-35 0 A 35 35 0 0 0 35 0" stroke="#0ea5e9" stroke-width="3" fill="none" stroke-linecap="round" opacity="0.7">
+                                                        <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="7s" repeatCount="indefinite"></animateTransform>
+                                                    </path>
+
+                                                    <circle cx="0" cy="0" r="6" fill="#f8fafc">
+                                                        <animate attributeName="opacity" values="0.5;1;0.5" dur="2s" repeatCount="indefinite"></animate>
+                                                    </circle>
+                                                </g>
+
+                                                <path d="M85 105 L 100 120 L 140 70" stroke="#10b981" stroke-width="8" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#neonGlow)">
+                                                    <animate attributeName="stroke-dasharray" from="0,100" to="100,0" dur="1.2s" fill="freeze"></animate>
                                                 </path>
+
+                                                <path d="M125 125 L 145 145" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" opacity="0.8"></path>
                                             </svg>
 
                                             <h3 class="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight mt-4">AuditCore</h3>
@@ -536,7 +593,7 @@
                                             <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-100 to-brand-50 dark:from-gray-800 dark:to-gray-700 text-brand-600 dark:text-brand-400 border border-brand-200 dark:border-gray-600 flex items-center justify-center font-bold text-lg shadow-inner">RS</div>
                                             <div class="text-left">
                                                 <p class="text-[10px] uppercase tracking-widest text-brand-500 dark:text-brand-400 font-bold mb-0.5">Designed & Built By</p>
-                                                <p class="text-sm font-extrabold text-gray-900 dark:text-white">RITH SOPHARA</p>
+                                                <p class="text-sm font-extrabold text-gray-900 dark:text-white">RSOPHARA</p>
                                                 <p class="text-xs text-gray-500 font-medium">Lead Full-Stack Architect</p>
                                             </div>
                                         </div>

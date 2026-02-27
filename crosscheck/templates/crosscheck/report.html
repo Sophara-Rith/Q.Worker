@@ -45,7 +45,7 @@
     thead.sticky-header th {
         position: sticky;
         top: 0;
-        z-index: 20;
+        z-index: 30; /* Increased z-index */
     }
 </style>
 
@@ -178,7 +178,7 @@
                 <button
                     @click="switchTab(tab.id)"
                     :class="currentTab === tab.id ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-[0_-2px_10px_rgba(0,0,0,0.05)] border-t border-r border-l border-slate-200 dark:border-slate-700' : 'bg-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800/50 border-transparent'"
-                    class="flex-1 py-3 px-4 min-w-[120px] text-[11px] font-extrabold uppercase tracking-widest transition-all text-center focus:outline-none rounded-t-xl border-b-0 whitespace-nowrap"
+                    class="flex-1 py-3 px-4 min-w-[120px] text-[10px] font-extrabold uppercase tracking-widest transition-all text-center focus:outline-none rounded-t-xl border-b-0 whitespace-nowrap"
                 >
                     <span x-text="tab.label"></span>
                 </button>
@@ -200,8 +200,8 @@
                 <colgroup>
                     <col style="width: 50px; min-width: 50px" />
                     <template x-if="currentTab === 'company'">
-                        <col style="width: 20%" />
-                        <col style="width: 80%" />
+                        <col style="width: 30%" />
+                        <col style="width: 70%" />
                     </template>
 
                     <template x-if="currentTab !== 'company'">
@@ -211,18 +211,18 @@
                     </template>
                 </colgroup>
 
-                <thead class="sticky-header shadow-sm">
-                    <tr class="bg-slate-100 dark:bg-slate-800/90 backdrop-blur-md">
-                        <th class="px-2 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-r border-b border-slate-200 dark:border-slate-700 text-center bg-slate-100 dark:bg-slate-800">No</th>
+                <thead class="sticky-header shadow-md z-30 relative">
+                    <tr class="bg-slate-200 dark:bg-slate-800">
+                        <th class="px-2 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 text-center bg-slate-200 dark:bg-slate-800 shadow-sm">No</th>
                         <template x-if="currentTab === 'company'">
-                            <th class="px-4 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-r border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 align-middle text-left">Field Name</th>
+                            <th class="px-4 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800 align-middle text-left shadow-sm">Field Name</th>
                         </template>
                         <template x-if="currentTab === 'company'">
-                            <th class="px-4 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 align-middle text-left">Value</th>
+                            <th class="px-4 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-b-2 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800 align-middle text-left shadow-sm">Value</th>
                         </template>
                         <template x-if="currentTab !== 'company'">
                             <template x-for="col in displayColumns" :key="col.key">
-                                <th class="px-4 py-3 font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest border-r border-b border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 align-middle text-center truncate" x-text="col.label"></th>
+                                <th class="px-4 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800 align-middle text-center truncate shadow-sm" x-text="col.label"></th>
                             </template>
                         </template>
                     </tr>
@@ -312,7 +312,7 @@
                                                     <template x-if="col.key.toLowerCase() === 'status'">
                                                         <div class="flex items-center justify-center w-full h-full">
                                                             <template x-if="getEffectiveStatus(row) !== ''">
-                                                                <span class="px-3 py-1.5 rounded-md font-bold text-[11px] tracking-wider uppercase border inline-block whitespace-nowrap" :class="getStatusColor(getEffectiveStatus(row))" x-text="getEffectiveStatus(row)"> </span>
+                                                                <span class="px-3 py-1.5 rounded-md font-bold text-[10px] tracking-wider uppercase border inline-block whitespace-nowrap" :class="getStatusColor(getEffectiveStatus(row))" x-text="getEffectiveStatus(row)"> </span>
                                                             </template>
                                                             <template x-if="getEffectiveStatus(row) === ''">
                                                                 <span class="text-slate-300 dark:text-slate-600 text-xs font-bold">--</span>
@@ -342,12 +342,12 @@
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"></path></svg>
         </button>
 
-        <div x-show="rows.length > 0" class="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md flex flex-col sm:flex-row justify-between items-center text-[11px] text-slate-600 dark:text-slate-400 flex-shrink-0 z-30 gap-3">
+        <div x-show="rows.length > 0" class="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 backdrop-blur-md flex flex-col sm:flex-row justify-between items-center text-[10px] text-slate-600 dark:text-slate-400 flex-shrink-0 z-30 gap-3">
             <div class="truncate font-medium">Showing <span class="font-bold text-slate-900 dark:text-white" x-text="startRecord"></span> to <span class="font-bold text-slate-900 dark:text-white" x-text="endRecord"></span> of <span class="font-bold text-indigo-600 dark:text-indigo-400" x-text="totalRecords"></span> results</div>
             <div class="flex items-center gap-5">
                 <div class="flex items-center gap-2">
                     <span class="text-slate-500 hidden sm:inline uppercase tracking-wider text-[9px] font-bold">Rows/Page:</span>
-                    <select x-model="pageSizePreset" @change="handlePageSizeChange()" class="text-[11px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 pl-3 pr-7 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm transition-all cursor-pointer">
+                    <select x-model="pageSizePreset" @change="handlePageSizeChange()" class="text-[10px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 pl-3 pr-7 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm transition-all cursor-pointer">
                         <option value="50">50</option>
                         <option value="100">100</option>
                         <option value="500">500</option>
@@ -355,7 +355,7 @@
                         <option value="custom">Custom</option>
                     </select>
                     <div x-show="pageSizePreset === 'custom'" x-transition class="w-16">
-                        <input x-model.number="pageSize" type="number" min="1" class="w-full text-[11px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 px-3 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm transition-all" placeholder="#" />
+                        <input x-model.number="pageSize" type="number" min="1" class="w-full text-[10px] font-bold border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 py-1.5 px-3 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 shadow-sm transition-all" placeholder="#" />
                     </div>
                 </div>
                 <div class="flex items-center gap-3 border-l border-slate-300 dark:border-slate-700 pl-5">
@@ -407,6 +407,10 @@
             clicks: 0,
             clickTimer: null,
             clickDelay: 250,
+
+            // State for extracted request years
+            startYear: null,
+            endYear: null,
 
             tabs: [
                 {id: 'company', label: 'Company Info'},
@@ -477,8 +481,29 @@
                 if (this.ovatr) {
                     this.searchInput = this.ovatr;
                     this.loadLocalHistory();
+                    this.fetchRequestedPeriod(); // Fetch the years independently to ensure it's loaded
                     this.fetchData();
                 }
+            },
+
+            fetchRequestedPeriod() {
+                if (!this.ovatr) return;
+                fetch(`/crosscheck/api/report/data/?ovatr_code=${this.ovatr}&sheet=company`)
+                    .then((r) => r.json())
+                    .then((res) => {
+                        if (res.status === 'success') {
+                            const reqDateRow = res.data.find((r) => r.key === 'i_request_date');
+                            if (reqDateRow && reqDateRow.value) {
+                                // Extract all 4-digit numbers (years) from the string using regex
+                                const years = String(reqDateRow.value).match(/\d{4}/g);
+                                if (years && years.length > 0) {
+                                    this.startYear = Math.min(...years.map(Number));
+                                    this.endYear = Math.max(...years.map(Number));
+                                }
+                            }
+                        }
+                    })
+                    .catch((e) => console.error('Error fetching requested period:', e));
             },
 
             saveLocalHistory() {
@@ -713,6 +738,7 @@
                 window.history.pushState({}, '', url);
                 this.ovatr = code;
                 this.loadLocalHistory();
+                this.fetchRequestedPeriod();
                 this.fetchData();
             },
 
@@ -732,7 +758,31 @@
                     .then((res) => {
                         this.loading = false;
                         if (res.status === 'success') {
-                            this.rows = res.data;
+                            let fetchedRows = res.data;
+
+                            // Also catch it here to ensure it's reactive when loading the company tab initially
+                            if (this.currentTab === 'company') {
+                                const reqDateRow = fetchedRows.find((r) => r.key === 'i_request_date');
+                                if (reqDateRow && reqDateRow.value) {
+                                    const years = String(reqDateRow.value).match(/\d{4}/g);
+                                    if (years && years.length > 0) {
+                                        this.startYear = Math.min(...years.map(Number));
+                                        this.endYear = Math.max(...years.map(Number));
+                                    }
+                                }
+                            }
+
+                            // DYNAMIC TAXPAID FILTERING BASED ON i_request_date YEARS
+                            if (this.currentTab === 'taxpaid' && this.startYear && this.endYear) {
+                                fetchedRows = fetchedRows.filter((r) => {
+                                    const y = parseInt(r.tax_year);
+                                    if (isNaN(y)) return true; // keep header/metadata rows safe if exist
+                                    return y >= this.startYear && y <= this.endYear;
+                                });
+                            }
+
+                            this.rows = fetchedRows;
+
                             this.rows.forEach((r) => {
                                 const uKey = Object.keys(r).find((k) => k.toLowerCase() === 'user_status');
                                 const sKey = Object.keys(r).find((k) => k.toLowerCase() === 'sys_status');
@@ -817,12 +867,11 @@
                 return finalCols;
             },
 
-            // 🔴 FIX: Allows Auto-Expansion but adds sensible Minimum/Maximum bounds
             getColumnStyle(tab, key) {
                 const k = key.toLowerCase();
 
                 // Keep description strictly capped at 300px
-                if (k === 'description') return 'max-width: 300px; min-width: 200px;';
+                if (k === 'description' || k === 'supplier_name' || k === 'supplier_tin') return 'max-width: 300px; min-width: 200px;';
 
                 // Allow statuses to flex a bit but don't let them shrink too small
                 if (k === 'status') return 'min-width: 140px; width: auto;';
@@ -906,6 +955,15 @@
                 const oldValue = row._orig[actualKey];
 
                 if (String(newValue) !== String(oldValue)) {
+                    // If user dynamically edits the "i_request_date" inline, immediately refresh bounds for the frontend!
+                    if (this.currentTab === 'company' && actualKey === 'value' && row.key === 'i_request_date') {
+                        const years = String(newValue).match(/\d{4}/g);
+                        if (years && years.length > 0) {
+                            this.startYear = Math.min(...years.map(Number));
+                            this.endYear = Math.max(...years.map(Number));
+                        }
+                    }
+
                     row.has_history = true;
                     if (!row._modified_fields) row._modified_fields = {};
                     row._modified_fields[actualKey] = true;

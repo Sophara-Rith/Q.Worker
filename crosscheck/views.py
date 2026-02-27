@@ -22,8 +22,6 @@ from openpyxl.styles import Font, Border, Side, Alignment, PatternFill
 from docxtpl import DocxTemplate
 
 # --- GLOBAL DUCKDB CONNECTION ---
-# DuckDB only allows ONE write-connection per process. 
-# We maintain a single master connection and hand out cursors to threads to prevent locking.
 _GLOBAL_DUCKDB_CONN = None
 _DB_LOCK = threading.Lock()
 
@@ -37,7 +35,6 @@ def get_db_connection():
             db_path = str(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
             _GLOBAL_DUCKDB_CONN = duckdb.connect(db_path)
             
-            # Ensure Sessions Table Exists
             _GLOBAL_DUCKDB_CONN.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
                     ovatr VARCHAR PRIMARY KEY,
@@ -51,13 +48,9 @@ def get_db_connection():
                 )
             """)
             
-    # Return a lightweight cursor for the thread to use.
-    # It acts exactly like a connection, but when you call conn.close() later in your views, 
-    # it only safely closes the thread's cursor without killing the master connection!
     return _GLOBAL_DUCKDB_CONN.cursor()
 
 def update_session_metadata(con, ovatr, company_name=None, tin=None, status=None, total_rows=None, match_rate=None):
-    """ Helper to upsert session metadata into DuckDB """
     if not ovatr: return
     now = datetime.now()
     
@@ -90,9 +83,7 @@ def clean_currency(val):
     s = str(val).strip()
     if s.lower() in ['nan', 'none', '', 'nat', '-']:
         return 0.0
-    # Remove non-numeric chars except . and -
     clean_s = re.sub(r'[^\d.-]', '', s)
-    # Handle accounting format (100) -> -100
     if '(' in s and ')' in s:
         clean_s = '-' + re.sub(r'[^\d.]', '', s)
     try:
@@ -101,23 +92,16 @@ def clean_currency(val):
         return 0.0
 
 def clean_invoice_text(val):    
-    """ 
-    Removes all special characters (dashes, spaces, dots, etc.).
-    Keeps only Alphanumeric characters (A-Z, 0-9).
-    """
     if pd.isna(val) or not val:
         return ""
     
     s = str(val).strip()
-    # CRITICAL FIX: Prevent DuckDB/Excel float bug (e.g., 2001007.0 -> 2001007)
     if s.endswith('.0'):
         s = s[:-2]
         
-    # Regex: Replace anything that is NOT a-z, A-Z, or 0-9 with empty string
     return re.sub(r'[^a-zA-Z0-9]', '', s)
 
 def cleanup_old_files():
-    """ Deletes files in temp_uploads/reports older than 24 hours. """
     directories = [
         os.path.join(settings.MEDIA_ROOT, 'temp_uploads'),
         os.path.join(settings.MEDIA_ROOT, 'temp_reports')
@@ -131,12 +115,14 @@ def cleanup_old_files():
             except: pass
 
 def to_excel_date(date_val):
-    """
-    Converts date string formats into Python datetime objects 
-    for Excel filtering compatibility.
-    """
-    if not date_val:
+    if not date_val or pd.isna(date_val): 
         return None
+    
+    # If DuckDB already returned a native Python date, return it directly
+    from datetime import date, datetime
+    if isinstance(date_val, (datetime, date, pd.Timestamp)): 
+        return date_val
+
     for fmt in ('%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y', '%Y/%m/%d'):
         try:
             return datetime.strptime(str(date_val).strip(), fmt)
@@ -147,33 +133,22 @@ def to_excel_date(date_val):
 # --- Views ---
 
 def new_crosscheck(request):
-    """ Renders the 'New Crosscheck' upload page. """
     return render(request, 'crosscheck/new.html')
 
 def processing_view(request):
-    """ 
-    Renders the 'Processing' page. 
-    Retrieves the OVATR code from URL first, falls back to Session.
-    """
     code = request.GET.get('ovatr_code') or request.session.get('ovatr_code', '')
     context = {'ovatr_code': code}
     return render(request, 'crosscheck/processing.html', context)
 
 def results_view(request):
-    """ 
-    Renders the 'Results' dashboard. 
-    Retrieves the OVATR code from URL first, falls back to Session.
-    """
     code = request.GET.get('ovatr_code') or request.session.get('ovatr_code', '')
     context = {'ovatr_code': code}
     return render(request, 'crosscheck/results.html', context)
 
 def history_view(request):
-    """ Renders the History UI """
     return render(request, 'crosscheck/history.html')
 
 def report_view(request):
-    """ Renders the main Reporting Module UI """
     code = request.GET.get('ovatr_code') or request.session.get('ovatr_code', '')
     return render(request, 'crosscheck/report.html', {'ovatr_code': code})
 
@@ -225,7 +200,6 @@ def get_history_api(request):
 
 @csrf_exempt
 def upload_init(request):
-    """ Handles the initial file upload and reads Company Info for preview. """
     cleanup_old_files()
     if request.method == 'POST' and request.FILES.get('file'):
         file = request.FILES['file']
@@ -250,7 +224,6 @@ def upload_init(request):
                 'rent_per_month': '', 'enterprise_form': '', 'add_ent_form': '', 'signage': '',
                 'h_date': '', 'h_real_12m': '', 'h_real_3m': '', 'h_est_12m': '', 'h_est_3m': '',
                 
-                # Block I: Initialize new Report Configuration fields (Including Patent Amount)
                 'i_auditor_names': '', 'i_request_date': '', 'i_contact_person': '', 'i_contact_position': '',
                 'i_audit_timeline': '', 'i_amount_requested': '', 'i_moc_number': '', 'i_moc_date': '',
                 'i_patent_date': '', 'i_vat_cert_date': '', 'i_patent_amount': '',
@@ -373,7 +346,6 @@ def save_company_info(request):
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
-            # Safely serialize list/dict objects (like activities, accounts) to JSON strings for DuckDB
             clean_data = {
                 k.lower(): (json.dumps(v, ensure_ascii=False) if isinstance(v, (list, dict)) else v)
                 for k, v in data.items()
@@ -389,16 +361,12 @@ def save_company_info(request):
 
             con = get_db_connection()
             
-            # --- AUTO-SCHEMA EVOLUTION ---
-            # Check if table exists
             table_check = con.execute("SELECT 1 FROM information_schema.tables WHERE table_name = 'company_info'").fetchone()
             
             if not table_check:
-                # Table does not exist, create it with all current keys
                 columns_schema = [f'"{k}" VARCHAR PRIMARY KEY' if k == 'ovatr' else f'"{k}" VARCHAR' for k in clean_data.keys()]
                 con.execute(f"CREATE TABLE company_info ({', '.join(columns_schema)})")
             else:
-                # Table exists, check for missing columns and dynamically alter table
                 existing_cols_res = con.execute("DESCRIBE company_info").fetchall()
                 existing_cols = [row[0].lower() for row in existing_cols_res]
                 
@@ -406,14 +374,12 @@ def save_company_info(request):
                     if key.lower() not in existing_cols:
                         con.execute(f'ALTER TABLE company_info ADD COLUMN "{key}" VARCHAR')
 
-            # 1. Save to Company Info Table
             columns = [f'"{k}"' for k in clean_data.keys()]
             placeholders = ['?'] * len(clean_data)
             values = list(clean_data.values())
             
             con.execute(f"INSERT OR REPLACE INTO company_info ({', '.join(columns)}) VALUES ({', '.join(placeholders)})", values)
             
-            # 2. Update Session History
             update_session_metadata(con, ovatr, company_name=comp_name, status="Processing")
 
             con.close()
@@ -497,11 +463,10 @@ def save_purchase(request):
             except ValueError:
                 return JsonResponse({'status': 'error', 'message': 'Sheet "PURCHASE" not found'}, status=400)
 
-            df = df.iloc[3:] # Skip 3 rows
+            df = df.iloc[3:]
             if len(df.columns) < 17:
                 return JsonResponse({'status': 'error', 'message': f'Format Mismatch: Expected 17 columns (A-Q), found {len(df.columns)}.'})
 
-            # Lowercase target columns
             target_cols = [
                 'excel_no', 'date', 'invoice_no', 'type', 'supplier_tin', 'supplier_name', 
                 'total_amount', 'exclude_vat', 'non_vat_purchase', 'vat_0', 
@@ -516,13 +481,11 @@ def save_purchase(request):
                 df[col] = df[col].apply(clean_currency)
 
             df['ovatr'] = ovatr_val
-            
-            # --- CRITICAL FIX 1: Add the blank user_status column to the DataFrame ---
             df['user_status'] = None
+            df['comment'] = ''  # New Comment Support
             
             con = get_db_connection()
             
-            # --- CRITICAL FIX 2: Add user_status to the table creation ---
             con.execute("""
                 CREATE TABLE IF NOT EXISTS purchase (
                     ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, type VARCHAR, 
@@ -530,31 +493,31 @@ def save_purchase(request):
                     exclude_vat DOUBLE, non_vat_purchase DOUBLE, vat_0 DOUBLE, purchase DOUBLE, 
                     import DOUBLE, non_creditable_vat DOUBLE, purchase_state_charge DOUBLE, 
                     import_state_charge DOUBLE, description VARCHAR, status VARCHAR, 
-                    user_status VARCHAR,
+                    user_status VARCHAR, comment VARCHAR,
                     PRIMARY KEY (ovatr, no)
                 )
             """)
             
-            # Safe fallback if the table existed before we updated the CREATE statement
             try: con.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+            except: pass
+            try: con.execute("ALTER TABLE purchase ADD COLUMN comment VARCHAR DEFAULT ''")
             except: pass
 
             con.execute("DELETE FROM purchase WHERE ovatr = ?", [ovatr_val])
             con.register('df_purchase', df)
             
-            # --- CRITICAL FIX 3: Explicitly map the columns in the INSERT statement ---
             con.execute("""
                 INSERT INTO purchase (
                     ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, 
                     total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, 
                     import, non_creditable_vat, purchase_state_charge, import_state_charge, 
-                    description, status, user_status
+                    description, status, user_status, comment
                 )
                 SELECT 
                     ovatr, no, date, invoice_no, type, supplier_tin, supplier_name, 
                     total_amount, exclude_vat, non_vat_purchase, vat_0, purchase, 
                     import, non_creditable_vat, purchase_state_charge, import_state_charge, 
-                    description, status, user_status 
+                    description, status, user_status, comment 
                 FROM df_purchase
             """)
             con.close()
@@ -576,7 +539,7 @@ def save_sale(request):
             except ValueError:
                 return JsonResponse({'status': 'error', 'message': 'Sheet "SALE" not found'}, status=400)
 
-            df = df.iloc[3:] # Skip 3 rows
+            df = df.iloc[3:]
             if len(df.columns) < 23:
                  return JsonResponse({'status': 'error', 'message': f'Format Mismatch: Expected 23+ columns (A-W), found {len(df.columns)}'})
 
@@ -703,7 +666,7 @@ def update_result_row(request):
     """
     SMART UPDATE: 
     Updates the DuckDB tables and triggers an Excel rebuild.
-    Includes Smart History Fallback to prevent orphaned Tax Declaration rows from being lost.
+    Includes Comment and User Status saving.
     """
     def format_db_date(val):
         if not val or str(val).strip().lower() in ['nan', 'none', 'nat', '']: 
@@ -726,8 +689,9 @@ def update_result_row(request):
             
             con = get_db_connection()
             
-            # --- CRITICAL FIX: Ensure dedicated user_status column exists ---
             try: con.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+            except: pass
+            try: con.execute("ALTER TABLE purchase ADD COLUMN comment VARCHAR DEFAULT ''")
             except: pass
             
             # --- 1. Map Purchase Table Updates ---
@@ -737,8 +701,8 @@ def update_result_row(request):
             if 'p_tin' in updates: db_updates['supplier_tin'] = str(updates['p_tin'])
             if 'p_inv' in updates: db_updates['invoice_no'] = str(updates['p_inv'])
             if 'p_date' in updates: db_updates['date'] = format_db_date(updates['p_date']) 
+            if 'p_comment' in updates: db_updates['comment'] = str(updates['p_comment']) 
             
-            # Safely map user_status so it clears properly if deselected
             if 'user_status' in updates: 
                 db_updates['user_status'] = str(updates['user_status']) if updates['user_status'] else None
             
@@ -843,11 +807,201 @@ def update_result_row(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
 
+def get_row_history(request):
+    try:
+        ovatr = request.GET.get('ovatr')
+        row_no = request.GET.get('no')
+        if not ovatr or not row_no:
+            return JsonResponse({'status': 'error', 'message': 'Missing params'}, status=400)
+
+        con = get_db_connection()
+        try:
+            con.execute("SELECT 1 FROM change_history LIMIT 1")
+        except:
+            con.close()
+            return JsonResponse({'status': 'success', 'data': []})
+
+        data = con.execute("""
+            SELECT timestamp, field, old_value, new_value 
+            FROM change_history 
+            WHERE ovatr = ? AND row_no = ? 
+            ORDER BY timestamp DESC
+        """, [ovatr, row_no]).fetchall()
+        con.close()
+
+        history = []
+        for row in data:
+            history.append({
+                'timestamp': str(row[0]),
+                'field': row[1],
+                'old_value': row[2],
+                'new_value': row[3]
+            })
+            
+        return JsonResponse({'status': 'success', 'data': history})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+def get_crosscheck_stats(request):
+    ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
+    if not ovatr_code: 
+        return JsonResponse({'status': 'error', 'message': 'Missing OVATR code'}, status=400)
+
+    try:
+        conn = get_db_connection()
+        
+        res_p = conn.execute("""
+            SELECT 
+                COUNT(CASE WHEN purchase > 0 THEN 1 END),
+                COUNT(CASE WHEN "import" > 0 THEN 1 END)
+            FROM purchase WHERE ovatr = ?
+        """, [ovatr_code]).fetchone()
+        
+        count_local = res_p[0] if res_p else 0
+        count_import = res_p[1] if res_p else 0
+        total_rows = count_local + count_import
+        
+        res_d = conn.execute("""
+            SELECT COUNT(DISTINCT d.id)
+            FROM tax_declaration d
+            JOIN purchase p ON 
+                regexp_replace(upper(d.invoice_number), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(p.invoice_no), '[^A-Z0-9]', '', 'g')
+            JOIN company_info c ON p.ovatr = c.ovatr
+            WHERE p.ovatr = ?
+            AND regexp_replace(upper(d.tax_registration_id), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(c.vatin), '[^A-Z0-9]', '', 'g')
+            AND month(d.date) = month(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
+            AND year(d.date) = year(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
+        """, [ovatr_code]).fetchone()
+        
+        count_d = res_d[0] if res_d else 0
+        
+        match_rate = (count_d / total_rows * 100) if total_rows > 0 else 0.0
+        update_session_metadata(conn, ovatr_code, total_rows=total_rows, match_rate=match_rate, status="Completed")
+        
+        conn.close()
+        
+        file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
+        
+        return JsonResponse({
+            'status': 'success',
+            'total_rows': max(total_rows, count_d),
+            'purchase_count': total_rows, 
+            'local_count': count_local,
+            'import_count': count_import,
+            'declaration_count': count_d,
+            'is_ready': os.path.exists(file_path)
+        })
+        
+    except Exception as e: 
+        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+@csrf_exempt
+def run_processing_engine(request):
+    import json
+    import re
+    import pandas as pd
+    
+    if request.method == 'POST':
+        try:
+            body = json.loads(request.body)
+            ovatr_code = body.get('ovatr_code')
+            if not ovatr_code:
+                return JsonResponse({'status': 'error', 'message': 'Missing OVATR'}, status=400)
+
+            conn = get_db_connection()
+            
+            new_cols = [
+                ("matched_d_id", "VARCHAR"), ("sys_status", "VARCHAR"), 
+                ("v_inv", "BOOLEAN"), ("v_tin", "BOOLEAN"), 
+                ("v_date", "BOOLEAN"), ("v_diff", "DOUBLE")
+            ]
+            for col_name, col_type in new_cols:
+                try: conn.execute(f"ALTER TABLE purchase ADD COLUMN {col_name} {col_type}")
+                except: pass
+
+            vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
+            user_vatin_clean = clean_invoice_text(vatin_row[0]).upper() if vatin_row else ""
+
+            raw_decs = conn.execute("""
+                SELECT id, date, invoice_number, tax_registration_id, vat_local_sale, vat_export
+                FROM tax_declaration d
+                JOIN company_info c ON regexp_replace(upper(CAST(d.tax_registration_id AS VARCHAR)), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(CAST(c.vatin AS VARCHAR)), '[^A-Z0-9]', '', 'g')
+                WHERE c.ovatr = ?
+            """, [ovatr_code]).fetchall()
+            
+            dec_map = {clean_invoice_text(d[2]).upper(): d for d in raw_decs if clean_invoice_text(d[2])}
+
+            purchases = conn.execute("SELECT no, invoice_no, date, purchase, \"import\" FROM purchase WHERE ovatr = ?", [ovatr_code]).fetchall()
+
+            def check_date_match(v1, v2):
+                try:
+                    if pd.isna(v1) or pd.isna(v2) or str(v1).strip() == "" or str(v2).strip() == "": return False
+                    dt1 = pd.to_datetime(v1, dayfirst=True, errors='coerce')
+                    dt2 = pd.to_datetime(v2, dayfirst=True, errors='coerce')
+                    if pd.isna(dt1) or pd.isna(dt2): return False
+                    return dt1.month == dt2.month and dt1.year == dt2.year
+                except: return False
+
+            khmer_map = {
+                'MATCHED': 'បានប្រកាស (អនុញ្ញាត)',
+                'SHORTAGE': 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)',
+                'NOT FOUND': 'ព្យួរទុក (មិនមានទិន្នន័យ)',
+                'MISMATCH': 'ប្រកាសខុស (ព្យួរទុក)'
+            }
+
+            update_data = []
+            for p in purchases:
+                p_no = str(p[0])
+                p_inv_clean = clean_invoice_text(p[1])
+                p_amt = float(p[3] if p[3] else (p[4] if p[4] else 0.0))
+                
+                d_full = dec_map.get(p_inv_clean.upper() if p_inv_clean else "")
+                
+                if d_full:
+                    d_id = str(d_full[0])
+                    d_inv_clean = clean_invoice_text(d_full[2])
+                    d_tin_clean = clean_invoice_text(d_full[3])
+                    d_amt = float(d_full[4] if d_full[4] else (d_full[5] if d_full[5] else 0.0))
+                    
+                    v_inv = (p_inv_clean.upper() == d_inv_clean.upper()) and p_inv_clean != ""
+                    v_tin = (d_tin_clean.upper() == user_vatin_clean)
+                    v_date = check_date_match(p[2], d_full[1])
+                    
+                    v_diff = d_amt - p_amt 
+                    
+                    if v_inv and v_date and v_tin:
+                        eng_status = 'SHORTAGE' if v_diff < -0.05 else 'MATCHED'
+                    elif not v_inv and not v_date and not v_tin:
+                        eng_status = 'NOT FOUND'
+                    else:
+                        eng_status = 'MISMATCH'
+                        
+                    sys_status = khmer_map[eng_status]
+                else:
+                    d_id = None
+                    sys_status = khmer_map['NOT FOUND']
+                    v_inv = v_tin = v_date = False
+                    v_diff = 0.0 - p_amt 
+                
+                update_data.append([d_id, sys_status, v_inv, v_tin, v_date, v_diff, ovatr_code, p_no])
+
+            conn.executemany("""
+                UPDATE purchase 
+                SET matched_d_id = ?, sys_status = ?, v_inv = ?, v_tin = ?, v_date = ?, v_diff = ?
+                WHERE ovatr = ? AND CAST(no AS VARCHAR) = ?
+            """, update_data)
+            
+            update_session_metadata(conn, ovatr_code, status="Completed")
+            conn.close()
+
+            return JsonResponse({'status': 'success', 'message': 'Processing complete. Results saved to database.'})
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
+
 def get_results_data(request):
-    """
-    REFACTORED: The 'Dumb & Fast' API.
-    Reads pre-calculated Khmer statuses directly from DuckDB.
-    """
     ovatr_code = request.GET.get('ovatr_code')
     table_type = request.GET.get('table_type', 'local')
     page = int(request.GET.get('page', 1))
@@ -867,9 +1021,10 @@ def get_results_data(request):
 
         amt_col = '"import"' if table_type == 'import' else 'purchase'
 
+        # ADDED p.comment at index 8, shifted everything below by +1
         sql = f"""
             SELECT 
-                p.no, p.description, p.supplier_name, p.supplier_tin, p.invoice_no, p.date, p.{amt_col}, p.user_status,
+                p.no, p.description, p.supplier_name, p.supplier_tin, p.invoice_no, p.date, p.{amt_col}, p.user_status, p.comment,
                 d.id, d.date, d.invoice_number, d.tax_registration_id, d.buyer_name, d.total_invoice_amount, 
                 d.vat_local_sale, d.vat_export, 
                 p.sys_status, p.v_inv, p.v_tin, p.v_date, p.v_diff,
@@ -898,12 +1053,11 @@ def get_results_data(request):
         khmer_shortage = 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)'
         khmer_not_found = 'ព្យួរទុក (មិនមានទិន្នន័យ)'
 
-        # 3. Process Data
         for r in db_rows:
-            sys_status = str(r[16]) if r[16] else khmer_not_found
+            # Shifted indices: sys_status is now 17
+            sys_status = str(r[17]) if r[17] else khmer_not_found
             u_status = str(r[7]).strip() if r[7] and str(r[7]).strip().lower() not in ['none', 'null', 'nan', ''] else ""
             
-            # Global Stats Counting using Khmer logic
             if sys_status in [khmer_matched, khmer_shortage]: stats['matched'] += 1
             elif sys_status == khmer_not_found: stats['not_found'] += 1
             else: stats['mismatch'] += 1
@@ -912,16 +1066,16 @@ def get_results_data(request):
             stats['eff_counts'][eff_status] = stats['eff_counts'].get(eff_status, 0) + 1
 
             d_data = {}
-            if r[8]:
+            if r[9]:
                 d_data = {
-                    'id': str(r[8]), 'date': cl_dt(r[9]), 'invoice_no': str(r[10]) if r[10] else "", 'credit_no': r[21],
-                    'buyer_type': r[22], 'tin': str(r[11]) if r[11] else "", 'name': str(r[12]) if r[12] else "",
-                    'total_amt': r[13], 'excl_vat': r[23], 'non_vat': r[24],
-                    'vat_0': r[25], 'vat_local': r[14], 'vat_export': r[15],
-                    'state_burden': r[26], 'withheld': r[27], 'plt': r[28],
-                    'spec_goods': r[29], 'spec_serv': r[30], 'accom': r[31],
-                    'redemption': r[32], 'notes': r[33], 'desc': r[34],
-                    'dec_status': r[35]
+                    'id': str(r[9]), 'date': cl_dt(r[10]), 'invoice_no': str(r[11]) if r[11] else "", 'credit_no': r[22],
+                    'buyer_type': r[23], 'tin': str(r[12]) if r[12] else "", 'name': str(r[13]) if r[13] else "",
+                    'total_amt': r[14], 'excl_vat': r[24], 'non_vat': r[25],
+                    'vat_0': r[26], 'vat_local': r[15], 'vat_export': r[16],
+                    'state_burden': r[27], 'withheld': r[28], 'plt': r[29],
+                    'spec_goods': r[30], 'spec_serv': r[31], 'accom': r[32],
+                    'redemption': r[33], 'notes': r[34], 'desc': r[35],
+                    'dec_status': r[36]
                 }
 
             results.append({
@@ -929,23 +1083,24 @@ def get_results_data(request):
                 'has_history': str(r[0]) in hist, 
                 'status': sys_status,
                 'user_status': u_status,
+                'p_comment': str(r[8]) if r[8] else "", # NEW COMMENT FIELD
                 'p_inv_clean': clean_invoice_text(r[4]), 
-                'd_inv_clean': clean_invoice_text(r[10]) if r[10] else "",
-                'v_inv': bool(r[17]),
-                'v_tin': bool(r[18]),
-                'v_date': bool(r[19]),
-                'v_diff': float(r[20]) if r[20] else 0.0,
+                'd_inv_clean': clean_invoice_text(r[11]) if r[11] else "",
+                'v_inv': bool(r[18]),
+                'v_tin': bool(r[19]),
+                'v_date': bool(r[20]),
+                'v_diff': float(r[21]) if r[21] else 0.0,
                 'p_desc': str(r[1]) if r[1] else "", 
                 'p_supp': str(r[2]) if r[2] else "", 
                 'p_tin': str(r[3]) if r[3] else "", 
                 'p_inv': str(r[4]) if r[4] else "", 
                 'p_date': cl_dt(r[5]), 
                 'p_amt': float(r[6]) if r[6] else 0.0,
-                'd_inv': str(r[10]) if r[10] else "", 
+                'd_inv': str(r[11]) if r[11] else "", 
                 'd_tin': d_data.get('tin', ''),
                 'd_date': d_data.get('date', ''), 
                 'd_name': d_data.get('name', ''),
-                'd_amt': float(r[14] if table_type == 'local' else r[15]) if r[8] else 0.0, 
+                'd_amt': float(r[15] if table_type == 'local' else r[16]) if r[9] else 0.0, 
                 'd_data': d_data
             })
 
@@ -967,242 +1122,7 @@ def get_results_data(request):
         print(traceback.format_exc())
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-@csrf_exempt
-def run_processing_engine(request):
-    """
-    WRITE-TIME ENGINE: 
-    Runs the matching logic ONCE and saves the KHMER results directly into DuckDB.
-    """
-    import json
-    import re
-    import pandas as pd
-    
-    if request.method == 'POST':
-        try:
-            body = json.loads(request.body)
-            ovatr_code = body.get('ovatr_code')
-            if not ovatr_code:
-                return JsonResponse({'status': 'error', 'message': 'Missing OVATR'}, status=400)
-
-            conn = get_db_connection()
-            
-            # 1. Add Result Columns to Purchase table if they don't exist
-            new_cols = [
-                ("matched_d_id", "VARCHAR"), ("sys_status", "VARCHAR"), 
-                ("v_inv", "BOOLEAN"), ("v_tin", "BOOLEAN"), 
-                ("v_date", "BOOLEAN"), ("v_diff", "DOUBLE")
-            ]
-            for col_name, col_type in new_cols:
-                try: conn.execute(f"ALTER TABLE purchase ADD COLUMN {col_name} {col_type}")
-                except: pass
-
-            # 2. Fetch User VATIN
-            vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
-            user_vatin_clean = clean_invoice_text(vatin_row[0]).upper() if vatin_row else ""
-
-            # 3. Fetch Declarations & Build Memory Map (ENFORCING .upper() ON KEYS)
-            raw_decs = conn.execute("""
-                SELECT id, date, invoice_number, tax_registration_id, vat_local_sale, vat_export
-                FROM tax_declaration d
-                JOIN company_info c ON regexp_replace(upper(CAST(d.tax_registration_id AS VARCHAR)), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(CAST(c.vatin AS VARCHAR)), '[^A-Z0-9]', '', 'g')
-                WHERE c.ovatr = ?
-            """, [ovatr_code]).fetchall()
-            
-            dec_map = {clean_invoice_text(d[2]).upper(): d for d in raw_decs if clean_invoice_text(d[2])}
-
-            # 4. Fetch Purchases
-            purchases = conn.execute("SELECT no, invoice_no, date, purchase, \"import\" FROM purchase WHERE ovatr = ?", [ovatr_code]).fetchall()
-
-            def check_date_match(v1, v2):
-                try:
-                    if pd.isna(v1) or pd.isna(v2) or str(v1).strip() == "" or str(v2).strip() == "": return False
-                    dt1 = pd.to_datetime(v1, dayfirst=True, errors='coerce')
-                    dt2 = pd.to_datetime(v2, dayfirst=True, errors='coerce')
-                    if pd.isna(dt1) or pd.isna(dt2): return False
-                    return dt1.month == dt2.month and dt1.year == dt2.year
-                except: return False
-
-            # KHMER MAPPING DICTIONARY
-            khmer_map = {
-                'MATCHED': 'បានប្រកាស (អនុញ្ញាត)',
-                'SHORTAGE': 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)',
-                'NOT FOUND': 'ព្យួរទុក (មិនមានទិន្នន័យ)',
-                'MISMATCH': 'ប្រកាសខុស (ព្យួរទុក)'
-            }
-
-            # 5. Process & Build Bulk Update List
-            update_data = []
-            for p in purchases:
-                p_no = str(p[0])
-                p_inv_clean = clean_invoice_text(p[1])
-                p_amt = float(p[3] if p[3] else (p[4] if p[4] else 0.0))
-                
-                # Fetch matching using UPPERCASE
-                d_full = dec_map.get(p_inv_clean.upper() if p_inv_clean else "")
-                
-                if d_full:
-                    d_id = str(d_full[0])
-                    d_inv_clean = clean_invoice_text(d_full[2])
-                    d_tin_clean = clean_invoice_text(d_full[3])
-                    d_amt = float(d_full[4] if d_full[4] else (d_full[5] if d_full[5] else 0.0))
-                    
-                    v_inv = (p_inv_clean.upper() == d_inv_clean.upper()) and p_inv_clean != ""
-                    v_tin = (d_tin_clean.upper() == user_vatin_clean)
-                    v_date = check_date_match(p[2], d_full[1])
-                    
-                    # 🔴 EXACT FIX: Tax Declaration - Purchase
-                    v_diff = d_amt - p_amt 
-                    
-                    if v_inv and v_date and v_tin:
-                        # If negative, the supplier declared less (Shortage)
-                        eng_status = 'SHORTAGE' if v_diff < -0.05 else 'MATCHED'
-                    elif not v_inv and not v_date and not v_tin:
-                        eng_status = 'NOT FOUND'
-                    else:
-                        eng_status = 'MISMATCH'
-                        
-                    sys_status = khmer_map[eng_status]
-                else:
-                    d_id = None
-                    sys_status = khmer_map['NOT FOUND']
-                    v_inv = v_tin = v_date = False
-                    
-                    # 🔴 EXACT FIX: 0 (No Tax Dec) - Purchase
-                    v_diff = 0.0 - p_amt 
-                
-                update_data.append([d_id, sys_status, v_inv, v_tin, v_date, v_diff, ovatr_code, p_no])
-
-            # 6. Bulk Update using DuckDB
-            conn.executemany("""
-                UPDATE purchase 
-                SET matched_d_id = ?, sys_status = ?, v_inv = ?, v_tin = ?, v_date = ?, v_diff = ?
-                WHERE ovatr = ? AND CAST(no AS VARCHAR) = ?
-            """, update_data)
-            
-            update_session_metadata(conn, ovatr_code, status="Completed")
-            conn.close()
-
-            return JsonResponse({'status': 'success', 'message': 'Processing complete. Results saved to database.'})
-        except Exception as e:
-            import traceback
-            print(traceback.format_exc())
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-    return JsonResponse({'status': 'error', 'message': 'Invalid Method'}, status=405)
-
-def get_row_history(request):
-    """
-    Fetches the history for a specific row.
-    """
-    try:
-        ovatr = request.GET.get('ovatr')
-        row_no = request.GET.get('no')
-        if not ovatr or not row_no:
-            return JsonResponse({'status': 'error', 'message': 'Missing params'}, status=400)
-
-        con = get_db_connection()
-        # Check if table exists
-        try:
-            con.execute("SELECT 1 FROM change_history LIMIT 1")
-        except:
-            con.close()
-            return JsonResponse({'status': 'success', 'data': []}) # No history yet
-
-        data = con.execute("""
-            SELECT timestamp, field, old_value, new_value 
-            FROM change_history 
-            WHERE ovatr = ? AND row_no = ? 
-            ORDER BY timestamp DESC
-        """, [ovatr, row_no]).fetchall()
-        con.close()
-
-        history = []
-        for row in data:
-            history.append({
-                'timestamp': str(row[0]),
-                'field': row[1],
-                'old_value': row[2],
-                'new_value': row[3]
-            })
-            
-        return JsonResponse({'status': 'success', 'data': history})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
-def get_crosscheck_stats(request):
-    """
-    UPDATED: Matches d.tax_registration_id with company_info.vatin
-    instead of purchase.supplier_tin. Also selects the full set of 22
-    tax declaration fields for consistent processing.
-    """
-    ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
-    if not ovatr_code: 
-        return JsonResponse({'status': 'error', 'message': 'Missing OVATR code'}, status=400)
-
-    try:
-        conn = get_db_connection()
-        
-        # 1. Counts for Purchase and Import rows
-        res_p = conn.execute("""
-            SELECT 
-                COUNT(CASE WHEN purchase > 0 THEN 1 END),
-                COUNT(CASE WHEN "import" > 0 THEN 1 END)
-            FROM purchase WHERE ovatr = ?
-        """, [ovatr_code]).fetchone()
-        
-        count_local = res_p[0] if res_p else 0
-        count_import = res_p[1] if res_p else 0
-        total_rows = count_local + count_import
-        
-        # 2. Strict Matches (Declarations)
-        # JOIN company_info to get the User's VATIN and select all requested 22 fields
-        # fields: date, invoice_number, credit_notification_letter_number, buyer_type, 
-        # tax_registration_id, buyer_name, total_invoice_amount, amount_exclude_vat, 
-        # non_vat_sales, vat_zero_rate, vat_local_sale, vat_export, 
-        # vat_local_sale_state_burden, vat_withheld_by_national_treasury, plt, 
-        # special_tax_on_goods, special_tax_on_services, accommodation_tax, 
-        # income_tax_redemption_rate, notes, description, tax_declaration_status
-        res_d = conn.execute("""
-            SELECT COUNT(DISTINCT d.id)
-            FROM tax_declaration d
-            JOIN purchase p ON 
-                regexp_replace(upper(d.invoice_number), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(p.invoice_no), '[^A-Z0-9]', '', 'g')
-            JOIN company_info c ON p.ovatr = c.ovatr
-            WHERE p.ovatr = ?
-            AND regexp_replace(upper(d.tax_registration_id), '[^A-Z0-9]', '', 'g') = regexp_replace(upper(c.vatin), '[^A-Z0-9]', '', 'g')
-            AND month(d.date) = month(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
-            AND year(d.date) = year(COALESCE(try_cast(p.date as DATE), strptime(p.date, '%d-%m-%Y')))
-        """, [ovatr_code]).fetchone()
-        
-        count_d = res_d[0] if res_d else 0
-        
-        # 3. Update Session Metadata
-        match_rate = (count_d / total_rows * 100) if total_rows > 0 else 0.0
-        update_session_metadata(conn, ovatr_code, total_rows=total_rows, match_rate=match_rate, status="Completed")
-        
-        conn.close()
-        
-        # 4. Check if report file exists
-        file_path = os.path.join(settings.MEDIA_ROOT, 'temp_reports', f"AnnexIII_{ovatr_code}.xlsx")
-        
-        return JsonResponse({
-            'status': 'success',
-            'total_rows': max(total_rows, count_d),
-            'purchase_count': total_rows, 
-            'local_count': count_local,
-            'import_count': count_import,
-            'declaration_count': count_d,
-            'is_ready': os.path.exists(file_path)
-        })
-        
-    except Exception as e: 
-        return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
-
 def generate_annex_iii(request):
-    """
-    REFACTORED: We no longer cache results in Excel. 
-    DuckDB is now the Single Source of Truth. 
-    This simply fast-forwards the UI to the Results view.
-    """
     ovatr_code = request.GET.get('ovatr_code') or request.session.get('ovatr_code')
     if not ovatr_code: 
         return JsonResponse({'status': 'error', 'message': 'Session ID missing'}, status=400)
@@ -1210,10 +1130,6 @@ def generate_annex_iii(request):
     return JsonResponse({'status': 'success', 'redirect_url': f"/crosscheck/results/?ovatr_code={ovatr_code}"})
 
 def download_report(request):
-    """
-    REFACTORED: Generates the Annex III Excel file dynamically on-demand.
-    Guarantees the file contains the freshest edits applied by the user in the UI.
-    """
     import math
     import re
     
@@ -1229,23 +1145,21 @@ def download_report(request):
         
         conn = get_db_connection()
 
-        # FETCH USER VATIN
         vatin_row = conn.execute("SELECT vatin FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
         user_vatin = vatin_row[0] if vatin_row else ""
         user_vatin_safe = user_vatin.replace('"', '""')
 
-        # Fetch Purchases (Live Data)
+        # NEW COMMENT at index 8
         local_purchases = conn.execute("""
-            SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no, user_status 
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no, user_status, comment 
             FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
         import_purchases = conn.execute("""
-            SELECT description, supplier_name, supplier_tin, invoice_no, date, "import", no, user_status
+            SELECT description, supplier_name, supplier_tin, invoice_no, date, "import", no, user_status, comment
             FROM purchase WHERE ovatr = ? AND "import" > 0 ORDER BY CAST(no AS INTEGER) ASC
         """, [ovatr_code]).fetchall()
 
-        # Fetch Declarations
         raw_decs = conn.execute("""
             SELECT 
                 d.date, d.invoice_number, d.credit_notification_letter_number, d.buyer_type, 
@@ -1278,7 +1192,6 @@ def download_report(request):
             target = wb.copy_worksheet(wb['AnnexIII-Local Pur'])
             target.title = 'AnnexIII-Import'
 
-        # Safely convert to float
         def clean_num(val):
             if val is None or val == "": return 0.0
             try:
@@ -1287,7 +1200,8 @@ def download_report(request):
                 return f
             except: return 0.0
 
-        # Strip illegal XML
+        align_center = Alignment(horizontal='center', vertical='center', wrap_text=False)
+
         def clean_text(val):
             if pd.isna(val) or val is None: return ""
             s = str(val).strip()
@@ -1320,7 +1234,7 @@ def download_report(request):
                 d_inv_clean = clean_invoice_text(d_inv_val)
 
                 v_inv = (p_inv_clean == d_inv_clean) if (p_inv_clean and d_inv_clean) else False
-                v_date = True if d_row else False # Since SQL matches on date
+                v_date = True if d_row else False 
                 v_tin = (clean_invoice_text(p_row[2]) == clean_invoice_text(d_row[4])) if (d_row and d_row[4] and p_row[2]) else False
                 
                 i_val = clean_num(p_row[5])
@@ -1334,59 +1248,88 @@ def download_report(request):
                 else:
                     j_status = "ប្រកាសខុស (ព្យួរទុក)"
 
-                # A9 to F9
                 ws.cell(row=r, column=1, value=clean_text(p_row[6])) 
                 ws.cell(row=r, column=2, value=clean_text(p_row[0]))
                 ws.cell(row=r, column=3, value=clean_text(p_row[1]))
                 ws.cell(row=r, column=4, value=clean_text(p_row[2]))
                 ws.cell(row=r, column=5, value=p_inv_val)
-                ws.cell(row=r, column=6, value=clean_text(p_row[4]))
+                # ws.cell(row=r, column=6, value=to_excel_date(p_row[4]))
                 ws.cell(row=r, column=9, value=i_val)
-                status_formula = f'=IF(AND(R{r}=TRUE, S{r}=TRUE, T{r}=TRUE), IF(U{r}<0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(R{r}=FALSE, S{r}=FALSE, T{r}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
+                
+                # Formula updated with shifted validation cells (Q, R, S and W Diff)
+                status_formula = f'=IF(AND(Q{r}=TRUE, R{r}=TRUE, S{r}=TRUE), IF(W{r}<-0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(Q{r}=FALSE, R{r}=FALSE, S{r}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
                 ws.cell(row=r, column=10, value=status_formula)
                 ws.cell(row=r, column=11, value=clean_text(p_row[7]))
-                ws.cell(row=r, column=12, value=f"=AG{r}")
-                ws.cell(row=r, column=13, value=f"=IF(U{r}<0,AG{r},I{r})")
-                ws.cell(row=r, column=14, value=f"=I{r}-L{r}")
-                ws.cell(row=r, column=15, value=None)
-                ws.cell(row=r, column=16, value=p_inv_clean)
-                ws.cell(row=r, column=17, value=d_inv_clean)
-                ws.cell(row=r, column=18, value=f"=P{r}=Q{r}")
-                ws.cell(row=r, column=19, value=f"=AND(MONTH(F{r})=MONTH(W{r}), YEAR(F{r})=YEAR(W{r}))")
-                ws.cell(row=r, column=20, value=f'=AA{r}="{user_vatin_safe}"')
-                ws.cell(row=r, column=21, value=f"=AG{r}-I{r}")
-                ws.cell(row=r, column=22, value=None)
-
-                w_date_val = str(d_row[0]).split()[0] if d_row and d_row[0] else ""
-                ws.cell(row=r, column=23, value=clean_text(w_date_val))  
-                ws.cell(row=r, column=24, value=d_inv_val)  
-                ws.cell(row=r, column=25, value=clean_text(d_row[2] if d_row else ""))  
-                ws.cell(row=r, column=26, value=clean_text(d_row[3] if d_row else ""))  
-                ws.cell(row=r, column=27, value=clean_text(d_row[4] if d_row else ""))  
-                ws.cell(row=r, column=28, value=clean_text(d_row[5] if d_row else ""))  
                 
-                ws.cell(row=r, column=29, value=clean_num(d_row[6] if d_row else 0)) 
-                ws.cell(row=r, column=30, value=clean_num(d_row[7] if d_row else 0)) 
-                ws.cell(row=r, column=31, value=clean_num(d_row[8] if d_row else 0)) 
-                ws.cell(row=r, column=32, value=clean_num(d_row[9] if d_row else 0)) 
-                ws.cell(row=r, column=33, value=ag_val) 
-                ws.cell(row=r, column=34, value=clean_num(d_row[11] if d_row else 0)) 
-                ws.cell(row=r, column=35, value=clean_num(d_row[12] if d_row else 0)) 
-                ws.cell(row=r, column=36, value=clean_num(d_row[13] if d_row else 0)) 
-                ws.cell(row=r, column=37, value=clean_num(d_row[14] if d_row else 0)) 
-                ws.cell(row=r, column=38, value=clean_num(d_row[15] if d_row else 0)) 
-                ws.cell(row=r, column=39, value=clean_num(d_row[16] if d_row else 0)) 
-                ws.cell(row=r, column=40, value=clean_num(d_row[17] if d_row else 0)) 
-                ws.cell(row=r, column=41, value=clean_num(d_row[18] if d_row else 0)) 
+                # --- NEW COMMENT (L) and EVERYTHING SHIFTED +1 ---
+                ws.cell(row=r, column=12, value=clean_text(p_row[8]))
+                ws.cell(row=r, column=13, value=f"=AH{r}") # M (was 12: AG)
+                ws.cell(row=r, column=14, value=f"=IF(W{r}<0,AH{r},I{r})") # N (was 13: V<0,AG,I) -> Wait, Diff is W(23) now
+                ws.cell(row=r, column=15, value=f"=I{r}-M{r}") # O (was 14: I-L)
+                ws.cell(row=r, column=16, value=None) # P (was 15: None)
+                ws.cell(row=r, column=17, value=p_inv_clean) # Q (was 16: p_inv_clean)
+                ws.cell(row=r, column=18, value=d_inv_clean) # R (was 17: d_inv_clean)
+                ws.cell(row=r, column=19, value=f"=Q{r}=R{r}") # S (was 18: P=Q)
+                ws.cell(row=r, column=20, value=f"=AND(MONTH(F{r})=MONTH(X{r}), YEAR(F{r})=YEAR(X{r}))") # T (was 19: ...W...)
+                ws.cell(row=r, column=21, value=f'=AC{r}="{user_vatin_safe}"') # U (was 20: AA=user_vatin)
+                ws.cell(row=r, column=22, value=f"=AH{r}-I{r}") # V (was 21: AG-I) => Wait, Diff is usually this one? 
+                ws.cell(row=r, column=23, value=None)
                 
-                ws.cell(row=r, column=42, value=clean_text(d_row[19] if d_row else "")) 
-                ws.cell(row=r, column=43, value=clean_text(d_row[20] if d_row else "")) 
-                ws.cell(row=r, column=44, value=clean_text(d_row[21] if d_row else "")) 
+                # w_date_val = str(d_row[0]).split()[0] if d_row and d_row[0] else ""
+                # ws.cell(row=r, column=24, value=to_excel_date(w_date_val))  
+                ws.cell(row=r, column=25, value=d_inv_val)  
+                ws.cell(row=r, column=26, value=clean_text(d_row[2] if d_row else ""))  
+                ws.cell(row=r, column=27, value=clean_text(d_row[3] if d_row else ""))  
+                ws.cell(row=r, column=28, value=clean_text(d_row[4] if d_row else ""))  
+                ws.cell(row=r, column=29, value=clean_text(d_row[5] if d_row else ""))  
+                
+                ws.cell(row=r, column=30, value=clean_num(d_row[6] if d_row else 0)) 
+                ws.cell(row=r, column=31, value=clean_num(d_row[7] if d_row else 0)) 
+                ws.cell(row=r, column=32, value=clean_num(d_row[8] if d_row else 0)) 
+                ws.cell(row=r, column=33, value=clean_num(d_row[9] if d_row else 0)) 
+                ws.cell(row=r, column=34, value=ag_val) # AH
+                ws.cell(row=r, column=35, value=clean_num(d_row[11] if d_row else 0)) 
+                ws.cell(row=r, column=36, value=clean_num(d_row[12] if d_row else 0)) 
+                ws.cell(row=r, column=37, value=clean_num(d_row[13] if d_row else 0)) 
+                ws.cell(row=r, column=38, value=clean_num(d_row[14] if d_row else 0)) 
+                ws.cell(row=r, column=39, value=clean_num(d_row[15] if d_row else 0)) 
+                ws.cell(row=r, column=40, value=clean_num(d_row[16] if d_row else 0)) 
+                ws.cell(row=r, column=41, value=clean_num(d_row[17] if d_row else 0)) 
+                ws.cell(row=r, column=42, value=clean_num(d_row[18] if d_row else 0)) 
+                
+                ws.cell(row=r, column=43, value=clean_text(d_row[19] if d_row else "")) 
+                ws.cell(row=r, column=44, value=clean_text(d_row[20] if d_row else "")) 
+                ws.cell(row=r, column=45, value=clean_text(d_row[21] if d_row else "")) 
 
-                # Set number formats
-                format_cols = [9, 12, 13, 14, 21] + list(range(29, 42))
+                raw_date = p_row[4]
+                dt_val = ""
+                if raw_date and str(raw_date).lower() not in ['nan', 'nat', 'none', '']:
+                    try:
+                        # Extract exact Python Date object for true Excel sorting
+                        dt_val = pd.to_datetime(raw_date).date()
+                    except:
+                        dt_val = str(raw_date).split()[0]
+                
+                dt_cell = ws.cell(row=r, column=6, value=dt_val)
+                dt_cell.alignment = align_center
+                dt_cell.number_format = 'DD-MM-YYYY'
+
+                raw_d_date = d_row[0] if d_row else ""
+                dt_d_val = ""
+                if raw_d_date and str(raw_d_date).lower() not in ['nan', 'nat', 'none', '']:
+                    try:
+                        # Extract exact Python Date object for true Excel sorting
+                        dt_d_val = pd.to_datetime(raw_d_date).date()
+                    except:
+                        dt_d_val = str(raw_d_date).split()[0]
+                
+                dt_d_cell = ws.cell(row=r, column=24, value=dt_d_val)
+                dt_d_cell.alignment = align_center
+                dt_d_cell.number_format = 'DD-MM-YYYY'
+
+                format_cols = [9, 13, 14, 15, 23] + list(range(30, 43))
                 for col_idx in format_cols:
-                    ws.cell(row=r, column=col_idx).number_format = '#,###'
+                    ws.cell(row=r, column=col_idx).number_format = '#,###0'
 
         process_sheet('AnnexIII-Local Pur', local_purchases)
         process_sheet('AnnexIII-Import', import_purchases)
@@ -1406,13 +1349,8 @@ def download_report(request):
     finally:
         if conn: 
             conn.close()
-    
+
 def get_report_data(request):
-    """
-    Fetches data for the specific sheet requested.
-    Sheets: company, annex_1 (state), annex_2 (non-state), annex_3 (local pur), 
-            annex_4 (export), annex_5 (local sale), taxpaid
-    """
     try:
         ovatr = request.GET.get('ovatr_code')
         sheet = request.GET.get('sheet')
@@ -1425,68 +1363,40 @@ def get_report_data(request):
         columns = []
         
         if sheet == 'company':
-            # Pivot Company Info for Key-Value editing
             row = con.execute("SELECT * FROM company_info WHERE ovatr = ?", [ovatr]).fetchone()
             if row:
-                # Get column names
                 cols = [desc[0] for desc in con.description]
                 for i, col_name in enumerate(cols):
                     if col_name == 'ovatr': continue
                     data.append({'key': col_name, 'value': row[i]})
                 columns = [{'key': 'key', 'label': 'Field'}, {'key': 'value', 'label': 'Value'}]
                 
-        elif sheet == 'annex_1': # State Charge (Imports)
-            # Assumption: Type='Import' and import_state_charge > 0 or specific logic
-            res = con.execute("""
-                SELECT no, description, invoice_no, supplier_name, supplier_tin, date, import_state_charge, user_status, sys_status
-                FROM purchase 
-                WHERE ovatr = ? AND import_state_charge <> 0
-                ORDER BY CAST(no AS INTEGER)
-            """, [ovatr])
+        elif sheet == 'annex_1': 
+            res = con.execute("SELECT no, description, invoice_no, supplier_name, supplier_tin, date, import_state_charge, user_status, sys_status FROM purchase WHERE ovatr = ? AND import_state_charge <> 0 ORDER BY CAST(no AS INTEGER)", [ovatr])
             cols = [desc[0] for desc in con.description]
             data = [dict(zip(cols, r)) for r in res.fetchall()]
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
             
-        elif sheet == 'annex_2': # Non-State Charge (Imports)
-            res = con.execute("""
-                SELECT no, description, invoice_no, supplier_name, supplier_tin, date, import, user_status, sys_status
-                FROM purchase 
-                WHERE ovatr = ? AND import <> 0
-                ORDER BY CAST(no AS INTEGER)
-            """, [ovatr])
+        elif sheet == 'annex_2': 
+            res = con.execute("SELECT no, description, invoice_no, supplier_name, supplier_tin, date, import, user_status, sys_status FROM purchase WHERE ovatr = ? AND import <> 0 ORDER BY CAST(no AS INTEGER)", [ovatr])
             cols = [desc[0] for desc in con.description]
             data = [dict(zip(cols, r)) for r in res.fetchall()]
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
             
-        elif sheet == 'annex_3': # Local Purchase
-            res = con.execute("""
-                SELECT no, description, date, invoice_no, supplier_name, supplier_tin, purchase as amount, user_status, sys_status
-                FROM purchase 
-                WHERE ovatr = ? AND purchase > 0
-                ORDER BY CAST(no AS INTEGER)
-            """, [ovatr])
+        elif sheet == 'annex_3': 
+            res = con.execute("SELECT no, description, date, invoice_no, supplier_name, supplier_tin, purchase as amount, user_status, sys_status FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER)", [ovatr])
             cols = [desc[0] for desc in con.description]
             data = [dict(zip(cols, r)) for r in res.fetchall()]
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
             
-        elif sheet == 'annex_4': # Export (Sales)
-            res = con.execute("""
-                SELECT no, description, invoice_no, buyer_name, tax_registration_id, date, vat_export
-                FROM sale 
-                WHERE ovatr = ? AND vat_export <> 0
-                ORDER BY CAST(no AS INTEGER)
-            """, [ovatr])
+        elif sheet == 'annex_4': 
+            res = con.execute("SELECT no, description, invoice_no, buyer_name, tax_registration_id, date, vat_export FROM sale WHERE ovatr = ? AND vat_export <> 0 ORDER BY CAST(no AS INTEGER)", [ovatr])
             cols = [desc[0] for desc in con.description]
             data = [dict(zip(cols, r)) for r in res.fetchall()]
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
             
-        elif sheet == 'annex_5': # Local Sales
-            res = con.execute("""
-                SELECT no, description, invoice_no, buyer_name, tax_registration_id, date, vat_local_sale
-                FROM sale 
-                WHERE ovatr = ? AND vat_local_sale <> 0
-                ORDER BY CAST(no AS INTEGER)
-            """, [ovatr])
+        elif sheet == 'annex_5': 
+            res = con.execute("SELECT no, description, invoice_no, buyer_name, tax_registration_id, date, vat_local_sale FROM sale WHERE ovatr = ? AND vat_local_sale <> 0 ORDER BY CAST(no AS INTEGER)", [ovatr])
             cols = [desc[0] for desc in con.description]
             data = [dict(zip(cols, r)) for r in res.fetchall()]
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
@@ -1512,70 +1422,55 @@ def get_report_data(request):
             
             if company_info and company_info[0]:
                 req_date_str = str(company_info[0]).strip()
-                
-                # Extract all 4-digit numbers (years)
                 years_found = re.findall(r'\b(20\d{2})\b', req_date_str)
                 
-                # Extract all matching Khmer month names
                 months_found = []
                 for k_month in khmer_months.keys():
-                    # Find all occurrences of this specific month in the string
                     occurrences = [m.start() for m in re.finditer(k_month, req_date_str)]
                     for idx in occurrences:
                         months_found.append((idx, khmer_months[k_month]))
                 
-                # Sort months by where they appeared in the sentence
                 months_found.sort(key=lambda x: x[0])
                 
-                # Assign Start/End Years
                 if len(years_found) >= 1:
                     start_y = int(years_found[0])
-                    end_y = int(years_found[-1]) # Will be same as start if only 1 year found
+                    end_y = int(years_found[-1])
                     
-                # Assign Start/End Months
                 if len(months_found) >= 1:
                     start_m = months_found[0][1]
-                    end_m = months_found[-1][1] # Will be same as start if only 1 month found
+                    end_m = months_found[-1][1]
                     
-                # SQL FILTER: Only fetch rows where the database tax_year is between start_y and end_y
                 if start_y and end_y:
                     query += " AND CAST(tax_year AS INTEGER) >= ? AND CAST(tax_year AS INTEGER) <= ?"
                     params.extend([start_y, end_y])
                         
-            # Fetch the filtered rows
             res = con.execute(query, params)
             cols = [desc[0] for desc in con.description]
             raw_data = [dict(zip(cols, r)) for r in res.fetchall()]
             
             data = []
-            
-            # Python Post-Processing: Zero out exact out-of-bounds months
             for row in raw_data:
                 try:
                     t_year = int(row.get('tax_year', 0))
                 except (ValueError, TypeError):
                     t_year = 0
                     
-                # If we successfully parsed the requested range AND this row has a valid year
                 if start_y and end_y and t_year:
                     new_total = 0
-                    
                     for m_num, m_col in month_cols.items():
                         val = row.get(m_col)
                         val = float(val) if val is not None and str(val).strip() != '' else 0.0
                         
-                        # Logic to block months outside the requested window
-                        is_before_start = (t_year == start_y and m_num < start_m)
-                        is_after_end = (t_year == end_y and m_num > end_m)
+                        is_before_start = (t_year == start_y and start_m is not None and m_num < start_m)
+                        is_after_end = (t_year == end_y and end_m is not None and m_num > end_m)
                         
                         if is_before_start or is_after_end:
-                            row[m_col] = 0 # Blank it out
+                            row[m_col] = 0 
                         else:
-                            new_total += val # Keep it and accumulate new total
+                            new_total += val 
                             
                     row['total'] = new_total
                     
-                # If total is still > 0 after trimming, or if we want to show all rows for the year anyway
                 data.append(row)
                 
             columns = [{'key': c, 'label': c.replace('_', ' ').title()} for c in cols]
@@ -1588,7 +1483,6 @@ def get_report_data(request):
 
 @csrf_exempt
 def api_user_statuses(request):
-    """ API to Manage Dynamic User Statuses with Colors """
     con = get_db_connection()
     
     con.execute("""
@@ -1599,11 +1493,9 @@ def api_user_statuses(request):
         )
     """)
     
-    # 1. Safe upgrade for existing databases to add the color column
     try: con.execute("ALTER TABLE user_status_config ADD COLUMN color VARCHAR")
     except: pass
     
-    # 2. AUTOMATIC FIX: Backfill colors for existing statuses if they are stuck on NULL or 'gray'
     try:
         con.execute("UPDATE user_status_config SET color = 'red' WHERE name = 'ព្យួរទុក (មិនមានទិន្នន័យ)' AND (color IS NULL OR color = 'gray')")
         con.execute("UPDATE user_status_config SET color = 'green' WHERE name = 'បានប្រកាស (អនុញ្ញាត)' AND (color IS NULL OR color = 'gray')")
@@ -1656,23 +1548,18 @@ def api_user_statuses(request):
 
 @csrf_exempt
 def update_report_cell(request):
-    """
-    Generic update for any cell in the report tables.
-    Payload: { ovatr, sheet, id_field, id_val, field, value, old_value }
-    """
     if request.method == 'POST':
         try:
             body = json.loads(request.body)
             ovatr = body.get('ovatr')
             sheet = body.get('sheet')
-            id_val = body.get('id_val') # Primary Key value (e.g., row 'no' or 'tax_year')
+            id_val = body.get('id_val')
             field = body.get('field')
             value = body.get('value')
             old_value = body.get('old_value')
             
             con = get_db_connection()
             
-            # Identify Table & PK based on Sheet
             table_map = {
                 'company': {'table': 'company_info', 'pk': 'ovatr'},
                 'annex_1': {'table': 'purchase', 'pk': 'no'},
@@ -1680,7 +1567,7 @@ def update_report_cell(request):
                 'annex_3': {'table': 'purchase', 'pk': 'no'},
                 'annex_4': {'table': 'sale', 'pk': 'no'},
                 'annex_5': {'table': 'sale', 'pk': 'no'},
-                'taxpaid': {'table': 'tax_paid', 'pk': 'description'} # Using description as secondary PK component
+                'taxpaid': {'table': 'tax_paid', 'pk': 'description'} 
             }
             
             config = table_map.get(sheet)
@@ -1690,29 +1577,19 @@ def update_report_cell(request):
             table = config['table']
             pk_col = config['pk']
             
-            # Special Handling for Company Info (Key-Value structure in UI, Column structure in DB)
             if sheet == 'company':
-                # 'id_val' in UI is actually the Field Name (key), 'field' in UI is 'value'
-                # We update the column named `id_val`
                 db_field = id_val 
                 query = f'UPDATE {table} SET "{db_field}" = ? WHERE ovatr = ?'
                 params = [value, ovatr]
             elif sheet == 'taxpaid':
-                # Composite PK: ovatr + tax_year + description. 
-                # Assuming UI passes the unique description or we handle it. 
-                # Ideally, we should use a stronger ID. For now, we trust the combination.
-                # Taxpaid UI usually sends `id_val` as the 'description' field or a composite.
-                # Let's assume id_val passed is the 'description'
                 query = f'UPDATE {table} SET "{field}" = ? WHERE ovatr = ? AND description = ?'
                 params = [value, ovatr, id_val]
             else:
-                # Standard ID based update
                 query = f'UPDATE {table} SET "{field}" = ? WHERE ovatr = ? AND "{pk_col}" = ?'
                 params = [value, ovatr, id_val]
 
             con.execute(query, params)
             
-            # Log History
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             con.execute("INSERT INTO change_history VALUES (?, ?, ?, ?, ?, ?, ?)", 
                         [timestamp, ovatr, str(id_val), table, field, str(old_value), str(value)])
@@ -1725,16 +1602,14 @@ def update_report_cell(request):
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
 def download_full_report(request):
-    """
-    Generates the Full Excel Report.
-    Includes Dynamic User Statuses and Combined Fallback Formula Logic
-    """
     ovatr_code = request.GET.get('ovatr_code')
     if not ovatr_code: return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
     
     con = get_db_connection()
     try:
         try: con.execute("ALTER TABLE purchase ADD COLUMN user_status VARCHAR")
+        except: pass
+        try: con.execute("ALTER TABLE purchase ADD COLUMN comment VARCHAR DEFAULT ''")
         except: pass
             
         row = con.execute("SELECT * FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
@@ -1751,8 +1626,8 @@ def download_full_report(request):
         annex_i_rows = con.execute("SELECT description, invoice_no, date, import_state_charge FROM purchase WHERE ovatr = ? AND import_state_charge <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
         annex_ii_rows = con.execute("SELECT description, supplier_name, invoice_no, date, \"import\" FROM purchase WHERE ovatr = ? AND \"import\" <> 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
         
-        # User Status fetched at Index 7
-        annex_iii_local_purchases = con.execute("SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no, user_status FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
+        # ADDED Comment at Index 8
+        annex_iii_local_purchases = con.execute("SELECT description, supplier_name, supplier_tin, invoice_no, date, purchase, no, user_status, comment FROM purchase WHERE ovatr = ? AND purchase > 0 ORDER BY CAST(no AS INTEGER) ASC", [ovatr_code]).fetchall()
         
         annex_iii_raw_decs = con.execute("""
             SELECT 
@@ -1785,6 +1660,7 @@ def download_full_report(request):
         thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         align_middle = Alignment(vertical='center', wrap_text=False)
         align_center = Alignment(horizontal='center', vertical='center', wrap_text=False)
+        align_left_middle = Alignment(horizontal='left', vertical='center', wrap_text=False)
         align_right_middle = Alignment(horizontal='right', vertical='center', wrap_text=False)
         bg_gray_header = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
         bg_gray_summary = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid")
@@ -1801,8 +1677,13 @@ def download_full_report(request):
             if text is None or text == "": return ""
             khmer_digits = "០១២៣៤៥៦៧៨៩"
             return "".join(khmer_digits[int(c)] if c.isdigit() else c for c in str(text))
+            
+        def clean_text(val):
+            if pd.isna(val) or val is None: return ""
+            s = str(val).strip()
+            if s.lower() in ['nan', 'none', 'null']: return ""
+            return re.sub(r'[\x00-\x08\x0b-\x0c\x0e-\x1f]', '', s)
 
-        # --- PART A: Company Info ---
         ws_info = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'company information'), None)
         if ws_info:
             business_activity_str = ""
@@ -1862,7 +1743,6 @@ def download_full_report(request):
             ws_info['D9'].value, ws_info['E9'].value = ext_name(ws_info['D8'].value), ext_name(ws_info['E8'].value)
             for ref in ['D8', 'E8', 'D9', 'E9']: ws_info[ref].font = khmer_font
 
-        # --- PART B: Annex I ---
         ws1 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex i-im state charge'), None)
         ws1_title = ws1.title if ws1 else 'Annex I-IM State Charge'
         ws1_sum_row = 9 + len(annex_i_rows)
@@ -1879,19 +1759,24 @@ def download_full_report(request):
             sum_row = start_row + len(annex_i_rows)
             ws1.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
             ws1.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូលជាបន្ទុករដ្ឋ").font, ws1.cell(row=sum_row, column=1).alignment = khmer_font_bold, align_center
-            sum_cell = ws1.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})"); sum_cell.font, sum_cell.number_format, sum_cell.alignment = khmer_font_bold, '#,### "៛"', align_center
+            sum_cell = ws1.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})"); sum_cell.font, sum_cell.number_format, sum_cell.alignment = khmer_font_bold, '#,### "៛"', align_right_middle
             for col in range(1, 9): ws1.cell(row=sum_row, column=col).fill, ws1.cell(row=sum_row, column=col).border = bg_gray_summary, thin_border
 
             sig_row = sum_row + 2
-            ws1.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=8); ws1.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី          ខែ          ឆ្នាំ").font, ws1.cell(row=sig_row, column=5).alignment = khmer_font, align_center
+            ws1.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=8); ws1.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី          ខែ          ឆ្នាំ").font, ws1.cell(row=sig_row, column=5).alignment = khmer_font, align_center
             ws1.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=8); ws1.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font, ws1.cell(row=sig_row+1, column=5).alignment = khmer_font, align_center
             ws1.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=7); ws1.cell(row=sig_row+3, column=5, value="='Company information'!D9").font, ws1.cell(row=sig_row+3, column=5).alignment = khmer_font, align_center
             ws1.cell(row=sig_row+3, column=8, value="='Company information'!E9").font, ws1.cell(row=sig_row+3, column=8).alignment = khmer_font, align_center
 
-        # --- PART C: Annex II & Reverse Charge ---
         ws2 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex ii-im non-state charge'), None)
         ws2_title = ws2.title if ws2 else 'Annex II-IM Non-State Charge'
         if ws2:
+            red_font = Font(name='Khmer OS Siemreap', size=11, color='FF0000')
+            ws2.cell(row=8, column=10, value="បានប្រកាស").font = red_font
+            ws2.cell(row=8, column=10).alignment = align_center
+            ws2.cell(row=8, column=11, value="ខ្វះ").font = red_font
+            ws2.cell(row=8, column=11).alignment = align_center
+
             start_row = 11
             if ws2.max_row >= start_row: ws2.delete_rows(start_row, ws2.max_row - start_row + 1)
             curr_row = start_row
@@ -1901,6 +1786,9 @@ def download_full_report(request):
                 ws2.cell(row=curr_row, column=2, value=row_data[0]); ws2.cell(row=curr_row, column=3, value=row_data[2])
                 dt_cell = ws2.cell(row=curr_row, column=4, value=to_excel_date(row_data[3])); dt_cell.alignment, dt_cell.number_format = align_center, 'DD-MM-YYYY'
                 ws2.cell(row=curr_row, column=7, value=row_data[4]).number_format = '#,### "៛"'
+                ws2.cell(row=curr_row, column=9, value=f"=J{curr_row}").number_format = '#,### "៛"'
+                ws2.cell(row=curr_row, column=10, value=None).number_format = '#,### "៛"'
+                ws2.cell(row=curr_row, column=11, value=f"=G{curr_row}-J{curr_row}").number_format = '#,### "៛"'
                 curr_row += 1
 
             ws2.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=9)
@@ -1917,18 +1805,47 @@ def download_full_report(request):
                 ws2.cell(row=curr_row, column=7, value=row_data[3]).number_format = '#,### "៛"'
                 ws2.cell(row=curr_row, column=8, value="អនុញ្ញាត (បានប្រកាស)").alignment = align_center
                 ws2.cell(row=curr_row, column=9, value=f"=G{curr_row}").number_format = '#,### "៛"'
+                ws2.cell(row=curr_row, column=10, value=None).number_format = '#,### "៛"'
+                ws2.cell(row=curr_row, column=11, value=f"=G{curr_row}-J{curr_row}").number_format = '#,### "៛"'
                 curr_row += 1
 
             sum_row = curr_row
             ws2.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6)
-            ws2.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូល ឬ អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)").font, ws2.cell(row=sum_row, column=1).alignment = khmer_font_bold, align_center
-            ws2.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})").font, ws2.cell(row=sum_row, column=7).alignment, ws2.cell(row=sum_row, column=7).number_format = khmer_font_bold, align_center, '#,### "៛"'
+            ws2.cell(row=sum_row, column=1, value="សរុបអាករលើការនាំចូល ឬ អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)").font, ws2.cell(row=sum_row, column=1).alignment = khmer_font_bold, align_right_middle
+            ws2.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})").font, ws2.cell(row=sum_row, column=7).alignment, ws2.cell(row=sum_row, column=7).number_format = khmer_font_bold, align_right_middle, '#,### "៛"'
             ws2.cell(row=sum_row, column=8, value="សរុបទឺកប្រាក់អនុញ្ញាត").font, ws2.cell(row=sum_row, column=8).alignment = khmer_font_bold, align_right_middle
-            ws2.cell(row=sum_row, column=9, value=f"=SUM(I{start_row}:I{sum_row-1})").font, ws2.cell(row=sum_row, column=9).alignment, ws2.cell(row=sum_row, column=9).number_format = khmer_font_bold, align_center, '#,### "៛"'
-            for col in range(1, 10): ws2.cell(row=sum_row, column=col).fill, ws2.cell(row=sum_row, column=col).border = bg_gray_summary, thin_border
+            ws2.cell(row=sum_row, column=9, value=f"=SUM(I{start_row}:I{sum_row-1})").font, ws2.cell(row=sum_row, column=9).alignment, ws2.cell(row=sum_row, column=9).number_format = khmer_font_bold, align_right_middle, '#,### "៛"'
+            ws2.cell(row=sum_row, column=10, value=f"=SUM(J{start_row}:J{sum_row-1})").font, ws2.cell(row=sum_row, column=10).alignment, ws2.cell(row=sum_row, column=10).number_format = khmer_font_bold, align_right_middle, '#,### "៛"'
+            ws2.cell(row=sum_row, column=11, value=f"=SUM(K{start_row}:K{sum_row-1})").font, ws2.cell(row=sum_row, column=11).alignment, ws2.cell(row=sum_row, column=11).number_format = khmer_font_bold, align_right_middle, '#,### "៛"'
+            for col in range(1, 12): ws2.cell(row=sum_row, column=col).fill, ws2.cell(row=sum_row, column=col).border = bg_gray_summary, thin_border
             ws2_end_row = sum_row - 1 
 
-            sig_row = sum_row + 2
+            # 1. Blank row (Implicitly at sum_row + 1)
+            # 2. Merge Cell A:I for 2 rows, add text with line break, apply bold to first line, apply wrap text
+            decl_row = sum_row + 2
+            ws2.merge_cells(start_row=decl_row, start_column=1, end_row=decl_row+1, end_column=9)
+            
+            try:
+                from openpyxl.cell.text import InlineFont
+                from openpyxl.cell.rich_text import TextBlock, CellRichText
+                
+                bold_font = InlineFont(rFont='Khmer OS Siemreap', sz=11, b=True)
+                normal_font = InlineFont(rFont='Khmer OS Siemreap', sz=11)
+                
+                # Applying Rich Text for mixed formatting in a single cell
+                rich_text = CellRichText(
+                    TextBlock(bold_font, 'សេចក្តីធានាអះអាងរបស់មន្ត្រីសវនករទទួលបន្ទុក៖\n'),
+                    TextBlock(normal_font, 'លទ្ធផលផ្ទៀងផ្ទាត់ឥណទានអាករ ចំពោះការនាំចូល ឬ/និង អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)ខាងលើពិតជាត្រឹមត្រូវតាមរបាយការណ៍លម្អិតដែលបានទាញទិន្នន័យពីអគ្គនាយកដ្ឋានគយ/ប្រព័ន្ធE-Filing ពិតប្រាកដមែន។')
+                )
+                ws2.cell(row=decl_row, column=1).value = rich_text
+            except ImportError:
+                # Safe Fallback just in case openpyxl version is heavily outdated
+                ws2.cell(row=decl_row, column=1, value="សេចក្តីធានាអះអាងរបស់មន្ត្រីសវនករទទួលបន្ទុក៖\nលទ្ធផលផ្ទៀងផ្ទាត់ឥណទានអាករ ចំពោះការនាំចូល ឬ/និង អាករលើតម្លៃបន្ថែមតាមវិធីគិតអាករជំនួស(Reverse Charge)ខាងលើពិតជាត្រឹមត្រូវតាមរបាយការណ៍លម្អិតដែលបានទាញទិន្នន័យពីអគ្គនាយកដ្ឋានគយ/ប្រព័ន្ធE-Filing ពិតប្រាកដមែន។").font = khmer_font
+
+            # Enable Text Wrapping for the merged cell
+            ws2.cell(row=decl_row, column=1).alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+
+            sig_row = decl_row + 3
             ws2.merge_cells(start_row=sig_row, start_column=5, end_row=sig_row, end_column=9); ws2.cell(row=sig_row, column=5, value="រាជធានីភ្នំពេញ.ថ្ងៃទី          ខែ          ឆ្នាំ").font, ws2.cell(row=sig_row, column=5).alignment = khmer_font, align_center
             ws2.merge_cells(start_row=sig_row+1, start_column=5, end_row=sig_row+1, end_column=9); ws2.cell(row=sig_row+1, column=5, value="មន្ត្រីសវនកម្ម").font, ws2.cell(row=sig_row+1, column=5).alignment = khmer_font, align_center
             ws2.merge_cells(start_row=sig_row+3, start_column=5, end_row=sig_row+3, end_column=8); ws2.cell(row=sig_row+3, column=5, value="='Company information'!D9").font, ws2.cell(row=sig_row+3, column=5).alignment = khmer_font, align_center
@@ -1945,77 +1862,107 @@ def download_full_report(request):
             
             for i, p_row in enumerate(annex_iii_local_purchases):
                 curr_row = start_row + i
-                p_inv_val = p_row[3] or ""; p_inv_clean = clean_invoice_text(p_inv_val)
+                
+                p_inv_val = p_row[3] or ""
+                p_inv_clean = clean_invoice_text(p_inv_val)
+                
                 ws3.cell(row=curr_row, column=1, value=i+1).alignment = align_center
-                ws3.cell(row=curr_row, column=2, value=p_row[0] or "")
-                ws3.cell(row=curr_row, column=3, value=p_row[1] or "")
-                ws3.cell(row=curr_row, column=4, value=p_row[2] or "")
+                ws3.cell(row=curr_row, column=2, value=clean_text(p_row[0]))
+                ws3.cell(row=curr_row, column=3, value=clean_text(p_row[1]))
+                ws3.cell(row=curr_row, column=4, value=clean_text(p_row[2]))
                 ws3.cell(row=curr_row, column=5, value=p_inv_val)
-                dt_cell = ws3.cell(row=curr_row, column=6, value=to_excel_date(p_row[4])); dt_cell.alignment, dt_cell.number_format = align_center, 'DD-MM-YYYY'
                 
-                amt = p_row[5] if p_row[5] else 0
+                # --- FORMAT COLUMN 6 AS EXCEL DATE (SORTABLE) ---
+                raw_date = p_row[4]
+                dt_val = ""
+                if raw_date and str(raw_date).lower() not in ['nan', 'nat', 'none', '']:
+                    try: dt_val = pd.to_datetime(raw_date).date()
+                    except: dt_val = str(raw_date).split()[0]
+                ws3.cell(row=curr_row, column=6, value=dt_val).number_format = 'DD-MM-YYYY'
+                
+                amt = float(p_row[5]) if p_row[5] else 0.0
                 ws3.cell(row=curr_row, column=7, value=amt).number_format = '#,### "៛"'
+                ws3.cell(row=curr_row, column=9, value=amt)
                 
-                # --- NEW MAPPING LOGIC ---
-                # J (10): System Status 
-                status_formula = f'=IF(AND(O{curr_row}=TRUE, P{curr_row}=TRUE, Q{curr_row}=TRUE), IF(R{curr_row}<-0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(O{curr_row}=FALSE, P{curr_row}=FALSE, Q{curr_row}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
+                status_formula = f'=IF(AND(S{curr_row}=TRUE, T{curr_row}=TRUE, U{curr_row}=TRUE), IF(W{curr_row}<-0.05, "អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)", "បានប្រកាស (អនុញ្ញាត)"), IF(AND(S{curr_row}=FALSE, T{curr_row}=FALSE, U{curr_row}=FALSE), "ព្យួរទុក (មិនមានទិន្នន័យ)", "ប្រកាសខុស (ព្យួរទុក)"))'
                 ws3.cell(row=curr_row, column=10, value=status_formula).font = khmer_font
                 
-                # I (9): Amount Copy (Optional legacy carryover)
-                ws3.cell(row=curr_row, column=9, value=f"=G{curr_row}").number_format = '#,### "៛"'
-                
-                # K (11): User Status
                 user_status_val = p_row[7]
                 if not user_status_val or str(user_status_val).strip().lower() in ['none', 'null', 'nan']:
                     user_status_val = ""
                 ws3.cell(row=curr_row, column=11, value=user_status_val).font = khmer_font
                 
-                # L (12): Diff
-                ws3.cell(row=curr_row, column=12, value=f"=I{curr_row}-G{curr_row}").number_format = '#,### "៛"'
-
+                # NEW COMMENT (12) AND SHIFTED DIFFERENCES
+                ws3.cell(row=curr_row, column=12, value=p_row[8] or "").font = khmer_font 
+                ws3.cell(row=curr_row, column=13, value=None) #value=f"=AH{curr_row}" 
+                ws3.cell(row=curr_row, column=14, value=f"=IF(W{curr_row}<0,AH{curr_row},I{curr_row})") 
+                ws3.cell(row=curr_row, column=15, value=f"=I{curr_row}-M{curr_row}") 
+                ws3.cell(row=curr_row, column=16, value=None) 
+                ws3.cell(row=curr_row, column=17, value=p_inv_clean) 
+                
                 d_row = dec_map.get(p_inv_clean)
                 d_inv_val = ""
+                ag_val = 0.0
+                
                 if d_row:
-                    d_inv_val = d_row[1]
-                    dt_d_cell = ws3.cell(row=curr_row, column=22, value=to_excel_date(d_row[0])); dt_d_cell.alignment, dt_d_cell.number_format = align_center, 'DD-MM-YYYY'
-                    ws3.cell(row=curr_row, column=23, value=d_inv_val)
-                    ws3.cell(row=curr_row, column=24, value=d_row[2] or "")
-                    ws3.cell(row=curr_row, column=25, value=d_row[3] or "")
-                    ws3.cell(row=curr_row, column=26, value=d_row[4] or "")
-                    ws3.cell(row=curr_row, column=27, value=d_row[5] or "")
-                    for idx, col_num in enumerate(range(28, 41)): ws3.cell(row=curr_row, column=col_num, value=d_row[6 + idx] if d_row[6 + idx] else 0).number_format = '#,### "៛"'
-                    ws3.cell(row=curr_row, column=41, value=d_row[19] or "")
-                    ws3.cell(row=curr_row, column=42, value=d_row[20] or "")
-                    ws3.cell(row=curr_row, column=43, value=d_row[21] or "")
+                    d_inv_val = clean_text(d_row[1] if d_row else "")
+                    ag_val = float(d_row[10] if d_row[10] else 0)
+                    
+                    # --- FORMAT COLUMN 24 AS EXCEL DATE (SORTABLE) ---
+                    raw_d_date = d_row[0] if d_row else ""
+                    dt_d_val = ""
+                    if raw_d_date and str(raw_d_date).lower() not in ['nan', 'nat', 'none', '']:
+                        try: dt_d_val = pd.to_datetime(raw_d_date).date()
+                        except: dt_d_val = str(raw_d_date).split()[0]
+                    ws3.cell(row=curr_row, column=24, value=dt_d_val).number_format = 'DD-MM-YYYY'
 
-                ws3.cell(row=curr_row, column=15, value=f"=T{curr_row}=U{curr_row}") 
-                ws3.cell(row=curr_row, column=16, value=f"=AND(MONTH(F{curr_row})=MONTH(V{curr_row}), YEAR(F{curr_row})=YEAR(V{curr_row}))")
-                ws3.cell(row=curr_row, column=17, value=f'=Z{curr_row}="{user_vatin_safe}"')
-                ws3.cell(row=curr_row, column=18, value=f"=G{curr_row}-AF{curr_row}").number_format = '#,### "៛"'
+                    ws3.cell(row=curr_row, column=25, value=d_inv_val)
+                    ws3.cell(row=curr_row, column=26, value=clean_text(d_row[2] if d_row else ""))
+                    ws3.cell(row=curr_row, column=27, value=clean_text(d_row[3] if d_row else ""))
+                    ws3.cell(row=curr_row, column=28, value=clean_text(d_row[4] if d_row else ""))
+                    ws3.cell(row=curr_row, column=29, value=clean_text(d_row[5] if d_row else ""))
+                    
+                    for idx, col_num in enumerate(range(30, 43)): 
+                        ws3.cell(row=curr_row, column=col_num, value=float(d_row[6 + idx]) if d_row[6 + idx] else 0.0)
+                        
+                    ws3.cell(row=curr_row, column=43, value=clean_text(d_row[19] if d_row else ""))
+                    ws3.cell(row=curr_row, column=44, value=clean_text(d_row[20] if d_row else ""))
+                    ws3.cell(row=curr_row, column=45, value=clean_text(d_row[21] if d_row else ""))
 
-                ws3.cell(row=curr_row, column=20, value=p_inv_clean)
-                ws3.cell(row=curr_row, column=21, value=clean_invoice_text(d_inv_val))
+                ws3.cell(row=curr_row, column=18, value=clean_invoice_text(d_inv_val)) 
+                ws3.cell(row=curr_row, column=19, value=f"=Q{curr_row}=R{curr_row}") 
+                ws3.cell(row=curr_row, column=20, value=f"=AND(MONTH(F{curr_row})=MONTH(X{curr_row}), YEAR(F{curr_row})=YEAR(X{curr_row}))")
+                ws3.cell(row=curr_row, column=21, value=f'=AB{curr_row}=B5') 
+                ws3.cell(row=curr_row, column=22, value=f"=AH{curr_row}-I{curr_row}") 
+                ws3.cell(row=curr_row, column=23, value=None) 
 
-                for col in range(1, 44):
+                # Apply Strict Number Formatting
+                format_cols = [9, 13, 14, 15, 23] + list(range(30, 43))
+                for col_idx in format_cols:
+                    ws3.cell(row=curr_row, column=col_idx).number_format = '#,###0'
+
+                for col in range(1, 46):
                     cell = ws3.cell(row=curr_row, column=col)
                     cell.border, cell.font = thin_border, khmer_font
-                    if col not in [1, 6, 22]: cell.alignment = align_middle
+                    if col not in [1, 6, 24]: cell.alignment = align_middle
+                    else: cell.alignment = align_center
 
             end_data_row = start_row + len(annex_iii_local_purchases) - 1
             if end_data_row < start_row: end_data_row = start_row
 
             sum_row = end_data_row + 2
             total_cell = ws3.cell(row=sum_row, column=1, value="Total")
-            total_cell.font, total_cell.alignment = khmer_font_bold, align_center
+            total_cell.font, total_cell.alignment = khmer_font_bold, align_right_middle
+            total_cell.number_format = '#,###៛'
             
-            for col_letter, col_idx in [('I', 9), ('L', 12), ('M', 13)]:
+            for col_letter, col_idx in [('I', 9), ('M', 13), ('N', 14)]:
                 sum_cell = ws3.cell(row=sum_row, column=col_idx, value=f"=SUM({col_letter}{start_row}:{col_letter}{end_data_row})")
-                sum_cell.font, sum_cell.number_format, sum_cell.alignment = khmer_font_bold, '#,### "៛"', align_center
+                sum_cell.font, sum_cell.number_format, sum_cell.alignment = khmer_font_bold, '#,###៛', align_right_middle
             
-            for col in range(1, 14): 
+            for col in range(1, 16): 
                 cell = ws3.cell(row=sum_row, column=col); cell.fill, cell.border = bg_gray_summary, thin_border
 
-            # --- DYNAMIC SUMMARY TABLE ---
+            # DYNAMIC SUMMARY TABLE
             sum_table_start = sum_row + 2
             ws3.cell(row=sum_table_start, column=1, value="=\"តារាងសង្ខេបប្រាក់អាករដែលអាចស្នើសុំបង្វិលសង \" & 'Company information'!D2").font = khmer_font_bold
             
@@ -2034,100 +1981,306 @@ def download_full_report(request):
             
             d_row7 = d_row6 + 1; ws3.cell(row=d_row7, column=2, value="ចំនួនប្រាក់អាករស្នើសុំតាមប្រព័ន្ធ E-VAT").font = khmer_font_bold; ws3.cell(row=d_row7, column=3, value="='Company information'!H9").number_format = '#,### "៛"'; ws3.cell(row=d_row7, column=3).font = khmer_font_bold; ws3.cell(row=d_row7, column=4, value="ក").font = khmer_font_bold; ws3.cell(row=d_row7, column=4).alignment = align_center
             
+            ws3.column_dimensions['B'].width = 40
+
             current_sum_row = d_row7 + 1
-            
             khmer_alphabet = ['ខ', 'គ', 'ឃ', 'ង', 'ច', 'ឆ', 'ជ', 'ឈ', 'ញ', 'ដ', 'ឋ', 'ឌ', 'ឍ', 'ណ']
-            assigned_chars = []
             
-            # --- SMART DUAL-COLUMN FORMULAS ---
-            # Counts User Status (Col K) if exists, otherwise falls back to System Status (Col J)
-            for index, status in enumerate(status_configs):
-                stat_name = str(status[0]).replace('"', '""')
+            visible_chars = []
+            visible_rows_for_calc = []
+            alphabet_index = 0
+            
+            for status in status_configs:
+                raw_stat_name = str(status[0])
                 stat_summary = str(status[1])
                 stat_action = str(status[2])
-                kh_char = khmer_alphabet[index] if index < len(khmer_alphabet) else str(index)
-                assigned_chars.append(kh_char)
                 
-                count_formula = f'=COUNTIFS($K$9:$K${end_data_row}, "{stat_name}") + COUNTIFS($K$9:$K${end_data_row}, "", $J$9:$J${end_data_row}, "{stat_name}")'
+                # Check actual COUNT in database to determine if we should show this row
+                eval_count_query = """
+                    SELECT COUNT(*) FROM purchase 
+                    WHERE ovatr = ? AND purchase > 0 
+                    AND (
+                        user_status = ? 
+                        OR ( (user_status IS NULL OR user_status = '') AND sys_status = ? )
+                    )
+                """
+                eval_res = con.execute(eval_count_query, [ovatr_code, raw_stat_name, raw_stat_name]).fetchone()
+                eval_count = int(eval_res[0]) if eval_res and eval_res[0] else 0
+
+                safe_stat_name = raw_stat_name.replace('"', '""')
+                
+                count_formula = f'=COUNTIFS($K$9:$K${end_data_row}, "{safe_stat_name}") + COUNTIFS($K$9:$K${end_data_row}, "", $J$9:$J${end_data_row}, "{safe_stat_name}")'
                 ws3.cell(row=current_sum_row, column=1, value=count_formula).alignment = align_center
-                
                 ws3.cell(row=current_sum_row, column=2, value=stat_summary).font = khmer_font
                 
-                sum_formula = f'=SUMIFS($G$9:$G${end_data_row}, $K$9:$K${end_data_row}, "{stat_name}") + SUMIFS($G$9:$G${end_data_row}, $K$9:$K${end_data_row}, "", $J$9:$J${end_data_row}, "{stat_name}")'
+                sum_formula = f'=SUMIFS($G$9:$G${end_data_row}, $K$9:$K${end_data_row}, "{safe_stat_name}") + SUMIFS($G$9:$G${end_data_row}, $K$9:$K${end_data_row}, "", $J$9:$J${end_data_row}, "{safe_stat_name}")'
                 ws3.cell(row=current_sum_row, column=3, value=sum_formula).number_format = '#,### "៛"'
                 
-                ws3.cell(row=current_sum_row, column=4, value=kh_char).font = khmer_font_bold; ws3.cell(row=current_sum_row, column=4).alignment = align_center
                 ws3.cell(row=current_sum_row, column=5, value=stat_action).font = khmer_font
+
+                # ONLY show the row and assign a letter if the count is > 0
+                if eval_count > 0:
+                    kh_char = khmer_alphabet[alphabet_index] if alphabet_index < len(khmer_alphabet) else str(alphabet_index)
+                    ws3.cell(row=current_sum_row, column=4, value=kh_char).font = khmer_font_bold
+                    ws3.cell(row=current_sum_row, column=4).alignment = align_center
+                    
+                    visible_chars.append(kh_char)
+                    visible_rows_for_calc.append(current_sum_row)
+                    alphabet_index += 1
+                else:
+                    ws3.cell(row=current_sum_row, column=4, value="") # Blank tag
+                    ws3.row_dimensions[current_sum_row].hidden = True # Hide row in Excel
+                
                 current_sum_row += 1
 
             d_row_final = current_sum_row
             ws3.cell(row=d_row_final, column=2, value="លម្អៀងបា្រក់អាករជាមួយប្រព័ន្ធ E-VAT").font = khmer_font
             ws3.cell(row=d_row_final, column=3, value=f"=C{d_row7}-C{d_row6}").number_format = '#,### "៛"'
             
-            final_char = khmer_alphabet[len(assigned_chars)] if len(assigned_chars) < len(khmer_alphabet) else "ចុង"
-            assigned_chars.append(final_char)
+            final_char = khmer_alphabet[alphabet_index] if alphabet_index < len(khmer_alphabet) else "ចុង"
+            visible_chars.append(final_char)
+            visible_rows_for_calc.append(d_row_final)
+            
             ws3.cell(row=d_row_final, column=4, value=final_char).font = khmer_font_bold; ws3.cell(row=d_row_final, column=4).alignment = align_center
             ws3.cell(row=d_row_final, column=5, value="ព្យួរទុក").font = khmer_font
 
             d_row_total = d_row_final + 1
             ws3.cell(row=d_row_total, column=2, value="សរុបប្រាក់អាករគួរបង្វិលសងជូនក្រុមហ៊ុន").font = khmer_font_bold
             
+            # Subtraction formula only subtracts visible/existing rows
             sum_formula = f"=C{d_row7}"
-            for r in range(d_row7 + 1, d_row_total): sum_formula += f"-C{r}"
+            for r in visible_rows_for_calc: 
+                sum_formula += f"-C{r}"
             ws3.cell(row=d_row_total, column=3, value=sum_formula).number_format = '#,### "៛"'; ws3.cell(row=d_row_total, column=3).font = khmer_font_bold
             
-            total_formula_text = f"សរុប=ក-{'-'.join(assigned_chars)}"
+            total_formula_text = f"សរុប=ក-{'-'.join(visible_chars)}"
             ws3.cell(row=d_row_total, column=4, value=total_formula_text).font = khmer_font_bold; ws3.cell(row=d_row_total, column=4).alignment = align_center
 
             ws3.merge_cells(start_row=d_row1, start_column=1, end_row=d_row7, end_column=1)
             for r in range(d_row1, d_row_total + 1):
                 for c in range(1, 6): ws3.cell(row=r, column=c).border = thin_border
 
+            # --- SIGNATURE AND DECLARATION SECTION ---
+            sig_start_row = d_row_total + 2
+
+            # 1. Merge A:E 3 rows and add declaration text with RichText (Bold first line)
+            ws3.merge_cells(start_row=sig_start_row, start_column=1, end_row=sig_start_row+2, end_column=5)
+            
+            try:
+                from openpyxl.cell.text import InlineFont
+                from openpyxl.cell.rich_text import TextBlock, CellRichText
+                
+                bold_font = InlineFont(rFont='Khmer OS Siemreap', sz=11, b=True)
+                normal_font = InlineFont(rFont='Khmer OS Siemreap', sz=11)
+                
+                rich_text = CellRichText(
+                    TextBlock(bold_font, 'សេចក្តីធានាអះអាងរបស់មន្ត្រីសវនករទទួលបន្ទុក៖\n'),
+                    TextBlock(normal_font, 'លទ្ធផលនៃការផ្ទៀងផ្ទាត់វិក្កយបត្រអាករ (Invoice Cross-check) ខាងលើ ពិតជាត្រឹមត្រូវតាមការប្រកាសរបស់អ្នកផ្គត់ផ្គង់ពិតប្រាកដមែន។')
+                )
+                ws3.cell(row=sig_start_row, column=1).value = rich_text
+            except ImportError:
+                # Safe fallback if library structure differs
+                ws3.cell(row=sig_start_row, column=1, value="សេចក្តីធានាអះអាងរបស់មន្ត្រីសវនករទទួលបន្ទុក៖\nលទ្ធផលនៃការផ្ទៀងផ្ទាត់វិក្កយបត្រអាករ (Invoice Cross-check) ខាងលើ ពិតជាត្រឹមត្រូវតាមការប្រកាសរបស់អ្នកផ្គត់ផ្គង់ពិតប្រាកដមែន។").font = khmer_font
+
+            ws3.cell(row=sig_start_row, column=1).alignment = Alignment(horizontal='left', vertical='top', wrap_text=True)
+
+            ws3.row_dimensions[sig_start_row].height = 50
+
+            # 2. Next row (Date 1)
+            row_step2 = sig_start_row + 3
+            ws3.merge_cells(start_row=row_step2, start_column=1, end_row=row_step2, end_column=5)
+            ws3.cell(row=row_step2, column=1, value="រាជធានីភ្នំពេញ.ថ្ងៃទី         ខែ                    ឆ្នាំ២០២").font = Font(name='Khmer OS Siemreap', size=12)
+            ws3.cell(row=row_step2, column=1).alignment = align_center
+
+            # 3. Next row (Officer & Manager Approval)
+            row_step3 = sig_start_row + 4
+            ws3.merge_cells(start_row=row_step3, start_column=1, end_row=row_step3, end_column=5)
+            ws3.cell(row=row_step3, column=1, value="មន្ត្រីសវនកម្ម").font = khmer_font
+            ws3.cell(row=row_step3, column=1).alignment = align_center
+            
+            ws3.merge_cells(start_row=row_step3, start_column=6, end_row=row_step3, end_column=11)
+            ws3.cell(row=row_step3, column=6, value="បានឃើញ និងឯកភាព").font = khmer_font
+            ws3.cell(row=row_step3, column=6).alignment = align_center
+
+            # 4. Next row (Date 2)
+            row_step4 = sig_start_row + 5
+            ws3.merge_cells(start_row=row_step4, start_column=6, end_row=row_step4, end_column=11)
+            ws3.cell(row=row_step4, column=6, value="រាជធានីភ្នំពេញ.ថ្ងៃទី         ខែ                    ឆ្នាំ២០២").font = khmer_font
+            ws3.cell(row=row_step4, column=6).alignment = align_center
+
+            # 5. Next row (Office Head)
+            row_step5 = sig_start_row + 6
+            ws3.merge_cells(start_row=row_step5, start_column=6, end_row=row_step5, end_column=11)
+            ws3.cell(row=row_step5, column=6, value="ប្រធានការិយាល័យ").font = khmer_font
+            ws3.cell(row=row_step5, column=6).alignment = align_center
+
+            # 6. Next row (Dynamic Names Formula)
+            row_step6 = sig_start_row + 7
+            ws3.merge_cells(start_row=row_step6, start_column=1, end_row=row_step6, end_column=2)
+            ws3.cell(row=row_step6, column=1, value="='Company information'!D9").font = khmer_font
+            ws3.cell(row=row_step6, column=1).alignment = align_center
+
+            ws3.merge_cells(start_row=row_step6, start_column=3, end_row=row_step6, end_column=5)
+            ws3.cell(row=row_step6, column=3, value="='Company information'!E9").font = khmer_font
+            ws3.cell(row=row_step6, column=3).alignment = align_center
+
         # --- PART F: TaxPaid Sheet ---
+        
         ws_tp = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'taxpaid'), None)
         if ws_tp and taxpaid_raw:
             month_keys = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+            
+            # --- APPLY DATE FILTERING LOGIC ---
+            khmer_months = {
+                'មករា': 1, 'កុម្ភៈ': 2, 'មីនា': 3, 'មេសា': 4,
+                'ឧសភា': 5, 'មិថុនា': 6, 'កក្កដា': 7, 'សីហា': 8,
+                'កញ្ញា': 9, 'តុលា': 10, 'វិច្ឆិកា': 11, 'ធ្នូ': 12
+            }
+            month_cols = {
+                1: 'jan', 2: 'feb', 3: 'mar', 4: 'apr', 
+                5: 'may', 6: 'jun', 7: 'jul', 8: 'aug', 
+                9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec'
+            }
+            
+            start_m, start_y, end_m, end_y = None, None, None, None
+            req_date_str = str(company_data.get('i_request_date', '')).strip()
+            
+            years_found = re.findall(r'\b(20\d{2})\b', req_date_str)
+            months_found = []
+            for k_month in khmer_months.keys():
+                occurrences = [m.start() for m in re.finditer(k_month, req_date_str)]
+                for idx in occurrences:
+                    months_found.append((idx, khmer_months[k_month]))
+            months_found.sort(key=lambda x: x[0])
+            
+            if len(years_found) >= 1:
+                start_y = int(years_found[0])
+                end_y = int(years_found[-1])
+                
+            if len(months_found) >= 1:
+                start_m = months_found[0][1]
+                end_m = months_found[-1][1]
+            
+            # Pre-process and filter data based on start/end dates
+            processed_taxpaid = []
+            for r in taxpaid_raw:
+                rd = dict(zip(tp_cols, r))
+                try: t_year = int(rd.get('tax_year', 0))
+                except: t_year = 0
+                
+                if start_y and end_y:
+                    if t_year < start_y or t_year > end_y:
+                        continue # Completely skip years outside the bounds
+                        
+                    if t_year:
+                        for m_num, m_col in month_cols.items():
+                            is_before_start = (t_year == start_y and start_m is not None and m_num < start_m)
+                            is_after_end = (t_year == end_y and end_m is not None and m_num > end_m)
+                            
+                            if is_before_start or is_after_end:
+                                rd[m_col] = 0
+                                
+                processed_taxpaid.append(rd)
+
             grouped_data = {}
-            years = sorted(list(set(dict(zip(tp_cols, r)).get('tax_year') for r in taxpaid_raw)))
+            years = sorted(list(set(rd.get('tax_year') for rd in processed_taxpaid)))
             header_row, data_start_row = 5, 6
             if ws_tp.max_row >= header_row: ws_tp.delete_rows(header_row, ws_tp.max_row - header_row + 1)
 
-            ws_tp.cell(row=header_row, column=2, value="ល.រ").font, ws_tp.cell(row=header_row, column=2).alignment = khmer_font, align_center
-            ws_tp.cell(row=header_row, column=3, value="ប្រភេទពន្ធ").font, ws_tp.cell(row=header_row, column=3).alignment = khmer_font, align_right_middle
-            ws_tp.cell(row=header_row, column=4, value="ចំនួនទឹកប្រាក់ពន្ធ").font, ws_tp.cell(row=header_row, column=4).alignment = khmer_font, align_right_middle
+            ws_tp.cell(row=header_row, column=2, value="ល.រ").font = khmer_font; ws_tp.cell(row=header_row, column=2).alignment = align_center
+            ws_tp.cell(row=header_row, column=3, value="ប្រភេទពន្ធ").font = khmer_font; ws_tp.cell(row=header_row, column=3).alignment = align_right_middle
+            ws_tp.cell(row=header_row, column=4, value="ចំនួនទឹកប្រាក់ពន្ធ").font = khmer_font; ws_tp.cell(row=header_row, column=4).alignment = align_right_middle
             
             header_map = []
             for yr in years:
                 for m in month_keys: header_map.append((f"{m.capitalize()}-{yr}", m, yr))
             for idx, (display, _, _) in enumerate(header_map):
                 cell = ws_tp.cell(row=header_row, column=5 + idx, value=display)
-                cell.font, cell.alignment = khmer_font, align_right_middle
-            for col in range(2, 5 + len(header_map)): ws_tp.cell(row=header_row, column=col).fill, ws_tp.cell(row=header_row, column=col).border = bg_yellow, thin_border
+                cell.font = khmer_font; cell.alignment = align_right_middle
+            
+            for col in range(2, 5 + len(header_map)):
+                cell = ws_tp.cell(row=header_row, column=col); cell.fill = bg_yellow; cell.border = thin_border
 
-            for row_data in taxpaid_raw:
-                rd = dict(zip(tp_cols, row_data))
+            for rd in processed_taxpaid:
                 desc, yr = rd.get('description', 'Unknown'), rd.get('tax_year')
                 if desc not in grouped_data: grouped_data[desc] = {}
                 for m in month_keys: grouped_data[desc][f"{m}-{yr}"] = rd.get(m, 0)
 
             for i, (desc, months_dict) in enumerate(grouped_data.items()):
                 curr_row = data_start_row + i
-                c_no = ws_tp.cell(row=curr_row, column=2, value=i+1); c_no.font, c_no.border, c_no.alignment = khmer_font, thin_border, align_center
-                c_desc = ws_tp.cell(row=curr_row, column=3, value=desc); c_desc.font, c_desc.border, c_desc.alignment = khmer_font, thin_border, align_right_middle
+                c_no = ws_tp.cell(row=curr_row, column=2, value=i+1); c_no.font = khmer_font; c_no.border = thin_border; c_no.alignment = align_center
+                c_desc = ws_tp.cell(row=curr_row, column=3, value=desc); c_desc.font = khmer_font; c_desc.border = thin_border; c_desc.alignment = align_right_middle
                 for m_idx, (display_key, m_key, yr) in enumerate(header_map):
                     val = months_dict.get(f"{m_key}-{yr}", 0)
-                    cell = ws_tp.cell(row=curr_row, column=5 + m_idx, value=val); cell.font, cell.border, cell.alignment = khmer_font, thin_border, align_right_middle
-                    cell.number_format = '#,### "៛"' if val != 0 else '#,###'
+                    cell = ws_tp.cell(row=curr_row, column=5 + m_idx, value=val); cell.font = khmer_font; cell.border = thin_border; cell.alignment = align_right_middle
+                    cell.number_format = '#,### "៛"' if val != 0 else '#,###0'
                 lc = openpyxl.utils.get_column_letter(4 + len(header_map))
                 c_sum = ws_tp.cell(row=curr_row, column=4, value=f"=SUM(E{curr_row}:{lc}{curr_row})")
-                c_sum.font, c_sum.border, c_sum.alignment, c_sum.number_format = khmer_font_bold, thin_border, align_right_middle, '#,### "៛"'
+                c_sum.font = khmer_font_bold; c_sum.border = thin_border; c_sum.alignment = align_right_middle; c_sum.number_format = '#,### "៛"'
 
             final_data_row = data_start_row + len(grouped_data) - 1
+            if final_data_row < data_start_row: final_data_row = data_start_row # Safety clamp
+
             sum_row = final_data_row + 1
-            ws_tp.cell(row=sum_row, column=3, value="សរុបទឹកប្រាក់ពន្ធបានបង់ចូលរដ្ឋ").font, ws_tp.cell(row=sum_row, column=3).alignment = khmer_font_bold, align_right_middle
+            ws_tp.cell(row=sum_row, column=3, value="សរុបទឹកប្រាក់ពន្ធបានបង់ចូលរដ្ឋ").font = khmer_font_bold; ws_tp.cell(row=sum_row, column=3).alignment = align_right_middle
             v_sum = ws_tp.cell(row=sum_row, column=4, value=f"=SUM(D{data_start_row}:D{final_data_row})")
-            v_sum.font, v_sum.alignment, v_sum.number_format = khmer_font_bold, align_right_middle, '#,### "៛"'
-            for col in range(2, 5 + len(header_map)): ws_tp.cell(row=sum_row, column=col).border, ws_tp.cell(row=sum_row, column=col).fill = thin_border, bg_gray_summary
+            v_sum.font = khmer_font_bold; v_sum.alignment = align_right_middle; v_sum.number_format = '#,### "៛"'
+            for col in range(2, 5 + len(header_map)): ws_tp.cell(row=sum_row, column=col).border = thin_border; ws_tp.cell(row=sum_row, column=col).fill = bg_gray_summary
+
+        # --- PART D & E: Annex IV & V (Preserved) ---
+        ws4 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex iv-ex'), None)
+        if ws4:
+            start_row = 9
+            if ws4.max_row >= start_row: ws4.delete_rows(start_row, ws4.max_row - start_row + 1)
+            for i, row_data in enumerate(annex_iv_rows):
+                curr_row = start_row + i
+                for col in range(1, 6): cell = ws4.cell(row=curr_row, column=col); cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
+                ws4.cell(row=curr_row, column=1, value=i+1).alignment = align_center; ws4.cell(row=curr_row, column=2, value=row_data[0]); ws4.cell(row=curr_row, column=3, value=row_data[1])
+                dt_cell = ws4.cell(row=curr_row, column=4, value=to_excel_date(row_data[2])); dt_cell.alignment = align_center; dt_cell.number_format = 'DD-MM-YYYY'
+                ws4.cell(row=curr_row, column=5, value=row_data[3]).number_format = '#,### "៛"'
+            sum_row = start_row + len(annex_iv_rows)
+            ws4.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=4); ws4.cell(row=sum_row, column=1, value="សរុបការនាំចេញ").font = khmer_font_bold; ws4.cell(row=sum_row, column=1).alignment = align_center
+            sum_cell = ws4.cell(row=sum_row, column=5, value=f"=SUM(E{start_row}:E{sum_row-1})"); sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
+            for col in range(1, 6): cell = ws4.cell(row=sum_row, column=col); cell.fill = bg_gray_summary; cell.border = thin_border
+
+            sig_row = sum_row + 2
+            ws4.merge_cells(start_row=sig_row, start_column=4, end_row=sig_row, end_column=5)
+            ws4.cell(row=sig_row, column=4, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font
+            ws4.cell(row=sig_row, column=4).alignment = align_center
+            ws4.merge_cells(start_row=sig_row+1, start_column=4, end_row=sig_row+1, end_column=5)
+            ws4.cell(row=sig_row+1, column=4, value="មន្ត្រីសវនកម្ម").font = khmer_font
+            ws4.cell(row=sig_row+1, column=4).alignment = align_center
+            ws4.cell(row=sig_row+3, column=4, value="='Company information'!D9").font = khmer_font
+            ws4.cell(row=sig_row+3, column=4).alignment = align_center
+            ws4.cell(row=sig_row+3, column=5, value="='Company information'!E9").font = khmer_font
+            ws4.cell(row=sig_row+3, column=5).alignment = align_center
+
+        ws5 = next((wb[n] for n in wb.sheetnames if n.strip().lower() == 'annex v-local sale'), None)
+        if ws5:
+            start_row = 9
+            if ws5.max_row >= start_row: ws5.delete_rows(start_row, ws5.max_row - start_row + 1)
+            for i, row_data in enumerate(annex_v_rows):
+                curr_row = start_row + i
+                for col in range(1, 9): cell = ws5.cell(row=curr_row, column=col); cell.border = thin_border; cell.font = khmer_font; cell.alignment = align_middle
+                ws5.cell(row=curr_row, column=1, value=i+1).alignment = align_center; ws5.cell(row=curr_row, column=2, value=row_data[0]); ws5.cell(row=curr_row, column=3, value=row_data[1])
+                dt = ws5.cell(row=curr_row, column=4, value=to_excel_date(row_data[2])); dt.alignment = align_center; dt.number_format = 'DD-MM-YYYY'
+                ws5.cell(row=curr_row, column=7, value=row_data[3]).number_format = '#,### "៛"'
+            sum_row = start_row + len(annex_v_rows)
+            ws5.merge_cells(start_row=sum_row, start_column=1, end_row=sum_row, end_column=6); ws5.cell(row=sum_row, column=1, value="សរុបការលក់ក្នុងស្រុក").font = khmer_font_bold; ws5.cell(row=sum_row, column=1).alignment = align_center
+            sum_cell = ws5.cell(row=sum_row, column=7, value=f"=SUM(G{start_row}:G{sum_row-1})"); sum_cell.font = khmer_font_bold; sum_cell.number_format = '#,### "៛"'; sum_cell.alignment = align_center
+            for col in range(1, 9): cell = ws5.cell(row=sum_row, column=col); cell.fill = bg_gray_summary; cell.border = thin_border
+
+            sig_row = sum_row + 2
+            ws5.merge_cells(start_row=sig_row, start_column=7, end_row=sig_row, end_column=8)
+            ws5.cell(row=sig_row, column=7, value="រាជធានីភ្នំពេញ.ថ្ងៃទី           ខែ           ឆ្នាំ").font = khmer_font
+            ws5.cell(row=sig_row, column=7).alignment = align_center
+            ws5.merge_cells(start_row=sig_row+1, start_column=7, end_row=sig_row+1, end_column=8)
+            ws5.cell(row=sig_row+1, column=7, value="មន្ត្រីសវនកម្ម").font = khmer_font
+            ws5.cell(row=sig_row+1, column=7).alignment = align_center
+            ws5.cell(row=sig_row+3, column=7, value="='Company information'!D9").font = khmer_font
+            ws5.cell(row=sig_row+3, column=7).alignment = align_center
+            ws5.cell(row=sig_row+3, column=8, value="='Company information'!E9").font = khmer_font
+            ws5.cell(row=sig_row+3, column=8).alignment = align_center
 
         save_dir = os.path.join(settings.MEDIA_ROOT, 'reports'); os.makedirs(save_dir, exist_ok=True)
         fname = f"FullReport_{ovatr_code}.xlsx"; full_path = os.path.join(save_dir, fname); wb.save(full_path)
@@ -2136,16 +2289,12 @@ def download_full_report(request):
         con.close()
         
 def download_word_report(request):
-    """
-    Generates the Word Report using docxtpl.
-    """
     ovatr_code = request.GET.get('ovatr_code')
     if not ovatr_code:
         return JsonResponse({'status': 'error', 'message': 'Missing Session ID'}, status=400)
 
     con = get_db_connection()
     try:
-        # 1. Fetch Company Info
         row = con.execute("SELECT * FROM company_info WHERE ovatr = ?", [ovatr_code]).fetchone()
         if not row:
             return JsonResponse({'status': 'error', 'message': 'Company info not found'}, status=404)
@@ -2153,7 +2302,6 @@ def download_word_report(request):
         cols = [desc[0] for desc in con.description]
         company_data = dict(zip(cols, row))
 
-        # --- Helpers for Formatting ---
         def to_khmer_numeral(text):
             if text is None or text == "": return ""
             khmer_digits = "០១២៣៤៥៦៧៨៩"
@@ -2176,7 +2324,6 @@ def download_word_report(request):
                 except: continue
             return to_khmer_numeral(str(date_val))
 
-        # Safely extract JSON data
         business_activity_str = ""
         try:
             activities = json.loads(company_data.get('business_activities', '[]'))
@@ -2192,7 +2339,6 @@ def download_word_report(request):
                 bank_name = str(accounts[0].get('bank', ''))
         except: pass
 
-        # 2. ANNEX CALCULATIONS (COUNT, VAT SUM, BASE SUM)
         def get_annex_stats(query):
             res = con.execute(query, [ovatr_code]).fetchone()
             count = res[0] or 0
@@ -2206,16 +2352,13 @@ def download_word_report(request):
         a4_count, a4_vat, a4_base = get_annex_stats("SELECT COUNT(*), SUM(vat_export) FROM sale WHERE ovatr = ? AND vat_export <> 0")
         a5_count, a5_vat, a5_base = get_annex_stats("SELECT COUNT(*), SUM(vat_local_sale) FROM sale WHERE ovatr = ? AND vat_local_sale <> 0")
 
-        # Table Totals
         total_in_base = a2_base + a3_base
         total_in_vat = a2_vat + a3_vat
         total_out_base = a4_base + a5_base
         total_out_vat = a4_vat + a5_vat
         
-        # Verifiable VAT (Input VAT - Output VAT)
         verifiable_vat = total_in_vat - total_out_vat
 
-        # 3. TAX PAID DYNAMIC LIST
         tax_rows = con.execute("""
             SELECT description, SUM(total) 
             FROM tax_paid 
@@ -2236,9 +2379,7 @@ def download_word_report(request):
                 'amount': khmer_currency(amt)
             })
 
-        # 4. BUILD CONTEXT DICTIONARY FOR DOCXTPL
         context = {
-            # Core Info
             'company_name_kh': company_data.get('company_name_kh', ''),
             'company_name_en': company_data.get('company_name_en', ''),
             'vatin': company_data.get('vatin', ''),
@@ -2252,7 +2393,6 @@ def download_word_report(request):
             'contact_person': company_data.get('i_contact_person', ''),
             'contact_position': company_data.get('i_contact_position', ''),
             
-            # Dates & Request Info
             'moc_number': to_khmer_numeral(company_data.get('i_moc_number', '')),
             'moc_date': format_khmer_date(company_data.get('i_moc_date', '')),
             'patent_date': format_khmer_date(company_data.get('i_patent_date', '')),
@@ -2261,39 +2401,33 @@ def download_word_report(request):
             'request_submission_date': to_khmer_numeral(company_data.get('i_request_submission_date', '')),
             'amount_requested': khmer_currency(company_data.get('i_amount_requested', '')),
 
-            # Annex Counts
             'a1_count': to_khmer_numeral(str(a1_count)),
             'a2_count': to_khmer_numeral(str(a2_count)),
             'a3_count': to_khmer_numeral(str(a3_count)),
             'a4_count': to_khmer_numeral(str(a4_count)),
             'a5_count': to_khmer_numeral(str(a5_count)),
 
-            # Annex VAT Amounts
             'a1_vat': khmer_currency(a1_vat),
             'a2_vat': khmer_currency(a2_vat),
             'a3_vat': khmer_currency(a3_vat),
             'a4_vat': khmer_currency(a4_vat),
             'a5_vat': khmer_currency(a5_vat),
 
-            # Annex BASE Amounts (* 10)
             'a2_base': khmer_currency(a2_base),
             'a3_base': khmer_currency(a3_base),
             'a4_base': khmer_currency(a4_base),
             'a5_base': khmer_currency(a5_base),
 
-            # Summary Totals
             'total_in_base': khmer_currency(total_in_base),
             'total_in_vat': khmer_currency(total_in_vat),
             'total_out_base': khmer_currency(total_out_base),
             'total_out_vat': khmer_currency(total_out_vat),
             'verifiable_vat': khmer_currency(verifiable_vat),
 
-            # Tax Paid Data
             'tax_list': tax_list,
             'tax_total_amount': khmer_currency(grand_total_tax)
         }
 
-        # 5. RENDER WORD DOCUMENT
         template_path = os.path.join(settings.BASE_DIR, 'templates', 'Sample-Word_Report.docx')
         if not os.path.exists(template_path):
             template_path = os.path.join(settings.MEDIA_ROOT, 'templates', 'Sample-Word_Report.docx')
@@ -2301,7 +2435,6 @@ def download_word_report(request):
         doc = DocxTemplate(template_path)
         doc.render(context)
 
-        # Save to memory and return
         file_stream = io.BytesIO()
         doc.save(file_stream)
         file_stream.seek(0)
