@@ -1,5 +1,7 @@
 {% extends 'base.html' %} {% block title %}Reporting Module{% endblock %} {% block content %}
 
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
 <style>
     /* Premium Custom Scrollbar */
     .custom-scrollbar::-webkit-scrollbar {
@@ -45,7 +47,7 @@
     thead.sticky-header th {
         position: sticky;
         top: 0;
-        z-index: 30; /* Increased z-index */
+        z-index: 30;
     }
 </style>
 
@@ -115,7 +117,7 @@
         <div class="flex gap-4 items-center mt-3 md:mt-0">
             <div class="relative w-full md:w-80 group">
                 <span class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-indigo-500 text-slate-400">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0118 0z"></path></svg>
                 </span>
                 <input type="text" x-model="searchInput" @keydown.enter="searchSession()" placeholder="Search OVATR ID..." class="pl-11 pr-4 w-full rounded-xl border-slate-300 dark:border-slate-700 bg-white dark:bg-[#0b1121] dark:text-white text-sm py-2.5 shadow-inner focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all placeholder-slate-400" />
             </div>
@@ -137,9 +139,13 @@
             </div>
 
             <div x-show="ovatr" class="relative inline-block text-left z-50" @click.away="openExport = false">
-                <button @click="openExport = !openExport" class="relative z-50 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 text-sm font-bold transition-all flex items-center gap-2 focus:outline-none ring-1 ring-inset ring-white/20 h-[42px]">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                    Export
+                <button @click="openExport = !openExport" class="relative z-50 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-indigo-500/25 text-sm font-bold transition-all flex items-center gap-2 focus:outline-none ring-1 ring-inset ring-white/20 h-[42px]" :disabled="isExportingExcel">
+                    <svg x-show="!isExportingExcel" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                    <svg x-show="isExportingExcel" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span x-text="isExportingExcel ? 'Exporting...' : 'Export'"></span>
                     <svg class="w-4 h-4 opacity-70 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path></svg>
                 </button>
 
@@ -155,12 +161,12 @@
                     style="min-width: max-content"
                     x-cloak
                 >
-                    <a :href="'/crosscheck/download_full_report/?ovatr_code=' + ovatr" class="block px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-700/50 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 transition-colors group relative z-[10000]" target="_blank" @click="openExport = false">
+                    <button @click.prevent="openExport = false; generateAndProcessReport(ovatr)" class="w-full text-left block px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-slate-700/50 flex items-center gap-3 border-b border-slate-100 dark:border-slate-700 transition-colors group relative z-[10000]">
                         <div class="p-1.5 bg-emerald-100 dark:bg-emerald-500/20 rounded-md group-hover:scale-110 transition-transform">
                             <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                         </div>
                         Export Excel
-                    </a>
+                    </button>
                     <a :href="'/crosscheck/download_word_report/?ovatr_code=' + ovatr" class="block px-4 py-3 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700/50 flex items-center gap-3 transition-colors group relative z-[10000]" target="_blank" @click="openExport = false">
                         <div class="p-1.5 bg-blue-100 dark:bg-blue-500/20 rounded-md group-hover:scale-110 transition-transform">
                             <svg class="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
@@ -196,12 +202,14 @@
                 </div>
             </div>
 
-            <table class="text-xs text-left border-separate border-spacing-0 w-full min-w-max">
+            <table class="text-xs text-left border-separate border-spacing-0 w-full" :class="currentTab === 'company' ? 'table-fixed' : 'min-w-max'">
                 <colgroup>
-                    <col style="width: 50px; min-width: 50px" />
+                    <col style="width: 60px" />
                     <template x-if="currentTab === 'company'">
-                        <col style="width: 30%" />
-                        <col style="width: 70%" />
+                        <col style="width: 35%" />
+                    </template>
+                    <template x-if="currentTab === 'company'">
+                        <col style="width: calc(65% - 60px)" />
                     </template>
 
                     <template x-if="currentTab !== 'company'">
@@ -213,16 +221,26 @@
 
                 <thead class="sticky-header shadow-md z-30 relative">
                     <tr class="bg-slate-200 dark:bg-slate-800">
-                        <th class="px-2 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 text-center bg-slate-200 dark:bg-slate-800 shadow-sm">No</th>
+                        <th class="px-2 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 text-center bg-slate-200 dark:bg-slate-800 shadow-sm" style="width: 60px">No</th>
+
                         <template x-if="currentTab === 'company'">
                             <th class="px-4 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800 align-middle text-left shadow-sm">Field Name</th>
                         </template>
                         <template x-if="currentTab === 'company'">
                             <th class="px-4 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-b-2 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800 align-middle text-left shadow-sm">Value</th>
                         </template>
+
                         <template x-if="currentTab !== 'company'">
                             <template x-for="col in displayColumns" :key="col.key">
-                                <th class="px-4 py-3 font-extrabold text-slate-700 dark:text-slate-200 uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800 align-middle text-center truncate shadow-sm" x-text="col.label"></th>
+                                <th
+                                    class="px-4 py-3 font-extrabold uppercase tracking-widest border-r border-b-2 border-slate-300 dark:border-slate-600 bg-slate-200 dark:bg-slate-800 align-middle text-center truncate shadow-sm"
+                                    :class="{
+                                        'text-blue-600 dark:text-blue-400': col.isApprove,
+                                        'text-rose-600 dark:text-rose-400': col.isShortfall,
+                                        'text-slate-700 dark:text-slate-200': !col.isApprove && !col.isShortfall
+                                    }"
+                                    x-text="col.label"
+                                ></th>
                             </template>
                         </template>
                     </tr>
@@ -242,29 +260,44 @@
 
                             <template x-if="currentTab === 'company'">
                                 <td class="px-4 py-3 border-r border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/20 font-bold text-slate-700 dark:text-slate-300 align-middle truncate uppercase tracking-wide text-[10px]">
-                                    <span x-text="formatFieldLabel(row.key)"></span>
+                                    <span x-text="formatFieldLabel(row.key)" :title="formatFieldLabel(row.key)"></span>
                                 </td>
                             </template>
 
                             <template x-if="currentTab === 'company'">
-                                <td @click="handleCellAction(row, 'value', row.value)" title="Click to copy, Dbl-click to edit" class="p-0 border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors">
+                                <td @click="handleCellAction(row, 'value', row.value)" title="Click to copy, Dbl-click to edit" class="p-0 border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors max-w-0">
                                     <div class="w-full h-full relative group/cell">
                                         <div x-show="!isEditing(row, 'value')" class="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 text-indigo-400 transition-opacity pointer-events-none">
                                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                         </div>
 
                                         <template x-if="isEditing(row, 'value')">
-                                            <input
-                                                type="text"
-                                                x-model="row.value"
-                                                @click.stop
-                                                @blur="stopEdit(row, 'value')"
-                                                @keydown.enter.prevent="stopEdit(row, 'value')"
-                                                class="edit-input w-full h-full min-h-[3rem] px-4 py-3 bg-white dark:bg-[#090e17] ring-2 ring-indigo-500 border-0 text-xs font-medium text-slate-900 dark:text-slate-100 shadow-xl z-10 relative rounded-md"
-                                                :class="{'text-right font-mono font-bold': isAmountCol(row.key)}"
-                                                autofocus
-                                            />
+                                            <div>
+                                                <template x-if="isAmountCol(row.key)">
+                                                    <input
+                                                        type="text"
+                                                        :value="row.value"
+                                                        @input="formatInput($event, row, 'value')"
+                                                        @blur="stopEdit(row, 'value')"
+                                                        @keydown.enter.prevent="stopEdit(row, 'value')"
+                                                        class="edit-input w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 z-10 relative text-right font-mono font-bold"
+                                                        autofocus
+                                                    />
+                                                </template>
+                                                <template x-if="!isAmountCol(row.key)">
+                                                    <input
+                                                        type="text"
+                                                        :value="row.value"
+                                                        @input="row.value = $event.target.value"
+                                                        @blur="stopEdit(row, 'value')"
+                                                        @keydown.enter.prevent="stopEdit(row, 'value')"
+                                                        class="edit-input w-full px-2 py-1 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 z-10 relative"
+                                                        autofocus
+                                                    />
+                                                </template>
+                                            </div>
                                         </template>
+
                                         <template x-if="!isEditing(row, 'value')">
                                             <div class="px-4 py-3 w-full h-full flex items-center overflow-hidden truncate whitespace-nowrap text-left font-medium text-slate-600 dark:text-slate-300" :class="{'font-mono': isAmountCol(row.key)}" x-text="formatValue(row.value, row.key)" :title="isModified(row, 'value') ? 'Original: ' + row._orig.value : row.value"></div>
                                         </template>
@@ -274,48 +307,87 @@
 
                             <template x-if="currentTab !== 'company'">
                                 <template x-for="col in displayColumns" :key="col.key">
-                                    <td @click="handleCellAction(row, col.key, row[getDynamicKey(row, col.key)])" title="Click to copy, Dbl-click to edit" class="p-0 border-r border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors">
+                                    <td @click="handleCellAction(row, col.key, col.isStatus ? getEffectiveStatus(row) : row[col.key])" title="Click to copy, Dbl-click to edit" class="p-0 border-r border-slate-100 dark:border-slate-800 relative align-middle cursor-pointer transition-colors max-w-0">
                                         <div class="w-full h-full relative group/cell">
-                                            <div x-show="!isEditing(row, col.key)" class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 text-indigo-400 transition-opacity pointer-events-none">
+                                            <div x-show="!isEditing(row, col.key) && !col.isShortfall" class="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/cell:opacity-100 text-indigo-400 transition-opacity pointer-events-none">
                                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                                             </div>
 
                                             <template x-if="isEditing(row, col.key)">
-                                                <input
-                                                    type="text"
-                                                    x-model="row[getDynamicKey(row, col.key.toLowerCase() === 'status' ? 'user_status' : col.key)]"
-                                                    @click.stop
-                                                    @blur="stopEdit(row, col.key)"
-                                                    @keydown.enter.prevent="stopEdit(row, col.key)"
-                                                    class="edit-input w-full h-full min-h-[3rem] px-3 py-3 bg-white dark:bg-[#090e17] ring-2 ring-indigo-500 border-0 text-xs font-medium text-slate-900 dark:text-slate-100 shadow-xl z-10 relative rounded-md"
-                                                    :class="{'text-right font-mono font-bold': isAmountCol(col.key), 'text-center': col.key.toLowerCase() === 'status'}"
-                                                    autofocus
-                                                />
+                                                <div class="w-full h-full flex items-center px-1">
+                                                    <template x-if="col.isAmount">
+                                                        <input
+                                                            type="text"
+                                                            :value="row[col.key]"
+                                                            @input="formatInput($event, row, col.key)"
+                                                            @blur="stopEdit(row, col.key)"
+                                                            @keydown.enter.prevent="stopEdit(row, col.key)"
+                                                            class="edit-input w-full px-2 py-1.5 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 z-10 relative text-right font-mono font-bold"
+                                                            autofocus
+                                                        />
+                                                    </template>
+
+                                                    <template x-if="col.isStatus">
+                                                        <select
+                                                            :value="row['user_status']"
+                                                            @change="row['user_status'] = $event.target.value; stopEdit(row, col.key)"
+                                                            @blur="stopEdit(row, col.key)"
+                                                            class="edit-input w-full px-1 py-1.5 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 z-10 relative text-center font-bold cursor-pointer"
+                                                            autofocus
+                                                        >
+                                                            <option value="">-- Clear / Select Status --</option>
+                                                            <template x-for="stat in availableStatuses" :key="stat.name">
+                                                                <option :value="stat.name" x-text="stat.name"></option>
+                                                            </template>
+                                                        </select>
+                                                    </template>
+
+                                                    <template x-if="!col.isAmount && !col.isStatus">
+                                                        <input
+                                                            type="text"
+                                                            :value="row[col.key]"
+                                                            @input="row[col.key] = $event.target.value"
+                                                            @blur="stopEdit(row, col.key)"
+                                                            @keydown.enter.prevent="stopEdit(row, col.key)"
+                                                            class="edit-input w-full px-2 py-1.5 text-[11px] border border-indigo-300 rounded shadow-inner dark:bg-slate-900 dark:text-white dark:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500 z-10 relative"
+                                                            :class="col.isDate ? 'text-center' : 'text-left'"
+                                                            autofocus
+                                                        />
+                                                    </template>
+                                                </div>
                                             </template>
 
                                             <template x-if="!isEditing(row, col.key)">
                                                 <div
-                                                    class="px-3 py-3 h-full flex items-center overflow-hidden text-slate-600 dark:text-slate-300"
+                                                    class="px-3 py-3 w-full h-full flex items-center overflow-hidden"
                                                     :class="{
-                                                        'truncate max-w-[300px]': col.key.toLowerCase() === 'description',
-                                                        'whitespace-nowrap w-full': col.key.toLowerCase() !== 'description',
-                                                        'justify-end font-mono font-bold text-slate-700 dark:text-slate-200': isAmountCol(col.key), 
-                                                        'justify-center': col.key.toLowerCase() === 'status', 
-                                                        'justify-start font-medium': !isAmountCol(col.key) && col.key.toLowerCase() !== 'status'
+                                                        'justify-center': col.isStatus
                                                     }"
-                                                    :title="isModified(row, col.key) ? 'Original: ' + formatValue(row._orig[getDynamicKey(row, col.key)], col.key) : row[getDynamicKey(row, col.key)]"
+                                                    :title="isModified(row, col.key) ? 'Original: ' + formatValue(row._orig[col.isStatus ? 'user_status' : col.key], col.key) : (col.isStatus ? getEffectiveStatus(row) : row[col.key])"
                                                 >
-                                                    <template x-if="col.key.toLowerCase() !== 'status'">
-                                                        <span x-text="formatValue(row[getDynamicKey(row, col.key)], col.key)"></span>
+                                                    <template x-if="!col.isStatus">
+                                                        <span
+                                                            class="truncate w-full block"
+                                                            :class="{
+                                                                  'text-right font-mono font-bold text-slate-700 dark:text-slate-200': col.isAmount && !col.isShortfall && !col.isApprove,
+                                                                  'text-right font-mono font-bold text-rose-600 dark:text-rose-400': col.isShortfall,
+                                                                  'text-right font-mono font-bold text-blue-600 dark:text-blue-400': col.isApprove,
+                                                                  'text-center': col.isDate,
+                                                                  'text-left font-medium text-slate-600 dark:text-slate-300': !col.isAmount && !col.isDate
+                                                              }"
+                                                            x-text="formatValue(row[col.key], col.key)"
+                                                        ></span>
                                                     </template>
 
-                                                    <template x-if="col.key.toLowerCase() === 'status'">
+                                                    <template x-if="col.isStatus">
                                                         <div class="flex items-center justify-center w-full h-full">
                                                             <template x-if="getEffectiveStatus(row) !== ''">
-                                                                <span class="px-3 py-1.5 rounded-md font-bold text-[10px] tracking-wider uppercase border inline-block whitespace-nowrap" :class="getStatusColor(getEffectiveStatus(row))" x-text="getEffectiveStatus(row)"> </span>
+                                                                <div class="w-full max-w-[150px] py-1.5 px-1 rounded-md font-bold text-[10px] tracking-wide uppercase border inline-flex items-center justify-center text-center shadow-[inset_0_1px_2px_rgba(0,0,0,0.1)] transition-colors mx-auto" :class="getStatusColor(getEffectiveStatus(row))">
+                                                                    <span x-text="getEffectiveStatus(row)" class="leading-tight truncate w-full"></span>
+                                                                </div>
                                                             </template>
                                                             <template x-if="getEffectiveStatus(row) === ''">
-                                                                <span class="text-slate-300 dark:text-slate-600 text-xs font-bold">--</span>
+                                                                <span class="text-slate-300 dark:text-slate-600 text-xs font-bold text-center w-full block">--</span>
                                                             </template>
                                                         </div>
                                                     </template>
@@ -393,22 +465,22 @@
             currentTab: 'company',
             openExport: false,
             showScrollTop: false,
+            isExportingExcel: false,
 
             history: [],
             historyIndex: -1,
-
             showHistoryModal: false,
             historyRowId: null,
             displayRowId: null,
             historyLogs: [],
-            historyLoading: false,
             historyFilter: '',
+
+            availableStatuses: [{name: 'ព្យួរទុក (មិនមានទិន្នន័យ)'}, {name: 'បានប្រកាស (អនុញ្ញាត)'}, {name: 'ប្រកាសខុស (ព្យួរទុក)'}, {name: 'អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)'}, {name: 'ព្យួរទុក (មិនមានឯកសារគាំទ្រ)'}, {name: 'ព្យួរទុក (ខុសវិធានវិក្កយបត្រអាករ)'}],
 
             clicks: 0,
             clickTimer: null,
             clickDelay: 250,
 
-            // State for extracted request years
             startYear: null,
             endYear: null,
 
@@ -466,6 +538,9 @@
                 i_patent_amount: 'Patent Amount',
                 i_vat_cert_date: 'VAT Cert Date',
                 i_request_submission_date: 'Request Submission Date',
+                approve_amount: 'Approve Amount',
+                shortfall: 'Shortfall (ខ្វះ)',
+                annex2_note: 'Note',
             },
 
             rows: [],
@@ -475,15 +550,271 @@
             pageSize: 50,
             pageSizePreset: '50',
             toast: {show: false, message: '', type: 'success'},
-            editingState: {idx: null, key: null},
+
+            // Highly optimized single-point reference for edit states to fix UI Freeze!
+            editingState: {rowId: null, key: null},
 
             init() {
+                // 1. If URL has an ID, save it to the browser's memory
+                if (this.ovatr) {
+                    localStorage.setItem('active_ovatr_session', this.ovatr);
+                }
+                // 2. If URL is blank (user clicked sidebar), revive ID from memory
+                else {
+                    const activeSession = localStorage.getItem('active_ovatr_session');
+                    if (activeSession) {
+                        this.ovatr = activeSession;
+                        // Silently put the ID back into the address bar
+                        const url = new URL(window.location);
+                        url.searchParams.set('ovatr_code', activeSession);
+                        window.history.replaceState({}, '', url);
+                    }
+                }
+
+                // 3. Proceed with loading data
                 if (this.ovatr) {
                     this.searchInput = this.ovatr;
                     this.loadLocalHistory();
-                    this.fetchRequestedPeriod(); // Fetch the years independently to ensure it's loaded
+
+                    // Note: 'this.fetchRequestedPeriod();' is only in report.html.
+                    // If you are pasting this into results.html, just remove that specific line!
+                    if (typeof this.fetchRequestedPeriod === 'function') {
+                        this.fetchRequestedPeriod();
+                    }
+
                     this.fetchData();
                 }
+            },
+
+            getRowId(row) {
+                if (this.currentTab === 'company') return row.key;
+                if (this.currentTab === 'taxpaid') return row.description;
+                return String(row.no);
+            },
+
+            formatInput(e, row, valKey) {
+                let val = e.target.value;
+                if (!val) {
+                    row[valKey] = '';
+                    e.target.value = '';
+                    return;
+                }
+
+                let raw = val.replace(/[^\d.-]/g, '');
+                let isNegative = val.startsWith('-');
+                raw = raw.replace(/-/g, '');
+
+                let parts = raw.split('.');
+                if (parts.length > 2) parts.pop();
+
+                if (parts[0]) {
+                    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                }
+
+                let formatted = parts.join('.');
+                if (isNegative && formatted !== '') formatted = '-' + formatted;
+                if (val.endsWith('.') && !formatted.endsWith('.')) formatted += '.';
+
+                e.target.value = formatted;
+                row[valKey] = formatted;
+            },
+
+            async generateAndProcessReport(ovatrCode) {
+                if (!ovatrCode) return this.showToast('Missing OVATR Code', 'error');
+
+                this.isExportingExcel = true;
+                this.showToast('Generating Excel & Processing Summary...', 'success');
+
+                try {
+                    const response = await fetch(`/crosscheck/download_full_report/?ovatr_code=${ovatrCode}`);
+                    if (!response.ok) throw new Error('Failed to generate report on server.');
+                    const arrayBuffer = await response.arrayBuffer();
+
+                    const workbook = XLSX.read(arrayBuffer, {type: 'array', cellFormula: true});
+                    const sheetName = 'AnnexIII-Local Pur';
+
+                    if (workbook.Sheets[sheetName]) {
+                        const sheet = workbook.Sheets[sheetName];
+                        const range = XLSX.utils.decode_range(sheet['!ref']);
+                        let extractedData = [];
+                        let isCapturing = false;
+
+                        const START_KEYWORD = 'ចំនួនប្រាក់អាករលើធាតុចូលសរុប';
+                        const STOP_KEYWORD = 'សរុបប្រាក់អាករគួរបង្វិលសងជូនក្រុមហ៊ុន';
+
+                        for (let R = range.s.r; R <= range.e.r; ++R) {
+                            const cellB = sheet[XLSX.utils.encode_cell({c: 1, r: R})];
+                            const colB_Text = cellB && cellB.v ? String(cellB.v).trim() : '';
+
+                            if (colB_Text.includes(START_KEYWORD)) isCapturing = true;
+
+                            if (isCapturing) {
+                                const cellC = sheet[XLSX.utils.encode_cell({c: 2, r: R})];
+                                const cellE = sheet[XLSX.utils.encode_cell({c: 4, r: R})];
+
+                                let colC_Value = 0;
+
+                                if (cellC) {
+                                    if (cellC.f) {
+                                        colC_Value = this.evaluateMath(workbook, sheetName, cellC.f);
+                                    } else if (cellC.v !== undefined && cellC.v !== null) {
+                                        colC_Value = parseFloat(String(cellC.v).replace(/,/g, '')) || 0;
+                                    }
+                                }
+
+                                extractedData.push({
+                                    ovatr: ovatrCode,
+                                    description: colB_Text,
+                                    total_amount: colC_Value,
+                                    other: cellE && cellE.v ? String(cellE.v).trim() : '',
+                                });
+
+                                if (colB_Text.includes(STOP_KEYWORD)) break;
+                            }
+                        }
+
+                        if (extractedData.length > 0) {
+                            const saveResponse = await fetch('/crosscheck/api/save-report-summary/', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': this.getCookie('csrftoken'),
+                                },
+                                body: JSON.stringify({summary_data: extractedData}),
+                            });
+                            if (!saveResponse.ok) console.warn('Failed to save summary silently to DB.');
+                        }
+                    }
+
+                    this.triggerDownload(arrayBuffer, `FullReport_${ovatrCode}.xlsx`);
+                    this.showToast('Excel Downloaded Successfully', 'success');
+                } catch (error) {
+                    console.error('Error processing report:', error);
+                    this.showToast('Error processing report: ' + error.message, 'error');
+                } finally {
+                    this.isExportingExcel = false;
+                }
+            },
+
+            evaluateMath(workbook, currentSheetName, formulaString, depth = 0) {
+                if (!formulaString || depth > 15) return 0;
+                let clean = formulaString.replace(/=/g, '').replace(/\$/g, '').trim().toUpperCase();
+
+                const getCellValue = (wb, sName, cellAddress) => {
+                    let s = wb.Sheets[sName];
+                    if (!s) {
+                        let actualName = Object.keys(wb.Sheets).find((n) => n.toUpperCase() === sName.toUpperCase());
+                        if (actualName) s = wb.Sheets[actualName];
+                    }
+                    if (!s) return 0;
+
+                    let c = s[cellAddress];
+                    if (!c) return 0;
+                    if (c.f) return this.evaluateMath(wb, sName, c.f, depth + 1);
+                    return parseFloat(String(c.v).replace(/,/g, '')) || 0;
+                };
+
+                const parseRef = (token) => {
+                    token = token.trim();
+                    if (!token) return 0;
+                    let match1 = token.match(/^'([^']+)'!([A-Z]+\d+)$/);
+                    if (match1) return getCellValue(workbook, match1[1], match1[2]);
+
+                    let match2 = token.match(/^([^!]+)!([A-Z]+\d+)$/);
+                    if (match2) return getCellValue(workbook, match2[1], match2[2]);
+
+                    if (/^[A-Z]+\d+$/.test(token)) return getCellValue(workbook, currentSheetName, token);
+
+                    let cleanNum = String(token).replace(/,/g, '');
+                    if (!isNaN(parseFloat(cleanNum))) return parseFloat(cleanNum);
+
+                    return 0;
+                };
+
+                let sumMatch = clean.match(/SUM\((.*?)\)/);
+                if (sumMatch) {
+                    let rangeStr = sumMatch[1].trim();
+                    let targetSheet = currentSheetName;
+                    let addressPart = rangeStr;
+
+                    let sheetMatch = rangeStr.match(/^(?:'([^']+)'|([^!]+))!(.*)$/);
+                    if (sheetMatch) {
+                        targetSheet = sheetMatch[1] || sheetMatch[2];
+                        addressPart = sheetMatch[3];
+                    }
+
+                    let bounds = addressPart.split(':');
+                    if (bounds.length === 2) {
+                        let start = XLSX.utils.decode_cell(bounds[0]);
+                        let end = XLSX.utils.decode_cell(bounds[1]);
+
+                        let s = workbook.Sheets[targetSheet];
+                        if (!s) {
+                            let actualName = Object.keys(workbook.Sheets).find((n) => n.toUpperCase() === targetSheet.toUpperCase());
+                            if (actualName) s = workbook.Sheets[actualName];
+                        }
+                        if (!s) return 0;
+
+                        let sum = 0;
+                        for (let r = start.r; r <= end.r; ++r) {
+                            for (let c = start.c; c <= end.c; ++c) {
+                                let cellObj = s[XLSX.utils.encode_cell({r: r, c: c})];
+                                if (cellObj) {
+                                    if (cellObj.f) sum += this.evaluateMath(workbook, targetSheet, cellObj.f, depth + 1);
+                                    else if (cellObj.v !== undefined && cellObj.v !== null) sum += parseFloat(String(cellObj.v).replace(/,/g, '')) || 0;
+                                }
+                            }
+                        }
+                        return sum;
+                    }
+                }
+
+                if (!clean.includes('(')) {
+                    let tokens = clean.split(/([+-])/);
+                    if (tokens.length > 0) {
+                        let result = 0;
+                        let currentOp = '+';
+                        for (let i = 0; i < tokens.length; i++) {
+                            let token = tokens[i].trim();
+                            if (token === '+' || token === '-') {
+                                currentOp = token;
+                            } else if (token !== '') {
+                                let val = parseRef(token);
+                                if (currentOp === '+') result += val;
+                                else if (currentOp === '-') result -= val;
+                            }
+                        }
+                        return result;
+                    }
+                }
+
+                return parseRef(clean);
+            },
+
+            triggerDownload(buffer, filename) {
+                const blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(link.href);
+            },
+
+            getCookie(name) {
+                let cookieValue = null;
+                if (document.cookie && document.cookie !== '') {
+                    const cookies = document.cookie.split(';');
+                    for (let i = 0; i < cookies.length; i++) {
+                        const cookie = cookies[i].trim();
+                        if (cookie.substring(0, name.length + 1) === name + '=') {
+                            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                            break;
+                        }
+                    }
+                }
+                return cookieValue;
             },
 
             fetchRequestedPeriod() {
@@ -494,7 +825,6 @@
                         if (res.status === 'success') {
                             const reqDateRow = res.data.find((r) => r.key === 'i_request_date');
                             if (reqDateRow && reqDateRow.value) {
-                                // Extract all 4-digit numbers (years) from the string using regex
                                 const years = String(reqDateRow.value).match(/\d{4}/g);
                                 if (years && years.length > 0) {
                                     this.startYear = Math.min(...years.map(Number));
@@ -507,10 +837,7 @@
             },
 
             saveLocalHistory() {
-                const data = {
-                    history: this.history,
-                    historyIndex: this.historyIndex,
-                };
+                const data = {history: this.history, historyIndex: this.historyIndex};
                 localStorage.setItem(`report_history_${this.ovatr}`, JSON.stringify(data));
             },
 
@@ -536,11 +863,7 @@
             },
 
             viewHistory(row, idx) {
-                let idVal = null;
-                if (this.currentTab === 'company') idVal = row['key'];
-                else if (this.currentTab === 'taxpaid') idVal = row['description'];
-                else idVal = String(row['no']);
-
+                let idVal = this.getRowId(row);
                 this.historyRowId = idVal;
                 this.displayRowId = (this.currentPage - 1) * this.pageSize + idx + 1;
                 this.historyFilter = '';
@@ -584,6 +907,7 @@
                 row.has_history = true;
                 row._modified_fields[field] = true;
 
+                this.recalculateRow(row);
                 this.pushHistoryAction(row, field, currentValue, restoredValue);
                 this.updateCell(row, field, restoredValue);
 
@@ -603,6 +927,7 @@
             },
 
             handleCellAction(row, field, textToCopy) {
+                if (field === 'shortfall') return; // Prevent manual editing of calculated fields
                 if (this.isEditing(row, field)) return;
 
                 let copyText = textToCopy;
@@ -635,11 +960,7 @@
                     this.history = this.history.slice(0, this.historyIndex + 1);
                 }
 
-                let idVal = null;
-                if (this.currentTab === 'company') idVal = row['key'];
-                else if (this.currentTab === 'taxpaid') idVal = row['description'];
-                else idVal = String(row['no']);
-
+                let idVal = this.getRowId(row);
                 const time = new Date().toLocaleTimeString('en-US', {hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'});
 
                 this.history.push({
@@ -667,6 +988,7 @@
                     row[action.field] = action.oldValue;
                     row.has_history = true;
                     row._modified_fields[action.field] = true;
+                    this.recalculateRow(row);
                     this.updateCell(row, action.field, action.oldValue);
                 }
                 this.historyIndex--;
@@ -687,6 +1009,7 @@
                     row[action.field] = action.newValue;
                     row.has_history = true;
                     row._modified_fields[action.field] = true;
+                    this.recalculateRow(row);
                     this.updateCell(row, action.field, action.newValue);
                 }
                 this.saveLocalHistory();
@@ -733,12 +1056,20 @@
             searchSession() {
                 const code = this.searchInput.trim().toUpperCase();
                 if (!code.startsWith('OVATR')) return this.showToast('Invalid Format. Must start with OVATR', 'error');
+
+                // Save the newly searched ID to memory
+                localStorage.setItem('active_ovatr_session', code);
+
                 const url = new URL(window.location);
                 url.searchParams.set('ovatr_code', code);
                 window.history.pushState({}, '', url);
                 this.ovatr = code;
                 this.loadLocalHistory();
-                this.fetchRequestedPeriod();
+
+                if (typeof this.fetchRequestedPeriod === 'function') {
+                    this.fetchRequestedPeriod();
+                }
+
                 this.fetchData();
             },
 
@@ -758,9 +1089,12 @@
                     .then((res) => {
                         this.loading = false;
                         if (res.status === 'success') {
+                            if (res.statuses && res.statuses.length > 0) {
+                                this.availableStatuses = res.statuses;
+                            }
+
                             let fetchedRows = res.data;
 
-                            // Also catch it here to ensure it's reactive when loading the company tab initially
                             if (this.currentTab === 'company') {
                                 const reqDateRow = fetchedRows.find((r) => r.key === 'i_request_date');
                                 if (reqDateRow && reqDateRow.value) {
@@ -772,11 +1106,10 @@
                                 }
                             }
 
-                            // DYNAMIC TAXPAID FILTERING BASED ON i_request_date YEARS
                             if (this.currentTab === 'taxpaid' && this.startYear && this.endYear) {
                                 fetchedRows = fetchedRows.filter((r) => {
                                     const y = parseInt(r.tax_year);
-                                    if (isNaN(y)) return true; // keep header/metadata rows safe if exist
+                                    if (isNaN(y)) return true;
                                     return y >= this.startYear && y <= this.endYear;
                                 });
                             }
@@ -789,14 +1122,19 @@
                                 if (!uKey) r['USER_STATUS'] = '';
                                 if (!sKey) r['SYS_STATUS'] = '';
 
+                                if (this.currentTab === 'annex_2') {
+                                    r.approve_amount = r.approve_amount || 0;
+                                    r.annex2_note = r.annex2_note || '';
+                                    let imp = parseFloat(String(r.import || 0).replace(/,/g, '')) || 0;
+                                    let app = parseFloat(String(r.approve_amount || 0).replace(/,/g, '')) || 0;
+                                    r.shortfall = imp - app;
+                                }
+
                                 r._orig = JSON.parse(JSON.stringify(r));
                                 r._modified_fields = {};
                                 r.has_history = false;
 
-                                let idVal = null;
-                                if (this.currentTab === 'company') idVal = r['key'];
-                                else if (this.currentTab === 'taxpaid') idVal = r['description'];
-                                else idVal = String(r['no']);
+                                let idVal = this.getRowId(r);
 
                                 const rowHistory = this.history.filter((h) => String(h.idVal) === String(idVal) && h.sheet === this.currentTab && this.history.indexOf(h) <= this.historyIndex);
 
@@ -807,6 +1145,7 @@
                                     });
                                 }
                             });
+
                             this.columns = res.columns;
                         } else {
                             this.showToast(res.message, 'error');
@@ -819,6 +1158,7 @@
                     });
             },
 
+            // Pre-calculate rendering conditions to eliminate UI Freezes entirely
             get displayColumns() {
                 if (this.currentTab === 'company') return [];
 
@@ -835,7 +1175,10 @@
                         order = ['description', 'supplier_name', 'supplier_tin', 'invoice_no', 'date', 'import_state_charge'];
                         break;
                     case 'annex_2':
-                        order = ['description', 'supplier_name', 'supplier_tin', 'invoice_no', 'date', 'import'];
+                        if (!availableCols.find((c) => c.key === 'approve_amount')) availableCols.push({key: 'approve_amount', label: 'APPROVE AMOUNT'});
+                        if (!availableCols.find((c) => c.key === 'shortfall')) availableCols.push({key: 'shortfall', label: 'SHORTFALL (ខ្វះ)'});
+                        if (!availableCols.find((c) => c.key === 'annex2_note')) availableCols.push({key: 'annex2_note', label: 'NOTE'});
+                        order = ['description', 'supplier_name', 'supplier_tin', 'invoice_no', 'date', 'import', 'approve_amount', 'shortfall', 'annex2_note'];
                         break;
                     case 'annex_3':
                         order = ['description', 'supplier_name', 'supplier_tin', 'invoice_no', 'date', 'amount'];
@@ -860,29 +1203,37 @@
                     if (!order.includes(col.key.toLowerCase())) finalCols.push(col);
                 });
 
-                if (this.currentTab !== 'taxpaid') {
-                    finalCols.push({key: 'status', label: 'STATUS'});
-                }
+                if (this.currentTab !== 'taxpaid') finalCols.push({key: 'status', label: 'STATUS'});
+
+                // Pre-calculate expensive boolean checks once to fix UI lag
+                finalCols.forEach((col) => {
+                    col.isAmount = this.isAmountCol(col.key);
+                    col.isStatus = col.key.toLowerCase() === 'status';
+                    col.isDate = col.key.toLowerCase() === 'date';
+                    col.isDesc = col.key.toLowerCase() === 'description' || col.key.toLowerCase() === 'supplier_name' || col.key.toLowerCase() === 'supplier_tin';
+                    col.isShortfall = col.key.toLowerCase() === 'shortfall';
+                    col.isApprove = col.key.toLowerCase() === 'approve_amount';
+                });
 
                 return finalCols;
             },
 
             getColumnStyle(tab, key) {
                 const k = key.toLowerCase();
-
-                // Keep description strictly capped at 300px
-                if (k === 'description' || k === 'supplier_name' || k === 'supplier_tin') return 'max-width: 300px; min-width: 200px;';
-
-                // Allow statuses to flex a bit but don't let them shrink too small
-                if (k === 'status') return 'min-width: 140px; width: auto;';
-                if (k === 'tax_year') return 'min-width: 90px; width: auto;';
-
-                // Make sure months/amounts never get too squished
-                if (this.isAmountCol(key) || ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].includes(k)) {
-                    return 'min-width: 110px; width: auto;';
+                if (k === 'description' || k === 'supplier_name' || k === 'supplier_tin' || k === 'tax_registration_id' || k === 'buyer_name') return 'max-width: 150px; min-width: 150px; width: 10%;';
+                if (k === 'status') {
+                    if (tab === 'annex_4' || tab === 'annex_5') {
+                        return 'min-width: 100px; width: 100px;';
+                    }
+                    return 'min-width: 200px; width: 200px;';
                 }
-
-                // Default auto behavior for names/TINs/Invoice numbers
+                if (k === 'tax_year') return 'min-width: 90px; width: 90px;';
+                if (k === 'annex2_note') return 'min-width: 130px; width: auto;';
+                if (k === 'date') return 'min-width: 110px; width: 110px; text-align: center;';
+                if (k === 'invoice_no') return 'min-width: 100px; width: 100px;';
+                if (this.isAmountCol(key) || ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].includes(k)) {
+                    return 'min-width: 100px; width: 100px;';
+                }
                 return 'width: auto; white-space: nowrap;';
             },
 
@@ -895,67 +1246,115 @@
             },
 
             getEffectiveStatus(row) {
-                const uKey = this.getDynamicKey(row, 'user_status');
-                const sKey = this.getDynamicKey(row, 'sys_status');
+                const uStatus = row['user_status'] || row['USER_STATUS'];
+                const sStatus = row['sys_status'] || row['SYS_STATUS'];
 
-                const uStatus = row[uKey];
-                const sStatus = row[sKey];
-
-                if (uStatus !== null && uStatus !== undefined && String(uStatus).trim() !== '' && String(uStatus).toLowerCase() !== 'null') {
-                    return String(uStatus);
-                }
-                if (sStatus !== null && sStatus !== undefined && String(sStatus).trim() !== '' && String(sStatus).toLowerCase() !== 'null') {
-                    return String(sStatus);
-                }
+                if (uStatus !== null && uStatus !== undefined && String(uStatus).trim() !== '' && String(uStatus).toLowerCase() !== 'null') return String(uStatus);
+                if (sStatus !== null && sStatus !== undefined && String(sStatus).trim() !== '' && String(sStatus).toLowerCase() !== 'null') return String(sStatus);
                 return '';
             },
 
-            getStatusColor(text) {
-                if (!text) return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
+            // Completely robust matching using includes to handle database spaces/formatting
+            getStatusColor(rawText) {
+                if (!rawText) return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
 
+                const text = String(rawText).trim();
+
+                if (text.includes('បានប្រកាស (អនុញ្ញាត)')) return 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30';
+                if (text.includes('អនុញ្ញាត (អ្នកផ្គត់ផ្គង់ប្រកាសខ្វះ)')) return 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30';
+                if (text.includes('ព្យួរទុក (មិនមានទិន្នន័យ)')) return 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/30';
+                if (text.includes('ប្រកាសខុស') || text.includes('មិនមានឯកសារគាំទ្រ') || text.includes('ខុសវិធានវិក្កយបត្រអាករ')) {
+                    return 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/30';
+                }
+
+                // Fallbacks for custom english or partials
                 const lower = text.toLowerCase();
-
-                if (lower.includes('valid') || lower.includes('អនុញ្ញាត') || lower.includes('ត្រឹមត្រូវ') || lower.includes('បានប្រកាស') || lower.includes('ok')) {
-                    return 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20';
+                if (lower.includes('valid') || lower.includes('ok') || lower.includes('match') || lower.includes('អនុញ្ញាត')) {
+                    return 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/30';
                 }
-                if (lower.includes('invalid') || lower.includes('error') || lower.includes('មិន') || lower.includes('ខុស') || lower.includes('missing')) {
-                    return 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20';
+                if (lower.includes('invalid') || lower.includes('error') || lower.includes('not found') || lower.includes('ខុស') || lower.includes('មិន')) {
+                    return 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/30';
+                }
+                if (lower.includes('shortage')) {
+                    return 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-500/10 dark:text-blue-400 dark:border-blue-500/30';
+                }
+                if (lower.includes('mismatch') || lower.includes('suspend') || lower.includes('orange') || lower.includes('ព្យួរទុក')) {
+                    return 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/30';
                 }
 
-                return 'bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20';
+                // Generic gray fallback for unrecognized custom statuses (like "test")
+                return 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
             },
 
             startEdit(row, key) {
                 if (this.currentTab === 'company' && key === 'label_view') return;
+                if (key === 'shortfall') return;
 
-                let actualKey = key.toLowerCase() === 'status' ? this.getDynamicKey(row, 'user_status') : this.getDynamicKey(row, key);
+                let actualKey = key.toLowerCase() === 'status' ? 'user_status' : key;
 
-                const idx = this.rows.indexOf(row);
-                this.editingState = {idx: idx, key: actualKey};
+                if (this.isAmountCol(actualKey) && row[actualKey] !== null && row[actualKey] !== '') {
+                    let raw = String(row[actualKey]).replace(/[^\d.-]/g, '');
+                    if (raw) {
+                        let isNegative = raw.startsWith('-');
+                        raw = raw.replace(/-/g, '');
+                        let parts = raw.split('.');
+                        if (parts[0]) parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                        let formatted = parts.join('.');
+                        if (isNegative) formatted = '-' + formatted;
+                        row[actualKey] = formatted;
+                    }
+                }
+
+                // Super fast constant time ID assignment kills UI freeze!
+                this.editingState = {rowId: String(this.getRowId(row)), key: actualKey};
+
                 this.$nextTick(() => {
-                    const input = this.$el.querySelector('input.edit-input');
+                    const input = this.$el.querySelector('.edit-input');
                     if (input) {
                         input.focus();
-                        input.select();
+                        if (input.tagName === 'INPUT') input.select();
                     }
                 });
             },
 
             isEditing(row, key) {
-                let actualKey = key.toLowerCase() === 'status' ? this.getDynamicKey(row, 'user_status') : this.getDynamicKey(row, key);
-                const idx = this.rows.indexOf(row);
-                return this.editingState.idx === idx && this.editingState.key === actualKey;
+                let actualKey = key.toLowerCase() === 'status' ? 'user_status' : key;
+                return this.editingState.rowId === String(this.getRowId(row)) && this.editingState.key === actualKey;
+            },
+
+            isModified(row, key) {
+                let actualKey = key.toLowerCase() === 'status' ? 'user_status' : key;
+                return row.has_history && row._modified_fields && row._modified_fields[actualKey];
+            },
+
+            recalculateRow(row) {
+                if (this.currentTab === 'annex_2') {
+                    let imp = parseFloat(String(row.import || 0).replace(/,/g, '')) || 0;
+                    let app = parseFloat(String(row.approve_amount || 0).replace(/,/g, '')) || 0;
+                    row.shortfall = imp - app;
+                }
             },
 
             stopEdit(row, key) {
-                let actualKey = key.toLowerCase() === 'status' ? this.getDynamicKey(row, 'user_status') : this.getDynamicKey(row, key);
-                this.editingState = {idx: null, key: null};
+                if (this.editingState.rowId === null) return;
 
-                const newValue = row[actualKey];
-                const oldValue = row._orig[actualKey];
+                let actualKey = key.toLowerCase() === 'status' ? 'user_status' : key;
+                this.editingState = {rowId: null, key: null};
+
+                let newValue = row[actualKey];
+                let oldValue = row._orig[actualKey];
+
+                if (this.isAmountCol(actualKey)) {
+                    newValue = String(newValue || '')
+                        .replace(/,/g, '')
+                        .trim();
+                    oldValue = String(oldValue || '')
+                        .replace(/,/g, '')
+                        .trim();
+                    row[actualKey] = newValue;
+                }
 
                 if (String(newValue) !== String(oldValue)) {
-                    // If user dynamically edits the "i_request_date" inline, immediately refresh bounds for the frontend!
                     if (this.currentTab === 'company' && actualKey === 'value' && row.key === 'i_request_date') {
                         const years = String(newValue).match(/\d{4}/g);
                         if (years && years.length > 0) {
@@ -963,6 +1362,8 @@
                             this.endYear = Math.max(...years.map(Number));
                         }
                     }
+
+                    this.recalculateRow(row);
 
                     row.has_history = true;
                     if (!row._modified_fields) row._modified_fields = {};
@@ -973,10 +1374,7 @@
             },
 
             updateCell(row, field, newValue) {
-                let idVal = null;
-                if (this.currentTab === 'company') idVal = row['key'];
-                else if (this.currentTab === 'taxpaid') idVal = row['description'];
-                else idVal = row['no'];
+                let idVal = this.getRowId(row);
 
                 fetch('/crosscheck/api/report/update/', {
                     method: 'POST',
@@ -992,21 +1390,18 @@
                             this.showToast('Save Failed: ' + res.message, 'error');
                             row[field] = row._orig[field];
                             row._modified_fields[field] = false;
+                            this.recalculateRow(row);
                         }
                     });
             },
 
             isAmountCol(key) {
                 const k = key.toLowerCase();
-
                 const exactMonths = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
                 if (exactMonths.includes(k)) return true;
+                if (k === 'no' || k === 'invoice_no' || k.endsWith('_no') || k.includes('id') || k.includes('date') || k.includes('year') || k.includes('count') || k.includes('phone') || k.includes('code') || k.includes('tin') || k.includes('status') || k === 'description' || k === 'ovatr') return false;
 
-                if (k === 'no' || k === 'invoice_no' || k.endsWith('_no') || k.includes('id') || k.includes('date') || k.includes('year') || k.includes('count') || k.includes('phone') || k.includes('code') || k.includes('tin') || k.includes('status') || k === 'description' || k === 'ovatr') {
-                    return false;
-                }
-
-                return ['amount', 'vat', 'tax', 'salary', 'value', 'price', 'total', 'charge', 'cost', 'balance', 'rent', 'real', 'est', 'import'].some((t) => k.includes(t)) && !k.includes('rate');
+                return ['amount', 'vat', 'tax', 'salary', 'value', 'price', 'total', 'charge', 'cost', 'balance', 'rent', 'real', 'est', 'import', 'shortfall'].some((t) => k.includes(t)) && !k.includes('rate');
             },
 
             formatValue(val, key) {

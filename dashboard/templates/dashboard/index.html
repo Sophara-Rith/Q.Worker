@@ -47,7 +47,7 @@
                     </span>
                     <span class="text-xs font-bold text-slate-400 dark:text-slate-500 tracking-wide" x-text="currentDate"></span>
                 </div>
-                <h1 class="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">Welcome back, <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500">{{ request.user.username|default:'admin' }}</span></h1>
+                <h1 class="text-3xl md:text-4xl font-black text-slate-900 dark:text-white tracking-tight">Welcome back, <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-500">{{ request.user.first_name|default:request.user.username }}</span></h1>
                 <p class="text-sm font-medium text-slate-500 dark:text-slate-400 mt-2">Here is what's happening with your audit operations today.</p>
             </div>
 

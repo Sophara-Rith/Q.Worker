@@ -1,0 +1,141 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Q.Worker - Register User</title>
+
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+            /* --- Global Styles --- */
+            html {
+                font-size: 13px;
+            }
+            body {
+                font-family: 'Inter', sans-serif;
+                font-size: 0.875rem;
+                background-color: #1f2937;
+                height: 100vh;
+                overflow: hidden;
+            }
+
+            /* Background & Glass Effects */
+            .office-gradient {
+                background: linear-gradient(135deg, #1a2332 0%, #2c3e50 50%, #34495e 100%);
+            }
+
+            /* Modal Specific Shadows */
+            .modal-shadow {
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            }
+
+            /* Form Inputs */
+            .input-field {
+                background-color: #ffffff;
+                border: 1px solid #e5e7eb;
+                transition: all 0.2s;
+            }
+            .input-field:focus {
+                background-color: #ffffff;
+                border-color: #2563eb;
+                box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+                outline: none;
+            }
+
+            [x-cloak] {
+                display: none !important;
+            }
+        </style>
+    </head>
+    <body class="office-gradient h-screen w-full flex items-center justify-center p-4">
+        <div class="bg-[#f9fafb] w-full max-w-md rounded-3xl p-8 modal-shadow relative overflow-hidden border border-gray-100">
+            <a href="{% url 'accounts:login' %}" class="absolute top-5 right-5 text-gray-400 hover:text-gray-600 cursor-pointer transition">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </a>
+
+            <div class="text-center mb-6">
+                <div class="w-12 h-12 bg-blue-600 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg shadow-blue-200">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"></path>
+                    </svg>
+                </div>
+                <h1 class="text-2xl font-bold text-gray-900 mb-1">Create Account</h1>
+                <p class="text-xs text-gray-500">Register a new local user.</p>
+            </div>
+
+            {% if messages %} {% for message in messages %}
+            <div class="mb-5 text-center text-xs font-bold {% if message.tags == 'error' %}text-rose-600 bg-rose-50 border border-rose-100{% else %}text-emerald-600 bg-emerald-50 border border-emerald-100{% endif %} p-3 rounded-xl">{{ message }}</div>
+            {% endfor %} {% endif %}
+
+            <form method="POST" action="{% url 'accounts:register' %}" class="space-y-4" x-data="{ showPass1: false, showPass2: false }">
+                {% csrf_token %}
+
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">Username</label>
+                    <input type="text" name="username" required class="input-field w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 uppercase" placeholder="ENTER USERNAME" @input="$el.value = $el.value.toUpperCase()" />
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">Full Name</label>
+                    <input type="text" name="fullname" required class="input-field w-full px-4 py-3 rounded-xl text-sm text-gray-800 placeholder-gray-400 uppercase" placeholder="ENTER FULL NAME" @input="$el.value = $el.value.toUpperCase()" />
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">Password</label>
+                    <div class="relative">
+                        <input :type="showPass1 ? 'text' : 'password'" name="password" required class="input-field w-full px-4 py-3 pr-10 rounded-xl text-sm text-gray-800 placeholder-gray-400" placeholder="At least 8 characters" />
+                        <button type="button" @click="showPass1 = !showPass1" tabindex="-1" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none">
+                            <svg x-show="!showPass1" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                            <svg x-show="showPass1" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                                ></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 ml-1">Confirm Password</label>
+                    <div class="relative">
+                        <input :type="showPass2 ? 'text' : 'password'" name="password_confirm" required class="input-field w-full px-4 py-3 pr-10 rounded-xl text-sm text-gray-800 placeholder-gray-400" placeholder="Re-enter password" />
+                        <button type="button" @click="showPass2 = !showPass2" tabindex="-1" class="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none">
+                            <svg x-show="!showPass2" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                            <svg x-show="showPass2" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="2"
+                                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                                ></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-blue-500/30 transform hover:scale-[1.01] mt-2">Register User</button>
+            </form>
+
+            <div class="mt-6 text-center border-t border-gray-200 pt-5">
+                <p class="text-xs text-gray-500 font-medium">
+                    Already have an account?
+                    <a href="{% url 'accounts:login' %}" class="text-blue-600 hover:text-blue-700 font-bold ml-1 transition-colors">Log In Here</a>
+                </p>
+            </div>
+        </div>
+    </body>
+</html>

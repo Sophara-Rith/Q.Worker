@@ -385,6 +385,17 @@
             },
 
             async initialize() {
+                // 1. Keep session sticky in browser memory
+                if (this.ovatrCode) {
+                    localStorage.setItem('active_ovatr_session', this.ovatrCode);
+                } else {
+                    const savedSession = localStorage.getItem('active_ovatr_session');
+                    if (savedSession) {
+                        window.location.href = `/crosscheck/processing/?ovatr_code=${savedSession}`;
+                        return;
+                    }
+                }
+
                 window.addEventListener('beforeunload', (e) => {
                     if (this.status === 'processing' && !this.isServerDone) {
                         e.preventDefault();
@@ -398,13 +409,32 @@
                     return;
                 }
 
-                if (!this.ovatrCode) {
-                    this.fail('Session ID (OVATR) is missing. Please start a New Crosscheck.');
-                    return;
-                }
                 try {
                     this.addLog('Initializing secure session...', 'info');
-                    // Check if already processed using stats API
+
+                    // --- NEW FIX: Check the actual Database Status via the History API ---
+                    const histRes = await fetch(`{% url "crosscheck:get_history_api" %}?q=${this.ovatrCode}`);
+                    const histData = await histRes.json();
+
+                    if (histData.status === 'success' && histData.data) {
+                        const sessionInfo = histData.data.find((s) => s.ovatr === this.ovatrCode);
+
+                        // If the database says it is already Completed, stop immediately and show 100%!
+                        if (sessionInfo && sessionInfo.status === 'Completed') {
+                            this.totalRows = sessionInfo.total_rows || 1000;
+                            this.processedRows = this.totalRows;
+                            this.progress = 100;
+                            this.status = 'success';
+                            this.title = 'Process Completed';
+                            this.subtitle = 'Report is ready';
+                            this.addLog('Existing calculations found. Ready to view.', 'success');
+                            this.finishSuccess(false); // false = do not auto-redirect
+                            return; // EXIT FUNCTION HERE!
+                        }
+                    }
+                    // ---------------------------------------------------------------------
+
+                    // If it is NOT completed, fetch the stats and start the processing engine
                     const res = await fetch(`{% url "crosscheck:get_stats" %}?ovatr_code=${this.ovatrCode}`);
                     const data = await res.json();
 
@@ -413,19 +443,7 @@
                         const pCount = data.purchase_count || data.local_count + data.import_count;
                         this.addLog(`Data Inventory: ${pCount} Purchases / ${data.declaration_count} Declarations`, 'info');
 
-                        // Check if the results are already calculated and stored in DB
-                        // If match_rate > 0 or status is Completed, we skip reprocessing
-                        if (data.status === 'Completed' || data.is_ready) {
-                            this.processedRows = this.totalRows;
-                            this.progress = 100;
-                            this.status = 'success';
-                            this.title = 'Process Completed';
-                            this.subtitle = 'Report is ready';
-                            this.addLog('Existing calculations found. Ready to view.', 'success');
-                            this.finishSuccess(false);
-                        } else {
-                            this.startProcessing();
-                        }
+                        this.startProcessing();
                     } else {
                         this.fail(data.message);
                     }
@@ -451,7 +469,7 @@
                 this.progressText = 'Cross-referencing Data...';
                 this.addLog(`Initiating Write-Time Engine for Session: ${this.ovatrCode}`, 'info');
 
-                // NEW API: Calling the Pre-Calculation Engine via POST
+                // Calling the Pre-Calculation Engine via POST
                 const fetchPromise = fetch(`{% url "crosscheck:run_processing_engine" %}`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -475,7 +493,7 @@
                         this.isServerDone = true;
                     });
 
-                // 🔴 FIX 1: Slow down the simulated speed so it matches backend reality better
+                // Slow down the simulated speed so it matches backend reality better
                 const simulatedSpeed = 800; // Rows per second estimate
                 const estimatedDuration = Math.max(5000, (this.totalRows / simulatedSpeed) * 1000); // Give it at least 5 seconds
 
@@ -520,9 +538,7 @@
                             return;
                         }
 
-                        // 🔴 CRITICAL FIX: Always check if the UI is paused FIRST.
-                        // This forces the loop to wait for the user to click Resume
-                        // before acknowledging the server's completion signal.
+                        // Always check if the UI is paused FIRST.
                         if (this.isPaused) {
                             if (!pauseStartTime) pauseStartTime = Date.now();
                             return;

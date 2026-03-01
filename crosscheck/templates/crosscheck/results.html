@@ -850,9 +850,30 @@
             },
 
             async init() {
-                await this.loadStatuses();
-                this.loadStats();
-                await this.fetchData();
+                // 1. If URL has an ID, save it to the browser's memory
+                if (this.ovatrCode) {
+                    localStorage.setItem('active_ovatr_session', this.ovatrCode);
+                }
+                // 2. If URL is blank (user clicked sidebar), revive ID from memory
+                else {
+                    const activeSession = localStorage.getItem('active_ovatr_session');
+                    if (activeSession) {
+                        this.ovatrCode = activeSession;
+                        // Silently put the ID back into the address bar
+                        const url = new URL(window.location);
+                        url.searchParams.set('ovatr_code', activeSession);
+                        window.history.replaceState({}, '', url);
+                    }
+                }
+
+                // 3. Proceed with loading data if we have an active session
+                if (this.ovatrCode) {
+                    await this.loadStatuses();
+                    this.loadStats();
+                    await this.fetchData();
+                } else {
+                    this.loading = false; // Stop spinner if no session exists
+                }
             },
 
             async loadStatuses() {

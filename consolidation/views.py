@@ -89,27 +89,3 @@ def open_output_folder(request):
 @login_required
 def get_status(request, task_id):
     return JsonResponse(ProgressTracker.get(task_id))
-
-@login_required
-def dashboard_view(request):
-    """Main Dashboard showing history and upload form"""
-    tasks = ConsolidationTask.objects.filter(user=request.user).order_by('-created_at')
-    
-    if request.method == 'POST' and request.FILES.get('file_upload'):
-        uploaded_file = request.FILES['file_upload']
-        
-        # Create Task
-        task = ConsolidationTask.objects.create(
-            user=request.user,
-            input_file=uploaded_file,
-            status='PROCESSING'
-        )
-        
-        # Run Engine in Background Thread (so browser doesn't freeze)
-        thread = threading.Thread(target=run_consolidation_process, args=(task,))
-        thread.start()
-        
-        messages.success(request, "File uploaded! Processing started...")
-        return redirect('consolidation:dashboard')
-        
-    return render(request, 'consolidation/dashboard.html', {'tasks': tasks})

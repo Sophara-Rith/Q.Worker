@@ -24,6 +24,8 @@ urlpatterns = [
     path('api/get-row-history/', views.get_row_history, name='get_row_history'),
     path('api/upload-init/', views.upload_init, name='upload_init'),
     path('api/run-processing/', views.run_processing_engine, name='run_processing_engine'),
+    path('api/save-report-summary/', views.save_report_summary, name='save_report_summary'),
+    path('api/user_statuses/', views.api_user_statuses, name='api_user_statuses'),
     
     # --- Save APIs (Existing) ---
     path('save-company-info/', views.save_company_info, name='save_company_info'),
@@ -39,7 +41,4 @@ urlpatterns = [
     # --- Download APIs ---
     # NOTE: download_report is for the Annex III Result file (Results Module)
     path('api/download-report/', views.download_report, name='download_report'),
-
-    # --- Crosscheck Status APIs ---
-    path('api/user-statuses/', views.api_user_statuses, name='api_user_statuses'),
 ]
