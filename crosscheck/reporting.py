@@ -16,7 +16,8 @@ ALIGN_LEFT = Alignment(horizontal='left', vertical='center', wrap_text=True)
 class ReportGenerator:
     def __init__(self, ovatr_code):
         self.ovatr = ovatr_code
-        self.db_path = os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb')
+        APPDATA_DIR = os.path.join(os.environ.get('APPDATA'), 'AuditCore PRO')
+        self.db_path = os.path.join(APPDATA_DIR, 'datawarehouse.duckdb')
         self.template_path = os.path.join(settings.BASE_DIR, 'templates', 'Sample-Excel_Report.xlsx')
         
         # Fallback if specific template doesn't exist, use static

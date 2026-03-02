@@ -34,7 +34,8 @@ def get_db_connection():
     
     with _DB_LOCK:
         if _GLOBAL_DUCKDB_CONN is None:
-            db_path = str(os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb'))
+            APPDATA_DIR = os.path.join(os.environ.get('APPDATA'), 'AuditCore PRO')
+            db_path = str(os.path.join(APPDATA_DIR, 'datawarehouse.duckdb'))
             _GLOBAL_DUCKDB_CONN = duckdb.connect(db_path)
             
             _GLOBAL_DUCKDB_CONN.execute("""
@@ -1241,9 +1242,9 @@ def download_report(request):
     
     conn = None
     try:
-        template_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'CC - guide.xlsx')
+        template_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'Sample-Excel_Query.xlsx')
         if not os.path.exists(template_path): 
-            template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'CC - guide.xlsx')
+            template_path = os.path.join(settings.BASE_DIR, 'core', 'static', 'Sample-Excel_Query.xlsx')
         
         conn = get_db_connection()
 
@@ -1432,13 +1433,21 @@ def download_report(request):
                 format_cols = [9, 13, 14, 15, 23] + list(range(30, 43))
                 for col_idx in format_cols:
                     ws.cell(row=r, column=col_idx).number_format = '#,###0'
+                
+                # --- NEW: Clear dark background fills ---
+                # A blank PatternFill explicitly removes any background color
+                clear_fill = PatternFill(fill_type=None) 
+                
+                # Loop through columns 1 to 45 (A to AS) and remove the fill
+                for col_idx in range(1, 46):
+                    ws.cell(row=r, column=col_idx).fill = clear_fill
 
-        process_sheet('AnnexIII-Local Pur', local_purchases)
-        process_sheet('AnnexIII-Import', import_purchases)
+        process_sheet('Annex III - Local Pur', local_purchases)
+        process_sheet('Annex II - Import', import_purchases)
 
         save_dir = os.path.join(settings.MEDIA_ROOT, 'temp_reports')
         os.makedirs(save_dir, exist_ok=True)
-        filename = f"AnnexIII_{ovatr_code}.xlsx"
+        filename = f"Query_{ovatr_code}.xlsx"
         file_path = os.path.join(save_dir, filename)
         wb.save(file_path)
 
@@ -2422,7 +2431,7 @@ def download_full_report(request):
             for col in range(2, 5 + len(header_map)): ws_tp.cell(row=sum_row, column=col).border = thin_border; ws_tp.cell(row=sum_row, column=col).fill = bg_gray_summary
 
         save_dir = os.path.join(settings.MEDIA_ROOT, 'reports'); os.makedirs(save_dir, exist_ok=True)
-        fname = f"Audit_Result_{ovatr_code}.xlsx"; full_path = os.path.join(save_dir, fname); wb.save(full_path)
+        fname = f"Audit_Report_{ovatr_code}.xlsx"; full_path = os.path.join(save_dir, fname); wb.save(full_path)
         return FileResponse(open(full_path, 'rb'), as_attachment=True, filename=fname)
     finally:
         con.close()

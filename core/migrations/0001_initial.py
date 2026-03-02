@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
             name='UserSettings',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('default_output_dir', models.CharField(default='C:\\Users\\TiiTii\\QWorker_Output', help_text='Absolute path to the directory where processed files will be saved.', max_length=500)),
+                ('default_output_dir', models.CharField(default='D:\\AuditCore_Output', help_text='Absolute path to the directory where processed files will be saved.', max_length=500)),
                 ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='settings', to=settings.AUTH_USER_MODEL)),
             ],
         ),

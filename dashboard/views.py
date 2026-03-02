@@ -9,7 +9,8 @@ from django.contrib.auth.decorators import login_required
 
 def get_db_connection():
     # Helper to connect to the same DuckDB as Crosscheck app
-    db_path = os.path.join(settings.BASE_DIR, 'datawarehouse.duckdb')
+    appdata_dir = os.path.join(os.environ.get('APPDATA'), 'AuditCore PRO')
+    db_path = os.path.join(appdata_dir, 'datawarehouse.duckdb')
     con = duckdb.connect(db_path)
     # Ensure sessions table exists (in case Dashboard is hit before any Crosscheck)
     con.execute("""

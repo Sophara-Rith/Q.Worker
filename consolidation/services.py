@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 
 # --- CONFIGURATION ---
 BASE_DIR = settings.BASE_DIR
-DB_PATH = os.path.join(BASE_DIR, 'dataWarehouse.duckdb')
+APPDATA_DIR = os.path.join(os.environ.get('APPDATA'), 'AuditCore PRO')
+DB_PATH = os.path.join(APPDATA_DIR, 'dataWarehouse.duckdb')
 
 # --- SPECIAL CONFIG ---
 # TINs that require splitting by single year (Chunk Size = 1)
@@ -56,9 +57,9 @@ class ConsolidationService:
             except UserSettings.DoesNotExist:
                 # Fallback
                 if os.path.exists("D:/"):
-                    self.output_dir = "D:/QWorker_Output"
+                    self.output_dir = "D:/AuditCore_Output"
                 else:
-                    self.output_dir = os.path.join(os.path.expanduser("~"), "QWorker_Output")
+                    self.output_dir = os.path.join(os.path.expanduser("~"), "AuditCore_Output")
             
             os.makedirs(self.output_dir, exist_ok=True)
             self.archive_dir = os.path.join(self.output_dir, 'Archive')

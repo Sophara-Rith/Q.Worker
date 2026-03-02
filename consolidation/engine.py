@@ -25,7 +25,7 @@ def run_consolidation_process(task_instance):
         # For now, let's just create a dummy "processed" version
         # (Replace this with your actual logic)
         df = pd.read_excel(input_path) if input_path.endswith('.xlsx') else pd.read_csv(input_path)
-        df['Processed_By'] = 'Q.Worker Engine'
+        df['Processed_By'] = 'AuditCore Engine'
         df['Status'] = 'Validated'
         
         # 3. Save Output
