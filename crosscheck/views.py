@@ -2846,3 +2846,4 @@ def download_word_report(request):
         return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
     finally:
         con.close()
+        

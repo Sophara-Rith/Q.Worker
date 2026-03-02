@@ -1,6 +1,7 @@
 import subprocess
 import sys
-from django.http import JsonResponse
+from django.conf import settings
+from django.http import JsonResponse, FileResponse
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -118,3 +119,16 @@ def get_system_stats(request):
         'ram_text': f"{ram_used_gb}/{ram_total_gb} GB",
         'speed': speed_text
     })
+
+@login_required
+def download_excel_template(request):
+    """Serves the Sample-Excel_Input.xlsx template file for download."""
+    file_path = os.path.join(settings.BASE_DIR, 'core', 'templates', 'static', 'Sample-Excel_Input.xlsx')
+    if os.path.exists(file_path):
+        return FileResponse(
+            open(file_path, 'rb'),
+            as_attachment=True,
+            filename='Sample-Excel_Input.xlsx'
+        )
+    from django.http import Http404
+    raise Http404("Template file not found.")

@@ -168,15 +168,19 @@
                 <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
                     <div class="col-span-3">
                         <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">New Status</label>
-                        <input type="text" x-model="newStatus.name" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. បានប្រកាស" />
+                        <input type="text" x-model="newStatus.name" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. ព្យួរទុក (មិនមានទិន្នន័យ)" />
                     </div>
                     <div class="col-span-4">
                         <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Report Summary</label>
-                        <input type="text" x-model="newStatus.summary" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. ចំនួនប្រាក់អាករ..." />
+                        <input type="text" x-model="newStatus.summary" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. ចំនួនប្រាក់អាករដែលមិនមានទិន្នន័យ" />
                     </div>
                     <div class="col-span-2">
                         <label class="block text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Action (Col E)</label>
-                        <input type="text" x-model="newStatus.action" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm" placeholder="e.g. គួរអនុញ្ញាត" />
+                        <select x-model="newStatus.action" class="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg dark:bg-slate-900 dark:text-white dark:border-slate-600 focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all shadow-sm cursor-pointer">
+                            <option value="" disabled>Select action...</option>
+                            <option value="គួរអនុញ្ញាត">គួរអនុញ្ញាត</option>
+                            <option value="ព្យួរទុក">ព្យួរទុក</option>
+                        </select>
                     </div>
                     <div class="col-span-3 flex items-end gap-3">
                         <div class="flex-1">

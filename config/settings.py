@@ -18,9 +18,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 import mimetypes
 mimetypes.add_type("image/svg+xml", ".svg", True)
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-&3_@2v=m4sm^ggatvb8s0#%vetzffjf@j3ivnjcvgd2wwe&7ui'
 
@@ -36,6 +33,8 @@ SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 
 DISABLE_HARDWARE_ID_CHECK = True
+
+DEBUG = True
 
 # Application definition
 

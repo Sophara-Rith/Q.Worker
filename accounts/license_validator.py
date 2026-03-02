@@ -5,7 +5,7 @@ from django.conf import settings
 from .hardware_id import get_hardware_id
 
 LICENSE_FILE = os.path.join(settings.BASE_DIR, 'license.key')
-SECRET_SALT = "AutoCrosscheck_v1_Secret_Salt_2024"
+SECRET_SALT = "Auditcore_v1_Secret_Salt_2026"
 
 # Replace with your actual Firebase Realtime Database URL
 FIREBASE_URL = "https://auditcore-55139-default-rtdb.asia-southeast1.firebasedatabase.app/allowed_hardware"

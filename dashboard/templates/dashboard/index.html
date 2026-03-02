@@ -66,6 +66,40 @@
             </div>
         </div>
 
+        {% if messages %}
+        <div class="fixed top-24 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+            {% for message in messages %}
+            <div
+                x-data="{ show: true }"
+                x-init="setTimeout(() => show = false, 5000)"
+                x-show="show"
+                x-transition:enter="transition ease-out duration-300 transform"
+                x-transition:enter-start="opacity-0 translate-x-8"
+                x-transition:enter-end="opacity-100 translate-x-0"
+                x-transition:leave="transition ease-in duration-200 transform"
+                x-transition:leave-start="opacity-100 translate-x-0"
+                x-transition:leave-end="opacity-0 translate-x-8"
+                class="pointer-events-auto px-5 py-3.5 rounded-xl text-sm font-bold flex items-center justify-between shadow-2xl border min-w-[300px] backdrop-blur-md {% if message.tags == 'success' %}bg-emerald-50/90 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30 {% elif message.tags == 'error' %}bg-rose-50/90 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:border-rose-500/30 {% else %}bg-blue-50/90 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30{% endif %}"
+            >
+                <div class="flex items-center gap-3">
+                    {% if message.tags == 'success' %}
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {% elif message.tags == 'error' %}
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {% else %}
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    {% endif %}
+                    <span>{{ message }}</span>
+                </div>
+
+                <button @click="show = false" class="ml-4 opacity-60 hover:opacity-100 transition-opacity">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <div class="bg-white dark:bg-slate-800/80 backdrop-blur-xl p-6 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700/80 relative overflow-hidden group ring-1 ring-inset ring-white/5">
                 <div class="absolute -right-6 -top-6 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all"></div>
@@ -139,6 +173,49 @@
                     </template>
                 </div>
             </div>
+        </div>
+
+        <div class="mb-8 bg-white dark:bg-slate-800/80 backdrop-blur-xl rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700/80 p-5 ring-1 ring-inset ring-emerald-500/20 relative overflow-hidden flex flex-col xl:flex-row items-start xl:items-center justify-between gap-5 transition-all hover:shadow-emerald-500/5">
+            <div class="absolute -right-10 -top-10 w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="relative z-10 flex items-center gap-4">
+                <div class="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 flex items-center justify-center shadow-inner ring-1 ring-inset ring-emerald-500/20 flex-shrink-0">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                </div>
+                <div>
+                    <h3 class="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest mb-0.5">Company Data Sync</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Bulk update English buyer names by mapping TINs</p>
+                </div>
+            </div>
+
+            <form method="POST" action="{% url 'dashboard:update_buyer_names' %}" enctype="multipart/form-data" class="relative z-10 flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
+                {% csrf_token %}
+                <div class="relative w-full sm:w-auto flex-1 xl:flex-none">
+                    <input
+                        type="file"
+                        name="company_info_file"
+                        id="company_info_file"
+                        accept=".xlsx"
+                        required
+                        class="block w-full text-xs text-slate-500 dark:text-slate-400 file:mr-3 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 dark:file:bg-emerald-500/10 dark:file:text-emerald-400 hover:file:bg-emerald-100 dark:hover:file:bg-emerald-500/20 file:transition-colors cursor-pointer border border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-900/50 shadow-sm"
+                    />
+                </div>
+
+                <div class="flex gap-2 w-full sm:w-auto">
+                    <a
+                        href="{% static 'Sample-Excel_Update_Company_Info.xlsx' %}"
+                        download
+                        class="flex-1 sm:flex-none py-2.5 px-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[11px] font-extrabold uppercase tracking-wider rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm whitespace-nowrap text-center flex items-center justify-center gap-2"
+                    >
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Template
+                    </a>
+                    <button type="submit" class="flex-1 sm:flex-none py-2.5 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-[11px] font-extrabold uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/30 hover:-translate-y-0.5 whitespace-nowrap flex items-center justify-center gap-2">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        Sync
+                    </button>
+                </div>
+            </form>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -228,15 +305,7 @@
                         <a href="#" @click.prevent="document.dispatchEvent(new KeyboardEvent('keydown', {'key': 'Escape'})); settingsOpen = true;" class="flex items-center justify-between p-4 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-slate-900/50 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all group shadow-sm">
                             <div class="flex items-center gap-3">
                                 <div class="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm text-slate-500 ring-1 ring-inset ring-slate-200 dark:ring-slate-700">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2.5"
-                                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                                        ></path>
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                                    </svg>
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                                 </div>
                                 <span class="font-bold text-sm text-slate-700 dark:text-slate-200">System Settings</span>
                             </div>
@@ -252,31 +321,14 @@
                             <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-[0_0_5px_rgba(16,185,129,0.8)]"></span>
                         </span>
                     </div>
-
                     <div class="p-5 bg-slate-900 rounded-xl border border-slate-700 shadow-inner font-mono relative overflow-hidden ring-1 ring-inset ring-black/50">
                         <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LDI1NSwyNTUsMC4wNCkiLz48L3N2Zz4=')] opacity-50"></div>
-
                         <div class="relative z-10 flex flex-col gap-3 text-[11px] font-medium tracking-wide">
-                            <div class="flex justify-between items-center text-emerald-400">
-                                <span>DB_CONNECTION</span>
-                                <span>[ OK ]</span>
-                            </div>
-                            <div class="flex justify-between items-center text-slate-400">
-                                <span>FILE_STORAGE</span>
-                                <span class="text-emerald-400">[ OK ]</span>
-                            </div>
-                            <div class="flex justify-between items-center text-slate-400">
-                                <span>DUCKDB_CORE</span>
-                                <span class="text-indigo-400">v1.1.2</span>
-                            </div>
-                            <div class="flex justify-between items-center text-slate-400">
-                                <span>PANDAS_ENGINE</span>
-                                <span class="text-indigo-400">v2.1.0</span>
-                            </div>
-                            <div class="mt-2 pt-3 border-t border-slate-800 flex justify-between items-center text-slate-500">
-                                <span>Query Latency</span>
-                                <span class="text-emerald-400 font-bold">< 2.4 ms</span>
-                            </div>
+                            <div class="flex justify-between items-center text-emerald-400"><span>DB_CONNECTION</span><span>[ OK ]</span></div>
+                            <div class="flex justify-between items-center text-slate-400"><span>FILE_STORAGE</span><span class="text-emerald-400">[ OK ]</span></div>
+                            <div class="flex justify-between items-center text-slate-400"><span>DUCKDB_CORE</span><span class="text-indigo-400">v1.1.2</span></div>
+                            <div class="flex justify-between items-center text-slate-400"><span>PANDAS_ENGINE</span><span class="text-indigo-400">v2.1.0</span></div>
+                            <div class="mt-2 pt-3 border-t border-slate-800 flex justify-between items-center text-slate-500"><span>Query Latency</span><span class="text-emerald-400 font-bold">< 2.4 ms</span></div>
                         </div>
                     </div>
                 </div>

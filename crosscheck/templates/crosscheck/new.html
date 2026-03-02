@@ -93,12 +93,28 @@
                     </button>
                 </div>
 
-                <div class="flex items-center gap-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800/80 backdrop-blur px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-sm ring-1 ring-inset ring-white/5">
-                    <span :class="state === 'locked' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">1. Auth</span>
-                    <span class="text-slate-300 dark:text-slate-600">/</span>
-                    <span :class="state === 'upload' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">2. Upload</span>
-                    <span class="text-slate-300 dark:text-slate-600">/</span>
-                    <span :class="state === 'preview' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">3. Verify</span>
+                <div class="flex flex-col items-end gap-2">
+                    <div class="flex items-center gap-2.5 text-xs font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800/80 backdrop-blur px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700/80 shadow-sm ring-1 ring-inset ring-white/5">
+                        <span :class="state === 'locked' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">1. Auth</span>
+                        <span class="text-slate-300 dark:text-slate-600">/</span>
+                        <span :class="state === 'upload' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">2. Upload</span>
+                        <span class="text-slate-300 dark:text-slate-600">/</span>
+                        <span :class="state === 'preview' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">3. Verify</span>
+                    </div>
+
+                    <!-- Download Excel Template Button -->
+
+                    <a
+                        href="{% url 'core:download_template' %}"
+                        class="flex items-center gap-2 px-4 py-2 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:-translate-y-0.5 transition-all shadow-sm ring-1 ring-inset ring-emerald-500/10 group"
+                        title="Download Excel Input Template"
+                    >
+                        <svg class="w-3.5 h-3.5 group-hover:animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span class="uppercase tracking-widest">Download Template</span>
+                        <span class="text-emerald-500/60 dark:text-emerald-600 font-mono font-normal normal-case tracking-normal">.xlsx</span>
+                    </a>
                 </div>
             </div>
         </div>

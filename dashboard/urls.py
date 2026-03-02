@@ -7,4 +7,5 @@ app_name = 'dashboard'
 urlpatterns = [
     # This sets the pattern name to 'index'
     path('', views.index, name='index'), 
+    path('update-buyer-names/', views.update_buyer_names, name='update_buyer_names'),
 ]
