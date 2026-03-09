@@ -6,15 +6,40 @@ import webbrowser
 import threading
 
 def open_browser():
-    # Wait 2 seconds for the Django server to boot up, then open the browser
-    time.sleep(2)
+    # Wait 3 seconds for the Django server to start, then open the browser
+    time.sleep(3)
     webbrowser.open("http://127.0.0.1:49854/dashboard/")
 
-def main():
-    # Windows API Flags
-    CREATE_NO_WINDOW = 0x08000000   # Runs completely silently
-    CREATE_NEW_CONSOLE = 0x00000010 # Pops open a new visible window
+def print_splash():
+    # Clear the screen and set colors (Cyan text on Black background)
+    os.system('cls' if os.name == 'nt' else 'clear')
+    os.system('title AuditCore PRO - Server Running & color 0B')
+    os.system('chcp 65001 >nul') # Ensure ASCII art renders perfectly
+    
+    banner = """
+     █████╗ ██╗   ██╗██████╗ ██╗████████╗ ██████╗ ██████╗ ██████╗ ███████╗
+    ██╔══██╗██║   ██║██╔══██╗██║╚══██╔══╝██╔════╝██╔═══██╗██╔══██╗██╔════╝
+    ███████║██║   ██║██║  ██║██║   ██║   ██║     ██║   ██║██████╔╝█████╗  
+    ██╔══██║██║   ██║██║  ██║██║   ██║   ██║     ██║   ██║██╔══██╗██╔══╝  
+    ██║  ██║╚██████╔╝██████╔╝██║   ██║   ╚██████╗╚██████╔╝██║  ██║███████╗
+    ╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚═╝   ╚═╝    ╚═════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
+                                                                      
+                         ██████╗ ██████╗  ██████╗ 
+                         ██╔══██╗██╔══██╗██╔═══██╗
+                         ██████╔╝████████╔╝██║   ██║
+                         ██╔═══╝ ██╔══██╗██║   ██║
+                         ██║     ██║  ██║╚██████╔╝
+                         ╚═╝     ╚═╝  ╚═╝ ╚═════╝ 
+    """
+    print(banner)
+    print("=========================================================================")
+    print("   AuditCore PRO Engine is currently running...")
+    print("   Your web browser will open automatically.")
+    print("")
+    print("   [!] TO STOP THE SERVER: Simply close this window (Click the X)")
+    print("=========================================================================\n")
 
+def main():
     # Get the actual installation folder
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
@@ -29,49 +54,48 @@ def main():
     manage_py = os.path.join(base_dir, "manage.py")
 
     # =================================================================
-    # 1. FIRST TIME LAUNCH: Pop open a temporary visible console
+    # 1. FIRST TIME SETUP (Builds the environment if it doesn't exist)
     # =================================================================
     if not os.path.exists(python_exe):
-        # We chain CMD commands together to create a nice setup UI
-        setup_command = (
-            "title AuditCore PRO - Initial Setup & "
-            "color 0B & "
-            "echo =============================================================== & "
-            "echo                AuditCore PRO - System Engine                    & "
-            "echo =============================================================== & "
-            "echo. & "
-            "echo [SETUP] First-time launch detected. Building local environment... & "
-            "python -m venv venv & "
-            "echo [SETUP] Installing required system libraries... & "
-            "venv\\Scripts\\pip.exe install -r requirements.txt & "
-            "echo. & "
-            "echo [SETUP] Environment configured successfully! Starting System... & "
-            "timeout /t 3 >nul"
-        )
+        os.system('title AuditCore PRO - Initial Setup & color 0B & chcp 65001 >nul')
+        print("=========================================================================")
+        print("                   AuditCore PRO - System Installation                   ")
+        print("=========================================================================")
+        print("\n[SETUP] First-time launch detected. Building local environment...")
+        subprocess.run(["python", "-m", "venv", "venv"], cwd=base_dir)
         
-        # This spawns the visible window just for the installation phase
-        subprocess.run(["cmd.exe", "/c", setup_command], cwd=base_dir, creationflags=CREATE_NEW_CONSOLE)
-
+        print("\n[SETUP] Installing required system libraries...")
+        subprocess.run([pip_exe, "install", "-r", "requirements.txt"], cwd=base_dir)
+        
+        print("\n[SETUP] Environment configured successfully! Starting System...\n")
+        time.sleep(2)
 
     # =================================================================
-    # 2. EVERY LAUNCH: Start Web Browser
+    # 2. SHOW SPLASH SCREEN & INSTRUCTIONS
+    # =================================================================
+    print_splash()
+
+    # =================================================================
+    # 3. START WEB BROWSER
     # =================================================================
     threading.Thread(target=open_browser, daemon=True).start()
 
-
     # =================================================================
-    # 3. EVERY LAUNCH: Start Django Silently (No Window)
+    # 4. RUN DJANGO IN THE CURRENT WINDOW
     # =================================================================
+    # Because we removed CREATE_NO_WINDOW, the server locks into this current
+    # visible window. When the user closes the window, the server dies with it!
     try:
         subprocess.run(
             [python_exe, manage_py, "runserver", "49854", "--noreload"], 
-            cwd=base_dir, 
-            creationflags=CREATE_NO_WINDOW, # Forces the server to hide
-            stdout=subprocess.DEVNULL, 
-            stderr=subprocess.DEVNULL
+            cwd=base_dir,
+            stdout=subprocess.DEVNULL,   # Mutes the standard Django startup text & HTTP logs
+            stderr=subprocess.DEVNULL    # Mutes the red "WARNING: Development server" text
         )
-    except Exception:
-        pass
+    except KeyboardInterrupt:
+        # Catches Ctrl+C if they try to shut it down via keyboard
+        print("\nShutting down AuditCore PRO...")
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()

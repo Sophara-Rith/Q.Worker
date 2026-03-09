@@ -26,6 +26,7 @@ from openpyxl.cell.rich_text import TextBlock, CellRichText
 # --- GLOBAL DUCKDB CONNECTION ---
 _GLOBAL_DUCKDB_CONN = None
 _DB_LOCK = threading.Lock()
+warnings.filterwarnings("ignore", category=UserWarning, message=".*Parsing dates.*")
 
 # --- Helpers ---
 
@@ -38,18 +39,73 @@ def get_db_connection():
             db_path = str(os.path.join(APPDATA_DIR, 'datawarehouse.duckdb'))
             _GLOBAL_DUCKDB_CONN = duckdb.connect(db_path)
             
+            # 1. Sessions Table
             _GLOBAL_DUCKDB_CONN.execute("""
                 CREATE TABLE IF NOT EXISTS sessions (
-                    ovatr VARCHAR PRIMARY KEY,
-                    company_name VARCHAR,
-                    tin VARCHAR,
-                    status VARCHAR,
-                    total_rows INTEGER,
-                    match_rate DOUBLE,
-                    created_at TIMESTAMP,
-                    last_modified TIMESTAMP
+                    ovatr VARCHAR PRIMARY KEY, company_name VARCHAR, tin VARCHAR,
+                    status VARCHAR, total_rows INTEGER, match_rate DOUBLE,
+                    created_at TIMESTAMP, last_modified TIMESTAMP
                 )
             """)
+            
+            # --- THE FIX: Pre-create empty tables so the fresh app never crashes! ---
+            
+            # 2. Purchase Table
+            _GLOBAL_DUCKDB_CONN.execute("""
+                CREATE TABLE IF NOT EXISTS purchase (
+                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, type VARCHAR, 
+                    supplier_tin VARCHAR, supplier_name VARCHAR, total_amount DOUBLE, 
+                    exclude_vat DOUBLE, non_vat_purchase DOUBLE, vat_0 DOUBLE, purchase DOUBLE, 
+                    "import" DOUBLE, non_creditable_vat DOUBLE, purchase_state_charge DOUBLE, 
+                    import_state_charge DOUBLE, description VARCHAR, status VARCHAR, 
+                    user_status VARCHAR, comment VARCHAR, matched_d_id VARCHAR, sys_status VARCHAR,
+                    v_inv BOOLEAN, v_tin BOOLEAN, v_date BOOLEAN, v_diff DOUBLE,
+                    approve_amount DOUBLE, annex2_note VARCHAR
+                )
+            """)
+            
+            # 3. Tax Declaration Table
+            _GLOBAL_DUCKDB_CONN.execute("""
+                CREATE TABLE IF NOT EXISTS tax_declaration (
+                    id VARCHAR, date VARCHAR, invoice_number VARCHAR, credit_notification_letter_number VARCHAR,
+                    buyer_type VARCHAR, tax_registration_id VARCHAR, buyer_name VARCHAR, total_invoice_amount DOUBLE,
+                    amount_exclude_vat DOUBLE, non_vat_sales DOUBLE, vat_zero_rate DOUBLE, vat_local_sale DOUBLE,
+                    vat_export DOUBLE, vat_local_sale_state_burden DOUBLE, vat_withheld_by_national_treasury DOUBLE,
+                    plt DOUBLE, special_tax_on_goods DOUBLE, special_tax_on_services DOUBLE, accommodation_tax DOUBLE,
+                    income_tax_redemption_rate DOUBLE, notes VARCHAR, description VARCHAR, tax_declaration_status VARCHAR
+                )
+            """)
+            
+            # 4. Sale Table
+            _GLOBAL_DUCKDB_CONN.execute("""
+                CREATE TABLE IF NOT EXISTS sale (
+                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, credit_note_no VARCHAR,
+                    buyer_type VARCHAR, tax_registration_id VARCHAR, buyer_name VARCHAR,
+                    total_invoice_amount DOUBLE, amount_exclude_vat DOUBLE, non_vat_sales DOUBLE,
+                    vat_zero_rate DOUBLE, vat_local_sale DOUBLE, vat_export DOUBLE,
+                    vat_local_sale_state_burden DOUBLE, vat_withheld_by_national_treasury DOUBLE, plt DOUBLE,
+                    special_tax_on_goods DOUBLE, special_tax_on_services DOUBLE, accommodation_tax DOUBLE,
+                    income_tax_redemption_rate DOUBLE, notes VARCHAR, description VARCHAR,
+                    tax_declaration_status VARCHAR
+                )
+            """)
+
+            # 5. Reverse Charge Table
+            _GLOBAL_DUCKDB_CONN.execute("""
+                CREATE TABLE IF NOT EXISTS reverse_charge (
+                    ovatr VARCHAR, no VARCHAR, date VARCHAR, invoice_no VARCHAR, 
+                    supplier_non_resident VARCHAR, supplier_tin VARCHAR, supplier_name VARCHAR, 
+                    address VARCHAR, email VARCHAR, non_vat_supply DOUBLE, exclude_vat DOUBLE, 
+                    vat DOUBLE, description VARCHAR, status VARCHAR, declaration_status VARCHAR
+                )
+            """)
+
+            # 6. Company Info & Others
+            _GLOBAL_DUCKDB_CONN.execute("CREATE TABLE IF NOT EXISTS company_info (ovatr VARCHAR PRIMARY KEY, vatin VARCHAR, company_name_kh VARCHAR)")
+            _GLOBAL_DUCKDB_CONN.execute("CREATE TABLE IF NOT EXISTS tax_paid (ovatr VARCHAR, tax_year VARCHAR, description VARCHAR, jan DOUBLE, feb DOUBLE, mar DOUBLE, apr DOUBLE, may DOUBLE, jun DOUBLE, jul DOUBLE, aug DOUBLE, sep DOUBLE, oct DOUBLE, nov DOUBLE, dec DOUBLE, total DOUBLE)")
+            _GLOBAL_DUCKDB_CONN.execute("CREATE TABLE IF NOT EXISTS change_history (timestamp TIMESTAMP, ovatr VARCHAR, row_no VARCHAR, table_type VARCHAR, field VARCHAR, old_value VARCHAR, new_value VARCHAR)")
+            _GLOBAL_DUCKDB_CONN.execute("CREATE TABLE IF NOT EXISTS user_status_config (name VARCHAR PRIMARY KEY, summary VARCHAR, action VARCHAR, color VARCHAR)")
+            _GLOBAL_DUCKDB_CONN.execute("CREATE TABLE IF NOT EXISTS report_summary (ovatr VARCHAR, description VARCHAR, total_amount VARCHAR, other VARCHAR)")
             
     return _GLOBAL_DUCKDB_CONN.cursor()
 

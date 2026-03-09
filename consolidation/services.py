@@ -32,16 +32,17 @@ class ProgressTracker:
     _instances = {}
 
     @classmethod
-    def update(cls, task_id, progress, status, details=""):
+    def update(cls, task_id, progress, status, details="", failed_file=None):
         cls._instances[task_id] = {
             'progress': progress,
             'status': status,
-            'details': details
+            'details': details,
+            'failed_file': failed_file
         }
 
     @classmethod
     def get(cls, task_id):
-        return cls._instances.get(task_id, {'progress': 0, 'status': 'Pending', 'details': ''})
+        return cls._instances.get(task_id, {'progress': 0, 'status': 'Pending', 'details': '', 'failed_file': None})
 
 class ConsolidationService:
     def __init__(self, task_id, user):
@@ -107,8 +108,8 @@ class ConsolidationService:
             self.con.execute("DROP TABLE IF EXISTS tax_declaration")
             self.init_db()
 
-    def log(self, percent, status, details):
-        ProgressTracker.update(self.task_id, percent, status, details)
+    def log(self, percent, status, details, failed_file=None):
+        ProgressTracker.update(self.task_id, percent, status, details, failed_file)
 
     def extract_branch_info(self, original_title):
         if not original_title or not isinstance(original_title, str): return ""
@@ -155,6 +156,7 @@ class ConsolidationService:
         return " , ".join(ranges)
 
     def process(self, file_paths):
+        current_file = "Unknown"
         try:
             self.log(5, "Initializing", "Preparing files...")
             extracted_files = []
@@ -162,6 +164,7 @@ class ConsolidationService:
             # 1. EXTRACT
             for f_path in file_paths:
                 f_name = os.path.basename(f_path)
+                current_file = f_name
                 if f_path.lower().endswith(('.rar', '.zip')):
                     self.log(10, "Extracting", f"Extracting {f_name}...")
                     extract_to = os.path.join(BASE_DIR, 'temp_extract', str(uuid.uuid4()))
@@ -170,7 +173,7 @@ class ConsolidationService:
                         patoolib.extract_archive(f_path, outdir=extract_to)
                         for root, _, files in os.walk(extract_to):
                             for file in files:
-                                if file.lower().endswith(('.xlsx', '.xls')) and 'SALE' in file.upper():
+                                if file.lower().endswith(('.xlsx', '.xls')) and not file.startswith('~$'):
                                     extracted_files.append(os.path.join(root, file))
                     except Exception as e:
                          logger.error(f"Extraction failed: {e}")
@@ -180,7 +183,7 @@ class ConsolidationService:
             # 2. IMPORT
             total = len(extracted_files)
             if total == 0:
-                self.log(100, "Error", "No valid SALE files found.")
+                self.log(100, "Error", "No valid Excel files found.", failed_file=current_file)
                 return
 
             self.log(20, "Importing", f"Found {total} files. Importing...")
@@ -188,13 +191,26 @@ class ConsolidationService:
             tins_processed = set()
             tin_company_map = {} 
             
+            # --- NEW: TRACK FAILED FILES ---
+            failed_files = []
+            
             for i, file in enumerate(extracted_files):
                 fname = os.path.basename(file)
+                current_file = fname
                 percent = 20 + int((i / total) * 30)
                 self.log(percent, "Importing", f"Reading {fname}")
                 
-                match = re.match(r'^([LKB]\d{3}-\d{9})_', fname)
-                tin = match.group(1) if match else "UNKNOWN"
+                # --- NEW SMART TIN EXTRACTION ---
+                # 1. Try to find the full format (e.g., L001-749154973) anywhere in the name
+                match_full = re.search(r'([A-Za-z0-9]{4}-\d{9})', fname)
+                
+                if match_full:
+                    tin = match_full.group(1).upper()
+                else:
+                    # 2. Fallback: Try to find exactly 9 digits anywhere in the name (e.g., 749154973)
+                    match_short = re.search(r'(?<!\d)(\d{9})(?!\d)', fname)
+                    tin = match_short.group(1) if match_short else "UNKNOWN"
+                
                 tins_processed.add(tin)
 
                 branch_info = ""
@@ -221,7 +237,6 @@ class ConsolidationService:
                     self.con.register('df_view', df)
 
                     # List of core fields to check for duplicates
-                    # These are the fields that must be unique to consider a row "new"
                     core_fields_str = """
                         date, invoice_number, credit_notification_letter_number, buyer_type,
                         tax_registration_id, buyer_name, total_invoice_amount, 
@@ -243,7 +258,7 @@ class ConsolidationService:
                             '{tin}', now(), '{self.user.username}', '{safe_branch}'
                         FROM (
                             SELECT 
-                                TRY_CAST(strptime(Column1, '%d-%m-%Y') AS DATE) as date,
+                                COALESCE(TRY_STRPTIME(Column1, '%d-%m-%Y')::DATE, TRY_CAST(Column1 AS DATE)) as date,
                                 Column2 as invoice_number, Column3 as credit_notification_letter_number, Column4 as buyer_type,
                                 Column5 as tax_registration_id, Column6 as buyer_name, 
                                 TRY_CAST(Column7 AS DECIMAL(15,2)) as total_invoice_amount,
@@ -274,7 +289,12 @@ class ConsolidationService:
                     self.con.unregister('df_view')
                     
                 except Exception as e:
-                    logger.error(f"Failed to import {fname}: {e}")
+                    error_msg = str(e)
+                    logger.error(f"Failed to import {fname}: {error_msg}")
+                    # --- NEW: QUARANTINE AND SKIP ---
+                    # Save the bad file and reason to our list
+                    failed_files.append(f"❌ {fname} (Reason: {error_msg})")
+                    # Skip to the next file instead of stopping!
                     continue
 
             # 3. CONSOLIDATE & EXPORT
@@ -356,12 +376,21 @@ class ConsolidationService:
             self.generate_summary_report(all_summary_stats)
 
             shutil.rmtree(os.path.join(BASE_DIR, 'temp_extract'), ignore_errors=True)
-            self.log(100, "Completed", f"Saved to {self.output_dir}")
+            
+            # --- NEW: FINAL WARNING REPORT ---
+            if failed_files:
+                # If there are bad files, join them into a list and send a Warning Status
+                skipped_list = "\n".join(failed_files)
+                warning_msg = f"Processed successfully, but skipped {len(failed_files)} file(s):\n\n{skipped_list}"
+                self.log(100, "Completed with Warnings", warning_msg)
+            else:
+                # 100% perfect batch!
+                self.log(100, "Completed", f"Saved to {self.output_dir}")
         
-
         except Exception as e:
             logger.error(traceback.format_exc())
-            self.log(100, "Failed", str(e))
+            # Now it sends the filename even if it crashes unexpectedly!
+            self.log(100, "Failed", str(e), failed_file=current_file)
         finally:
             self.con.close()
 

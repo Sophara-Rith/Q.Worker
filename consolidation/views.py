@@ -48,24 +48,26 @@ def upload_files(request):
                     dest.write(chunk)
             
             # --- START OF FIX ---
-            # Automatically clean the dates before handing it to the background task
-            try:
-                # Read the newly saved file
-                df = pd.read_excel(path)
-                
-                # Check if the specific date column exists (with the exact spacing)
-                date_col_name = 'កាលបរិច្ឆេទ\xa0' # Exact match to your error log
-                
-                if date_col_name in df.columns:
-                    # Convert whatever format they uploaded into standard DD-MM-YYYY
-                    df[date_col_name] = pd.to_datetime(df[date_col_name], errors='coerce').dt.strftime('%d-%m-%Y')
+            # Only attempt to clean dates if the uploaded file is actually an Excel file.
+            # This prevents the "engine manually" warning when users upload .rar or .zip files.
+            if path.lower().endswith(('.xlsx', '.xls')):
+                try:
+                    # Read the newly saved file
+                    df = pd.read_excel(path)
                     
-                    # Overwrite the original uploaded file with the cleaned dates
-                    df.to_excel(path, index=False)
-            except Exception as e:
-                # If Pandas fails (e.g., it's not a valid Excel file), just skip cleaning
-                # and let the existing error handling deal with it.
-                print(f"Warning: Could not pre-clean dates for {f.name}: {e}")
+                    # Check if the specific date column exists (with the exact spacing)
+                    date_col_name = 'កាលបរិច្ឆេទ\xa0' # Exact match to your error log
+                    
+                    if date_col_name in df.columns:
+                        # Convert whatever format they uploaded into standard DD-MM-YYYY
+                        df[date_col_name] = pd.to_datetime(df[date_col_name], errors='coerce').dt.strftime('%d-%m-%Y')
+                        
+                        # Overwrite the original uploaded file with the cleaned dates
+                        df.to_excel(path, index=False)
+                except Exception as e:
+                    # If Pandas fails (e.g., corrupted file), just skip cleaning
+                    # and let the existing error handling deal with it.
+                    print(f"Warning: Could not pre-clean dates for {f.name}: {e}")
             # --- END OF FIX ---
 
             saved_paths.append(path)

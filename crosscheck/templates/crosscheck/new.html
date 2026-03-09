@@ -1,8 +1,8 @@
 {% extends 'base.html' %} {% load static %} {% block title %}New Crosscheck{% endblock %} {% block content %}
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
-<link rel="stylesheet" type="text/css" href="https://npmcdn.com/flatpickr/dist/themes/dark.css" />
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link href="{% static 'css/flatpickr.min.css' %}" rel="stylesheet" />
+<link href="{% static 'css/dark.css' %}" rel="stylesheet" />
+<script src="{% static 'js/flatpickr.js' %}"></script>
 
 <style>
     /* --- Flatpickr Compact UI Overrides --- */
@@ -255,7 +255,9 @@
                                 </select>
                                 <select x-model="uiState.req_to_year" class="w-24 text-xs font-bold font-mono border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all cursor-pointer text-center">
                                     <option value="" disabled selected>YYYY</option>
-                                    <template x-for="i in 15"><option :value="currentYear - i + 1" x-text="currentYear - i + 1"></option></template>
+                                    <template x-for="i in 15">
+                                        <option :value="currentYear - i + 1" x-text="currentYear - i + 1" :disabled="uiState.req_from_year && (currentYear - i + 1) < uiState.req_from_year" :class="uiState.req_from_year && (currentYear - i + 1) < uiState.req_from_year ? 'text-slate-300 dark:text-slate-600' : ''"></option>
+                                    </template>
                                 </select>
                             </div>
                         </div>
@@ -277,7 +279,15 @@
                                 <input
                                     type="text"
                                     x-model="uiState.audit_end"
-                                    x-init="flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' })"
+                                    x-init="
+                                        let fp = flatpickr($el, { dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-m-Y' });
+                                        $watch('uiState.audit_start', (val) => {
+                                            fp.set('minDate', val);
+                                            if (uiState.audit_end && val > uiState.audit_end) {
+                                                uiState.audit_end = val; // Auto-corrects end date if it becomes earlier than start date
+                                            }
+                                        });
+                                    "
                                     class="w-full text-xs font-mono font-medium border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all cursor-pointer bg-white"
                                     placeholder="DD-MM-YYYY"
                                 />
@@ -973,6 +983,19 @@
             },
 
             saveComputedData() {
+                if (this.uiState.req_from_year && this.uiState.req_to_year) {
+                    if (parseInt(this.uiState.req_to_year) < parseInt(this.uiState.req_from_year)) {
+                        alert('Validation Error: Requested Period "To Year" cannot be earlier than "From Year".');
+                        return;
+                    }
+                }
+                if (this.uiState.audit_start && this.uiState.audit_end) {
+                    if (new Date(this.uiState.audit_end) < new Date(this.uiState.audit_start)) {
+                        alert('Validation Error: Audit Timeline "End Date" cannot be earlier than "Start Date".');
+                        return;
+                    }
+                }
+
                 if (!this.tempFilePath) {
                     alert('Error: Source file lost. Please upload again.');
                     return;

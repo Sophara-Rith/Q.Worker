@@ -288,18 +288,49 @@
                         this.status = data.status;
                         this.details = data.details;
 
-                        if (data.status === 'Failed') {
-                            alert('Task Failed: ' + data.details);
-                            this.reset();
+                        // Catch BOTH 'Failed' and 'Error' statuses!
+                        if (data.status === 'Failed' || data.status === 'Error') {
+                            clearInterval(this.pollInterval); // Stop polling immediately
+                            this.processing = false; // Unlock the UI
+
+                            // Construct a clean, helpful error message
+                            let errorText = 'Consolidation Task Failed!\n\n';
+
+                            // If the backend sent us a specific filename, show it prominently
+                            if (data.failed_file) {
+                                errorText += '❌ Problem File: ' + data.failed_file + '\n';
+                            }
+
+                            errorText += '⚠️ Reason: ' + data.details;
+
+                            alert(errorText);
+
+                            // Reset your form
+                            if (typeof this.reset === 'function') {
+                                this.reset();
+                            }
                             return;
                         }
 
+                        // Normal success completion
                         if (this.progress >= 100) {
                             clearInterval(this.pollInterval);
+
+                            // --- NEW: Check if backend sent the Warnings status ---
+                            if (data.status === 'Completed with Warnings') {
+                                // Give the user the exact list of skipped files!
+                                alert('Batch Completed with Exceptions:\n\n' + data.details);
+                            }
+
                             setTimeout(() => {
                                 this.completed = true;
                                 this.processing = false; // Turn off the processing lock
                                 this.files = [];
+
+                                let fileInput = document.getElementById('fileInput');
+                                if (fileInput) {
+                                    fileInput.value = ''; // Force browser to forget old files
+                                }
                             }, 800);
                         }
                     } catch (err) {
@@ -322,14 +353,27 @@
             },
 
             reset() {
+                // 1. Reset all your reactive state variables
                 this.files = [];
+                this.taskId = null;
+                this.progress = 0;
+                this.status = '';
+                this.details = '';
                 this.processing = false;
                 this.completed = false;
-                this.progress = 0;
-                this.status = 'Pending';
-                this.details = '';
-                this.taskId = null;
-                if (this.pollInterval) clearInterval(this.pollInterval);
+
+                // 2. Clear the polling interval if it's still running
+                if (this.pollInterval) {
+                    clearInterval(this.pollInterval);
+                    this.pollInterval = null;
+                }
+
+                // 3. THE MAGIC FIX: Clear the actual HTML file input!
+                // Make sure the ID matches the id="" on your <input type="file"> tag
+                let fileInput = document.getElementById('fileInput');
+                if (fileInput) {
+                    fileInput.value = ''; // This forces the browser to forget the old file
+                }
             },
         };
     }

@@ -1,0 +1,8 @@
+-------Compile python to c via cython
+ python -m compile_all.py
+
+-------Create .exe to run the engine
+pyinstaller --onefile --icon="favicon.ico" --name="AuditCore" launcher.py
+
+-------Build installation file
+User Inno Setup Compiler
