@@ -7,65 +7,94 @@ import uuid
 import pandas as pd
 import duckdb
 import patoolib
-import openpyxl
-from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
-from openpyxl.utils import get_column_letter
-from datetime import datetime
+import xlsxwriter
 from django.conf import settings
 from core.models import UserSettings
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
 # --- CONFIGURATION ---
 BASE_DIR = settings.BASE_DIR
-APPDATA_DIR = os.path.join(os.environ.get('APPDATA'), 'AuditCore PRO')
+APPDATA_DIR = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'AuditCore PRO')
 DB_PATH = os.path.join(APPDATA_DIR, 'dataWarehouse.duckdb')
 
 # --- SPECIAL CONFIG ---
 # TINs that require splitting by single year (Chunk Size = 1)
 TINS_SPLIT_BY_YEAR = [
-    "L001-100044638",
-    # Add other special TINs here
+    "L001-100044638", "L001-100103383", "L001-100063098", "L001-104015799",
+    "L001-107032791", "L001-100050115", "L001-100181805", "L001-100045138",
+    "L001-100057551", "L001-100045766", "L001-100055338", "L001-100011888",
+    "L001-901705421", "L001-107000385", "L001-100045707", "L001-100136036",
+    "L001-103007369", "L001-100046460", "L001-100044956", "L001-100099718",
+    "L001-901503317", "L001-100191681", "L001-100121322", "L001-100121845",
+    "L001-100053564", "L001-901501877", "L001-100129250", "L001-100045995",
+    "L001-100066011", "L001-100048706", "L001-107041723", "L001-901705389",
+    "L001-107030519", "L001-100112145", "L001-106004107", "L001-100190324",
+    "L001-100186432", "L001-104013273", "L001-100045782", "L001-100098630",
+    "L001-105001619", "L001-100045162", "L001-107040190", "L001-100068901",
+    "L001-100074669", "L001-901639143", "L001-100049648", "L001-107024462",
+    "L001-150000308", "L001-100120679", "L001-100049915", "L001-901501119"
 ]
+
+SPECIAL_TINS_9_DIGITS = {t[-9:] for t in TINS_SPLIT_BY_YEAR}
 
 class ProgressTracker:
     _instances = {}
 
     @classmethod
     def update(cls, task_id, progress, status, details="", failed_file=None):
-        cls._instances[task_id] = {
-            'progress': progress,
-            'status': status,
-            'details': details,
-            'failed_file': failed_file
-        }
+        # Initialize the task if it doesn't exist
+        if task_id not in cls._instances:
+            cls._instances[task_id] = {
+                'progress': 0,
+                'status': 'Pending',
+                'details': '',
+                'failed_file': None,
+                'logs': []
+            }
+
+        # Create a formatted terminal log entry
+        time_str = datetime.now().strftime("%H:%M:%S")
+        log_entry = f"[{time_str}] {status}: {details}"
+
+        # Update state
+        cls._instances[task_id]['progress'] = progress
+        cls._instances[task_id]['status'] = status
+        cls._instances[task_id]['details'] = details
+        cls._instances[task_id]['failed_file'] = failed_file
+        
+        # Append to the terminal history (preventing identical back-to-back spam)
+        if not cls._instances[task_id]['logs'] or cls._instances[task_id]['logs'][-1] != log_entry:
+            cls._instances[task_id]['logs'].append(log_entry)
 
     @classmethod
     def get(cls, task_id):
-        return cls._instances.get(task_id, {'progress': 0, 'status': 'Pending', 'details': '', 'failed_file': None})
+        return cls._instances.get(task_id, {
+            'progress': 0, 'status': 'Pending', 'details': '', 'failed_file': None, 'logs': []
+        })
 
 class ConsolidationService:
     def __init__(self, task_id, user):
-            self.task_id = task_id
-            self.user = user
-            self.con = duckdb.connect(DB_PATH)
-            
-            # --- DYNAMIC OUTPUT DIRECTORY (From Core) ---
-            try:
-                # Use the related_name 'settings' or query directly
-                user_settings = UserSettings.objects.get(user=user)
-                self.output_dir = user_settings.default_output_dir
-            except UserSettings.DoesNotExist:
-                # Fallback
-                if os.path.exists("D:/"):
-                    self.output_dir = "D:/AuditCore_Output"
-                else:
-                    self.output_dir = os.path.join(os.path.expanduser("~"), "AuditCore_Output")
-            
-            os.makedirs(self.output_dir, exist_ok=True)
-            self.archive_dir = os.path.join(self.output_dir, 'Archive')
-            
-            self.init_db()
+        self.task_id = task_id
+        self.user = user
+        os.makedirs(APPDATA_DIR, exist_ok=True)
+        self.con = duckdb.connect(DB_PATH)
+        
+        # --- DYNAMIC OUTPUT DIRECTORY (From Core) ---
+        try:
+            user_settings = UserSettings.objects.get(user=user)
+            self.output_dir = user_settings.default_output_dir
+        except UserSettings.DoesNotExist:
+            if os.path.exists("D:/"):
+                self.output_dir = "D:/AuditCore_Output"
+            else:
+                self.output_dir = os.path.join(os.path.expanduser("~"), "AuditCore_Output")
+        
+        os.makedirs(self.output_dir, exist_ok=True)
+        self.archive_dir = os.path.join(self.output_dir, 'Archive')
+        
+        self.init_db()
 
     def init_db(self):
         """Init DB with EXACT schema."""
@@ -135,7 +164,6 @@ class ConsolidationService:
         return months.get(int(month_num), str(month_num))
 
     def format_month_list(self, month_nums):
-        """Convert list of month numbers [1, 2, 3, 6] to 'Jan-Mar, Jun'"""
         if not month_nums: return ""
         nums = sorted(list(set(month_nums)))
         ranges = []
@@ -170,7 +198,7 @@ class ConsolidationService:
                     extract_to = os.path.join(BASE_DIR, 'temp_extract', str(uuid.uuid4()))
                     os.makedirs(extract_to, exist_ok=True)
                     try:
-                        patoolib.extract_archive(f_path, outdir=extract_to)
+                        patoolib.extract_archive(f_path, outdir=extract_to, verbosity=-1)
                         for root, _, files in os.walk(extract_to):
                             for file in files:
                                 if file.lower().endswith(('.xlsx', '.xls')) and not file.startswith('~$'):
@@ -190,53 +218,46 @@ class ConsolidationService:
             
             tins_processed = set()
             tin_company_map = {} 
-            
-            # --- NEW: TRACK FAILED FILES ---
             failed_files = []
             
             for i, file in enumerate(extracted_files):
                 fname = os.path.basename(file)
                 current_file = fname
-                percent = 20 + int((i / total) * 30)
-                self.log(percent, "Importing", f"Reading {fname}")
                 
-                # --- NEW SMART TIN EXTRACTION ---
-                # 1. Try to find the full format (e.g., L001-749154973) anywhere in the name
+                # Math Fix: Show before reading
+                percent_before = 20 + int((i / total) * 30)
+                self.log(percent_before, "Importing", f"Reading {fname} ({i+1} of {total})")
+                
+                # SMART TIN EXTRACTION
                 match_full = re.search(r'([A-Za-z0-9]{4}-\d{9})', fname)
-                
                 if match_full:
                     tin = match_full.group(1).upper()
                 else:
-                    # 2. Fallback: Try to find exactly 9 digits anywhere in the name (e.g., 749154973)
                     match_short = re.search(r'(?<!\d)(\d{9})(?!\d)', fname)
                     tin = match_short.group(1) if match_short else "UNKNOWN"
                 
                 tins_processed.add(tin)
-
                 branch_info = ""
+                
                 try:
-                    wb_temp = openpyxl.load_workbook(file, read_only=True, data_only=True)
-                    ws_temp = wb_temp.active
-                    title_val = ws_temp['A1'].value
+                    df = pd.read_excel(file, skiprows=3, dtype=str)
+                    if len(df.columns) < 10:
+                        raise ValueError("File structure does not match expected format.")
+                        
+                    title_df = pd.read_excel(file, nrows=1, header=None)
+                    title_val = title_df.iloc[0, 0] if not title_df.empty else ""
                     
                     if title_val and isinstance(title_val, str):
                         if tin not in tin_company_map:
                             cleaned_name = self.clean_company_name(title_val)
                             tin_company_map[tin] = cleaned_name
                         branch_info = self.extract_branch_info(title_val)
-                    wb_temp.close()
-                except Exception as e:
-                    logger.warning(f"Could not read title from {fname}: {e}")
-
-                try:
-                    df = pd.read_excel(file, skiprows=3, dtype=str)
-                    df.columns = [f'Column{i}' for i in range(len(df.columns))]
+                    
+                    df.columns = [f'Column{j}' for j in range(len(df.columns))]
                     safe_branch = branch_info.replace("'", "''")
                     
-                    # Register dataframe as a view for SQL operations
                     self.con.register('df_view', df)
 
-                    # List of core fields to check for duplicates
                     core_fields_str = """
                         date, invoice_number, credit_notification_letter_number, buyer_type,
                         tax_registration_id, buyer_name, total_invoice_amount, 
@@ -246,7 +267,6 @@ class ConsolidationService:
                         income_tax_redemption_rate, notes, description, tax_declaration_status
                     """
 
-                    # Execute Insert with EXCEPT logic to skip duplicates
                     self.con.execute(f"""
                         INSERT INTO tax_declaration 
                         (
@@ -285,27 +305,36 @@ class ConsolidationService:
                             WHERE file_tin = '{tin}'
                         ) as unique_rows
                     """)
-                    
                     self.con.unregister('df_view')
+                    
+                    # Math Fix: Show completion of this file
+                    percent_after = 20 + int(((i + 1) / total) * 30)
+                    self.log(percent_after, "Importing", f"Ingested {fname}")
                     
                 except Exception as e:
                     error_msg = str(e)
                     logger.error(f"Failed to import {fname}: {error_msg}")
-                    # --- NEW: QUARANTINE AND SKIP ---
-                    # Save the bad file and reason to our list
                     failed_files.append(f"❌ {fname} (Reason: {error_msg})")
-                    # Skip to the next file instead of stopping!
                     continue
 
             # 3. CONSOLIDATE & EXPORT
             self.log(50, "Consolidating", "Generating Master Files...")
             all_summary_stats = []
             
+            total_tins = len(tins_processed)
+            if total_tins == 0:
+                self.log(100, "Failed", "No valid data could be extracted.", failed_file=current_file)
+                return
+
+            # Calculate how much % each TIN is worth (total phase is 40%)
+            tin_weight = 40.0 / total_tins
+
             for idx, tin in enumerate(tins_processed):
-                percent = 50 + int((idx / len(tins_processed)) * 40)
-                self.log(percent, "Consolidating", f"Formatting {tin}")
+                tin_base_pct = 50 + (idx * tin_weight)
                 
-                # Fetch All Data for TIN
+                # Micro-Step 1: Querying Data (10% of this TIN's progress)
+                self.log(int(tin_base_pct + (tin_weight * 0.1)), "Consolidating", f"Querying database for {tin} ({idx + 1}/{total_tins})...")
+                
                 df_all = self.con.sql(f"""
                     SELECT * FROM tax_declaration 
                     WHERE file_tin = '{tin}'
@@ -313,13 +342,15 @@ class ConsolidationService:
                 """).to_df()
                 
                 if df_all.empty:
+                    self.log(int(tin_base_pct + tin_weight), "Consolidating", f"Skipped {tin} (No data)")
                     continue
 
-                # Prepare Stats Logic
+                # Micro-Step 2: Stats Collection (20% of this TIN's progress)
+                self.log(int(tin_base_pct + (tin_weight * 0.2)), "Consolidating", f"Analyzing statistics for {tin}...")
+                
                 df_all['year'] = df_all['date'].dt.year
                 df_all['month'] = df_all['date'].dt.month
                 
-                # --- STATS COLLECTION ---
                 stats_grouped = df_all.groupby('year').agg(
                     count=('id', 'count'),
                     months=('month', lambda x: list(x.unique()))
@@ -333,154 +364,147 @@ class ConsolidationService:
                         "count": row['count']
                     })
 
-                # --- SPLIT SHEET LOGIC ---
-                wb = openpyxl.Workbook()
-                wb.remove(wb.active) # Remove default sheet
+                # Micro-Step 3: Setup Excel (30% of this TIN's progress)
+                self.log(int(tin_base_pct + (tin_weight * 0.3)), "Consolidating", f"Building Excel workbook for {tin}...")
                 
                 company_name = tin_company_map.get(tin, tin)
                 min_year = int(df_all['year'].min())
                 max_year = int(df_all['year'].max())
+                total_years_span = max(1, max_year - min_year + 1)
 
-                if tin in TINS_SPLIT_BY_YEAR:
-                    chunk_size = 1
-                    logger.info(f"Special TIN {tin}: Splitting by 1 year.")
-                else:
-                    chunk_size = 4
+                chunk_size = 1 if str(tin)[-9:] in SPECIAL_TINS_9_DIGITS else 4
                 
-                # Iterate chunks
+                master_file = os.path.join(self.output_dir, f"{tin}.xlsx")
+                workbook = xlsxwriter.Workbook(master_file, {'nan_inf_to_errors': True})
+                
                 current_start = min_year
+                has_sheets = False
+                
+                # Micro-Step 4: Writing Sheets (Scales dynamically up to 90% of this TIN's progress)
                 while current_start <= max_year:
-                    current_end = current_start + chunk_size - 1
+                    # Calculate how far through the years we are to update the progress bar inside the loop
+                    progress_ratio = (current_start - min_year) / total_years_span
+                    chunk_pct = tin_base_pct + (tin_weight * 0.3) + (tin_weight * 0.6 * progress_ratio)
                     
-                    # Filter Data for this chunk
+                    current_end = current_start + chunk_size - 1
                     df_chunk = df_all[(df_all['year'] >= current_start) & (df_all['year'] <= current_end)]
                     
                     if not df_chunk.empty:
-                        # Determine Sheet Name
+                        has_sheets = True
                         c_min_date = df_chunk['date'].min()
                         c_max_date = df_chunk['date'].max()
-                        sheet_name = f"{c_min_date.strftime('%m-%Y')} - {c_max_date.strftime('%m-%Y')}"
+                        sheet_name = f"{c_min_date.strftime('%m-%Y')} - {c_max_date.strftime('%m-%Y')}"[:31]
                         
-                        # Create and Fill Sheet
-                        ws = wb.create_sheet(title=sheet_name)
-                        self.write_sheet_data(ws, df_chunk, company_name)
+                        self.log(int(chunk_pct), "Consolidating", f"Writing sheet '{sheet_name}' for {tin}...")
+                        
+                        ws = workbook.add_worksheet(name=sheet_name)
+                        self.write_sheet_data_fast(workbook, ws, df_chunk, company_name)
                     
                     current_start += chunk_size
                 
-                # Save Master File
-                master_file = os.path.join(self.output_dir, f"{tin}.xlsx")
-                wb.save(master_file)
+                if has_sheets:
+                    workbook.close()
+
+                # Micro-Step 5: Finished (100% of this TIN's progress)
+                self.log(int(tin_base_pct + tin_weight), "Consolidating", f"Saved {tin}.xlsx")
 
             # 4. GENERATE SUMMARY REPORT
             self.log(90, "Finalizing", "Updating Summary Report...")
-            self.generate_summary_report(all_summary_stats)
+            self.generate_summary_report_fast(all_summary_stats)
 
             shutil.rmtree(os.path.join(BASE_DIR, 'temp_extract'), ignore_errors=True)
             
-            # --- NEW: FINAL WARNING REPORT ---
             if failed_files:
-                # If there are bad files, join them into a list and send a Warning Status
                 skipped_list = "\n".join(failed_files)
                 warning_msg = f"Processed successfully, but skipped {len(failed_files)} file(s):\n\n{skipped_list}"
                 self.log(100, "Completed with Warnings", warning_msg)
             else:
-                # 100% perfect batch!
                 self.log(100, "Completed", f"Saved to {self.output_dir}")
         
         except Exception as e:
             logger.error(traceback.format_exc())
-            # Now it sends the filename even if it crashes unexpectedly!
             self.log(100, "Failed", str(e), failed_file=current_file)
         finally:
             self.con.close()
 
-    def write_sheet_data(self, ws, df, company_name):
-        """Populates a specific worksheet with formatted data."""
+    def write_sheet_data_fast(self, workbook, ws, df, company_name):
+        """High-speed vectorized formatting using XlsxWriter matching original design exactly."""
         
-        # --- STYLES ---
-        font_title = Font(name="Khmer OS Muol Light", size=12)
-        font_header = Font(name="Khmer OS Siemreap", size=11, bold=True)
-        font_body = Font(name="Khmer OS Siemreap", size=11)
+        # --- PREPARE FORMATS ---
+        f_title = workbook.add_format({'font_name': 'Khmer OS Muol Light', 'font_size': 12, 'align': 'left', 'valign': 'vcenter'})
+        f_header = workbook.add_format({'font_name': 'Khmer OS Siemreap', 'font_size': 11, 'bold': True, 'bg_color': '#B0DBBC', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
         
-        thin = Side(style='thin', color="000000")
-        light = Side(style='thin', color="DDDDDD")
-        border_box = Border(left=thin, right=thin, top=thin, bottom=thin)
-        border_light = Border(left=light, right=light, top=light, bottom=light)
+        # Data formats (Alternating rows + Number/Date variations)
+        base_even = {'font_name': 'Khmer OS Siemreap', 'font_size': 11, 'border': 1, 'border_color': '#DDDDDD', 'bg_color': '#F5F5F5', 'valign': 'vcenter'}
+        base_odd = {'font_name': 'Khmer OS Siemreap', 'font_size': 11, 'border': 1, 'border_color': '#DDDDDD', 'valign': 'vcenter'}
         
-        align_center = Alignment(horizontal='center', vertical='center', wrap_text=False)
-        fill_header = PatternFill(start_color="B0DBBC", end_color="B0DBBC", fill_type="solid")
-        fill_alt = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+        f_even = workbook.add_format(base_even)
+        f_odd = workbook.add_format(base_odd)
+        
+        f_even_date = workbook.add_format({**base_even, 'num_format': 'DD-MM-YYYY', 'align': 'center'})
+        f_odd_date = workbook.add_format({**base_odd, 'num_format': 'DD-MM-YYYY', 'align': 'center'})
+        
+        f_even_num = workbook.add_format({**base_even, 'num_format': '#,##0'})
+        f_odd_num = workbook.add_format({**base_odd, 'num_format': '#,##0'})
 
-        # --- 1. TITLE (Row 1) ---
+        # --- 1. SET COLUMN WIDTHS ---
+        widths = [
+            8, 6, 14, 18, 15, 15, 18, 30, 20, 18, 18, 18, 18, 18, 18, 
+            18, 18, 18, 18, 18, 15, 20, 25, 20, 25
+        ]
+        for idx, w in enumerate(widths):
+            ws.set_column(idx, idx, w)
+
+        # --- 2. TITLE (Row 0) ---
         title = f"បញ្ជីទិន្នានុប្បវត្តិលក់ របស់ {company_name}"
-        ws['A1'] = title
-        ws['A1'].font = font_title
-        ws.merge_cells('A1:Y1') # Updated merge to Y
+        ws.merge_range(0, 0, 0, 24, title, f_title)
 
-        # --- 2. HEADERS (Row 2 & 3) ---
-        headers = {
-            'A': ("ឆ្នាំ", ""), 
-            'B': ("ល.រ", ""), 
-            'C': ("កាលបរិច្ឆេទ", ""), 
-            'D': ("លេខវិក្កយបត្រ ឬប្រតិវេទគយ", ""), 
-            'E': ("លេខលិខិតជូនដំណឹងឥណទាន", ""), 
-            'F': ("អ្នកទិញ", "ប្រភេទ"), 
-            'G': ("", "លេខសម្គាល់ចុះបញ្ជីពន្ធដា"), 
-            'H': ("", "ឈ្មោះ"), 
-            'I': ("តម្លៃសរុបលើវិក្កយបត្រ", ""), 
-            'J': ("តម្លៃ​​មិន​រួមអតប និងមិនជាប់​អតប​", "តម្លៃមិនរួមអតប"), 
-            'K': ("", "ការលក់មិនជាប់អតប"), 
-            'L': ("អាករលើតម្លៃបន្ថែមអត្រា ០% ", ""), 
-            'M': ("អាករលើតម្លៃបន្ថែម", "ការលក់ក្នុងស្រុក"), 
-            'N': ("", "អតបលើការនាំចេញ"), 
-            'O': ("អាករលើតម្លៃបន្ថែម(បន្ទុករដ្ឋ)", ""), 
-            'P': ("អតប កាត់ទុកដោយរតនាគារជាតិ", ""), 
-            'Q': ("អាករបំភ្លឺសាធារណៈ", ""), 
-            'R': ("អាករពិសេសលើទំនិញមួយចំនួន", ""), 
-            'S': ("អាករពិសេសលើសេវាមួយចំនួន", ""), 
-            'T': ("អាករលើការស្នាក់នៅ", ""), 
-            'U': ("អត្រាប្រាក់រំដោះពន្ធលើប្រាក់ចំណូល", ""), 
-            'V': ("កំណត់សម្គាល់", ""), 
-            'W': ("បរិយាយ", ""), 
-            'X': ("ស្ថានភាពប្រកាសពន្ធ", ""),
-            'Y': ("ស្នាក់ការ", "")
-        }
-
-        for col, (p_text, c_text) in headers.items():
-            ws[f"{col}2"] = p_text
-            if c_text: ws[f"{col}3"] = c_text
-            
-            for r in [2, 3]:
-                cell = ws[f"{col}{r}"]
-                cell.font = font_header
-                cell.fill = fill_header
-                cell.alignment = align_center
-                cell.border = border_box
-
-        # --- 3. APPLY MERGES ---
-        ws.merge_cells('F2:H2') # Buyer
-        ws.merge_cells('J2:K2') # Excl/Non-Tax
-        ws.merge_cells('M2:N2') # VAT
+        # --- 3. HEADERS (Rows 1 & 2) ---
+        vertical_merges = [
+            (0, "ឆ្នាំ"), (1, "ល.រ"), (2, "កាលបរិច្ឆេទ"), (3, "លេខវិក្កយបត្រ ឬប្រតិវេទគយ"), 
+            (4, "លេខលិខិតជូនដំណឹងឥណទាន"), (8, "តម្លៃសរុបលើវិក្កយបត្រ"), (11, "អាករលើតម្លៃបន្ថែមអត្រា ០% "),
+            (14, "អាករលើតម្លៃបន្ថែម(បន្ទុករដ្ឋ)"), (15, "អតប កាត់ទុកដោយរតនាគារជាតិ"), 
+            (16, "អាករបំភ្លឺសាធារណៈ"), (17, "អាករពិសេសលើទំនិញមួយចំនួន"), 
+            (18, "អាករពិសេសលើសេវាមួយចំនួន"), (19, "អាករលើការស្នាក់នៅ"), 
+            (20, "អត្រាប្រាក់រំដោះពន្ធលើប្រាក់ចំណូល"), (21, "កំណត់សម្គាល់"), 
+            (22, "បរិយាយ"), (23, "ស្ថានភាពប្រកាសពន្ធ"), (24, "ស្នាក់ការ")
+        ]
         
-        vertical_cols = ['A','B','C','D','E','I','L','O','P','Q','R','S','T','U','V','W','X','Y']
-        for col in vertical_cols:
-            ws.merge_cells(f"{col}2:{col}3")
+        for col, text in vertical_merges:
+            ws.merge_range(1, col, 2, col, text, f_header)
 
-        # --- 4. DATA WRITING ---
-        current_row = 4
+        # Horizontal group merges
+        ws.merge_range(1, 5, 1, 7, "អ្នកទិញ", f_header)
+        ws.write(2, 5, "ប្រភេទ", f_header)
+        ws.write(2, 6, "លេខសម្គាល់ចុះបញ្ជីពន្ធដា", f_header)
+        ws.write(2, 7, "ឈ្មោះ", f_header)
+
+        ws.merge_range(1, 9, 1, 10, "តម្លៃ​​មិន​រួមអតប និងមិនជាប់​អតប​", f_header)
+        ws.write(2, 9, "តម្លៃមិនរួមអតប", f_header)
+        ws.write(2, 10, "ការលក់មិនជាប់អតប", f_header)
+
+        ws.merge_range(1, 12, 1, 13, "អាករលើតម្លៃបន្ថែម", f_header)
+        ws.write(2, 12, "ការលក់ក្នុងស្រុក", f_header)
+        ws.write(2, 13, "អតបលើការនាំចេញ", f_header)
+
+        # --- 4. DATA WRITING (High Speed Row Writes) ---
+        df = df.sort_values('date')
+        row_idx = 3
         counter = 1
         previous_year = None
         
-        # Sort DF by date just in case
-        df = df.sort_values('date')
-
         for _, row in df.iterrows():
             year = row['date'].year if pd.notnull(row['date']) else ""
-            
             if previous_year is not None and year != previous_year:
-                current_row += 1 
+                row_idx += 1 
             previous_year = year
-            
+
+            is_even = (counter % 2 == 0)
+            fmt_base = f_even if is_even else f_odd
+            fmt_date = f_even_date if is_even else f_odd_date
+            fmt_num = f_even_num if is_even else f_odd_num
+
+            # Array matching the 25 columns
             vals = [
                 year, counter, row['date'], row['invoice_number'], row['credit_notification_letter_number'],
                 row['buyer_type'], row['tax_registration_id'], row['buyer_name'], row['total_invoice_amount'],
@@ -491,37 +515,26 @@ class ConsolidationService:
                 row['branch_name']
             ]
             
-            for i, val in enumerate(vals, 1):
-                cell = ws.cell(row=current_row, column=i, value=val)
-                if i == 3 and val: cell.number_format = 'DD-MM-YYYY'
-                if 9 <= i <= 20: cell.number_format = '#,##0' 
-                cell.font = font_body
-                cell.border = border_light
-                if counter % 2 == 0: cell.fill = fill_alt
+            for c_idx, val in enumerate(vals):
+                if pd.isna(val) or val is None:
+                    ws.write(row_idx, c_idx, "", fmt_base)
+                elif c_idx == 2:
+                    ws.write_datetime(row_idx, c_idx, val, fmt_date)
+                elif 8 <= c_idx <= 19:
+                    ws.write_number(row_idx, c_idx, float(val), fmt_num)
+                else:
+                    ws.write(row_idx, c_idx, str(val), fmt_base)
 
-            current_row += 1
+            row_idx += 1
             counter += 1
 
-        # --- 5. WIDTHS ---
-        widths = {
-            'A': 8, 'B': 6, 'C': 14, 'D': 18, 'E': 15, 'F': 15, 'G': 18, 'H': 30, 
-            'I': 20, 'J': 18, 'K': 18, 'L': 18, 'M': 18, 'N': 18, 'O': 18, 
-            'P': 18, 'Q': 18, 'R': 18, 'S': 18, 'T': 18, 'U': 15, 'V': 20, 'W': 25, 'X': 20, 'Y': 25
-        }
-        for col, w in widths.items():
-            ws.column_dimensions[col].width = w
-
-    def generate_summary_report(self, summary_data_list):
-        """
-        Update the master summary Excel file.
-        Matches logic from dataConsolidation.py
-        """
+    def generate_summary_report_fast(self, summary_data_list):
+        """High-speed vectorized summary report generator matching openpyxl design."""
         if not summary_data_list:
             return None
 
         try:
-            filename = "0.Import_Summary.xlsx"
-            filepath = os.path.join(self.output_dir, filename)
+            filepath = os.path.join(self.output_dir, "0.Import_Summary.xlsx")
             
             # 1. Load existing data if available
             existing_data = []
@@ -552,101 +565,91 @@ class ConsolidationService:
                     'Total Transactions': item['count']
                 })
             
-            # 3. Create DataFrame
             df = pd.DataFrame(final_data)
             if df.empty: return None
-            
             if 'No' in df.columns: df = df.drop(columns=['No'])
 
             df['TIN'] = df['TIN'].astype(str)
             df = df.sort_values(by=['TIN', 'Year'])
-            df.insert(0, 'No', 0) 
             
             total_transactions = df['Total Transactions'].sum()
             unique_tins_count = df['TIN'].nunique()
 
-            # 4. Write to Excel
-            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Summary')
-                
-                worksheet = writer.sheets['Summary']
-                
-                # --- STYLES ---
-                header_font = Font(bold=True, color="FFFFFF")
-                header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-                thin_border = Side(style='thin', color="000000")
-                border = Border(left=thin_border, right=thin_border, top=thin_border, bottom=thin_border)
-                center_align = Alignment(horizontal='center', vertical='center')
-                left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
-                fill_white = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
-                fill_grey = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-                
-                # Header Style
-                for cell in worksheet[1]:
-                    cell.font = header_font
-                    cell.fill = header_fill
-                    cell.alignment = center_align
-                    cell.border = border
-
-                # Merging & Formatting
-                current_tin = None
-                start_row = 2
-                tin_counter = 1
-                use_grey_fill = False 
-                
-                for row in range(2, worksheet.max_row + 2):
-                    cell_value = worksheet.cell(row=row, column=2).value if row <= worksheet.max_row else None
-                    
-                    if cell_value != current_tin:
-                        if current_tin is not None:
-                            end_row = row - 1
-                            worksheet.cell(row=start_row, column=1).value = tin_counter
-                            tin_counter += 1
-                            
-                            if end_row > start_row:
-                                worksheet.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
-                                worksheet.merge_cells(start_row=start_row, start_column=2, end_row=end_row, end_column=2)
-                            
-                            current_fill = fill_grey if use_grey_fill else fill_white
-                            for r in range(start_row, end_row + 1):
-                                for c in range(1, 6):
-                                    cell = worksheet.cell(row=r, column=c)
-                                    cell.fill = current_fill
-                                    cell.border = border
-                                    if c == 3: cell.alignment = left_align
-                                    else: cell.alignment = center_align
-                                    if c == 5: cell.number_format = '#,##0'
-
-                            use_grey_fill = not use_grey_fill
-                        
-                        current_tin = cell_value
-                        start_row = row
-
-                # Grand Total Row
-                last_row = worksheet.max_row + 1
-                worksheet.cell(row=last_row, column=1).value = "GRAND TOTAL"
-                worksheet.cell(row=last_row, column=2).value = f"Total TINs: {unique_tins_count}"
-                worksheet.cell(row=last_row, column=5).value = total_transactions
-                
-                total_font = Font(bold=True)
-                total_fill = PatternFill(start_color="ACB9CA", end_color="ACB9CA", fill_type="solid")
-                
-                for col in range(1, 6):
-                    cell = worksheet.cell(row=last_row, column=col)
-                    cell.font = total_font
-                    cell.fill = total_fill
-                    cell.border = border
-                    cell.alignment = center_align
-                    if col == 5: cell.number_format = '#,##0'
-
-                worksheet.column_dimensions['A'].width = 15
-                worksheet.column_dimensions['B'].width = 25
-                worksheet.column_dimensions['C'].width = 35
-                worksheet.column_dimensions['D'].width = 10
-                worksheet.column_dimensions['E'].width = 20
-                
-            return filepath
+            # 3. WRITE VIA XLSXWRITER
+            workbook = xlsxwriter.Workbook(filepath)
+            worksheet = workbook.add_worksheet('Summary')
             
+            # Configure columns
+            worksheet.set_column(0, 0, 15)
+            worksheet.set_column(1, 1, 25)
+            worksheet.set_column(2, 2, 35)
+            worksheet.set_column(3, 3, 10)
+            worksheet.set_column(4, 4, 20)
+            
+            # Formatting definitions
+            f_head = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#4472C4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            
+            fmt_dict = {
+                'white': {
+                    'center': workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'}),
+                    'left': workbook.add_format({'border': 1, 'align': 'left', 'valign': 'vcenter', 'text_wrap': True}),
+                    'num': workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0'})
+                },
+                'grey': {
+                    'center': workbook.add_format({'border': 1, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter'}),
+                    'left': workbook.add_format({'border': 1, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'text_wrap': True}),
+                    'num': workbook.add_format({'border': 1, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0'})
+                }
+            }
+            
+            f_grand_total = workbook.add_format({'bold': True, 'bg_color': '#ACB9CA', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+            f_grand_total_num = workbook.add_format({'bold': True, 'bg_color': '#ACB9CA', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0'})
+
+            # Write Headers
+            headers = ["No", "TIN", "Month", "Year", "Total Transactions"]
+            for col_num, data in enumerate(headers):
+                worksheet.write(0, col_num, data, f_head)
+
+            # Write Data with Smart Merging
+            row_idx = 1
+            tin_counter = 1
+            use_grey = False
+
+            for tin, group in df.groupby('TIN', sort=False):
+                span = len(group)
+                end_row = row_idx + span - 1
+                color_key = 'grey' if use_grey else 'white'
+                f_c = fmt_dict[color_key]['center']
+                f_l = fmt_dict[color_key]['left']
+                f_n = fmt_dict[color_key]['num']
+
+                if span > 1:
+                    worksheet.merge_range(row_idx, 0, end_row, 0, tin_counter, f_c)
+                    worksheet.merge_range(row_idx, 1, end_row, 1, tin, f_c)
+                else:
+                    worksheet.write(row_idx, 0, tin_counter, f_c)
+                    worksheet.write(row_idx, 1, tin, f_c)
+
+                for i, (_, row_data) in enumerate(group.iterrows()):
+                    c_row = row_idx + i
+                    worksheet.write(c_row, 2, row_data['Month'], f_l)
+                    worksheet.write(c_row, 3, row_data['Year'], f_c)
+                    worksheet.write(c_row, 4, row_data['Total Transactions'], f_n)
+
+                row_idx += span
+                tin_counter += 1
+                use_grey = not use_grey
+
+            # Write Grand Total Row
+            worksheet.write(row_idx, 0, "GRAND TOTAL", f_grand_total)
+            worksheet.write(row_idx, 1, f"Total TINs: {unique_tins_count}", f_grand_total)
+            worksheet.write(row_idx, 2, "", f_grand_total)
+            worksheet.write(row_idx, 3, "", f_grand_total)
+            worksheet.write(row_idx, 4, total_transactions, f_grand_total_num)
+
+            workbook.close()
+            return filepath
+
         except Exception as e:
             logger.error(f"Error generating summary report: {e}")
             return None
