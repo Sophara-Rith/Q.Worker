@@ -8,9 +8,11 @@ import pandas as pd
 import duckdb
 import patoolib
 import xlsxwriter
+import openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+from datetime import datetime
 from django.conf import settings
 from core.models import UserSettings
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -37,48 +39,25 @@ TINS_SPLIT_BY_YEAR = [
     "L001-150000308", "L001-100120679", "L001-100049915", "L001-901501119"
 ]
 
-SPECIAL_TINS_9_DIGITS = {t[-9:] for t in TINS_SPLIT_BY_YEAR}
-
 class ProgressTracker:
     _instances = {}
 
     @classmethod
-    def update(cls, task_id, progress, status, details="", failed_file=None):
-        # Initialize the task if it doesn't exist
-        if task_id not in cls._instances:
-            cls._instances[task_id] = {
-                'progress': 0,
-                'status': 'Pending',
-                'details': '',
-                'failed_file': None,
-                'logs': []
-            }
-
-        # Create a formatted terminal log entry
-        time_str = datetime.now().strftime("%H:%M:%S")
-        log_entry = f"[{time_str}] {status}: {details}"
-
-        # Update state
-        cls._instances[task_id]['progress'] = progress
-        cls._instances[task_id]['status'] = status
-        cls._instances[task_id]['details'] = details
-        cls._instances[task_id]['failed_file'] = failed_file
-        
-        # Append to the terminal history (preventing identical back-to-back spam)
-        if not cls._instances[task_id]['logs'] or cls._instances[task_id]['logs'][-1] != log_entry:
-            cls._instances[task_id]['logs'].append(log_entry)
+    def update(cls, task_id, progress, status, details=""):
+        cls._instances[task_id] = {
+            'progress': progress,
+            'status': status,
+            'details': details
+        }
 
     @classmethod
     def get(cls, task_id):
-        return cls._instances.get(task_id, {
-            'progress': 0, 'status': 'Pending', 'details': '', 'failed_file': None, 'logs': []
-        })
+        return cls._instances.get(task_id, {'progress': 0, 'status': 'Pending', 'details': ''})
 
 class ConsolidationService:
     def __init__(self, task_id, user):
         self.task_id = task_id
         self.user = user
-        os.makedirs(APPDATA_DIR, exist_ok=True)
         self.con = duckdb.connect(DB_PATH)
         
         # --- DYNAMIC OUTPUT DIRECTORY (From Core) ---
@@ -138,7 +117,7 @@ class ConsolidationService:
             self.init_db()
 
     def log(self, percent, status, details, failed_file=None):
-        ProgressTracker.update(self.task_id, percent, status, details, failed_file)
+        ProgressTracker.update(self.task_id, percent, status, details)
 
     def extract_branch_info(self, original_title):
         if not original_title or not isinstance(original_title, str): return ""
@@ -185,6 +164,8 @@ class ConsolidationService:
 
     def process(self, file_paths):
         current_file = "Unknown"
+        dropped_logs = []
+        
         try:
             self.log(5, "Initializing", "Preparing files...")
             extracted_files = []
@@ -224,11 +205,9 @@ class ConsolidationService:
                 fname = os.path.basename(file)
                 current_file = fname
                 
-                # Math Fix: Show before reading
                 percent_before = 20 + int((i / total) * 30)
                 self.log(percent_before, "Importing", f"Reading {fname} ({i+1} of {total})")
                 
-                # SMART TIN EXTRACTION
                 match_full = re.search(r'([A-Za-z0-9]{4}-\d{9})', fname)
                 if match_full:
                     tin = match_full.group(1).upper()
@@ -241,6 +220,7 @@ class ConsolidationService:
                 
                 try:
                     df = pd.read_excel(file, skiprows=3, dtype=str)
+                    
                     if len(df.columns) < 10:
                         raise ValueError("File structure does not match expected format.")
                         
@@ -253,8 +233,19 @@ class ConsolidationService:
                             tin_company_map[tin] = cleaned_name
                         branch_info = self.extract_branch_info(title_val)
                     
+                    # Pad columns to ensure Column0 to Column22 always exist
+                    while len(df.columns) < 23:
+                        df[f'TempCol{len(df.columns)}'] = None
                     df.columns = [f'Column{j}' for j in range(len(df.columns))]
+                    
                     safe_branch = branch_info.replace("'", "''")
+                    
+                    # Track legitimately dropped rows
+                    missing_invoice_mask = df['Column2'].isna() | (df['Column2'].astype(str).str.strip() == '') | (df['Column2'].astype(str).str.lower().str.strip() == 'nan')
+                    dropped_count = missing_invoice_mask.sum()
+                    
+                    if dropped_count > 0:
+                        dropped_logs.append(f"📄 {fname} | Dropped: {dropped_count} rows | Reason: Missing Invoice Number")
                     
                     self.con.register('df_view', df)
 
@@ -267,6 +258,10 @@ class ConsolidationService:
                         income_tax_redemption_rate, notes, description, tax_declaration_status
                     """
 
+                    # -------------------------------------------------------------------
+                    # USING YOUR TRUSTED EXCEPT LOGIC FOR PERFECT ITEMIZATION SUPPORT
+                    # (Combined with advanced data cleansing to save numeric dropping)
+                    # -------------------------------------------------------------------
                     self.con.execute(f"""
                         INSERT INTO tax_declaration 
                         (
@@ -278,27 +273,40 @@ class ConsolidationService:
                             '{tin}', now(), '{self.user.username}', '{safe_branch}'
                         FROM (
                             SELECT 
-                                COALESCE(TRY_STRPTIME(Column1, '%d-%m-%Y')::DATE, TRY_CAST(Column1 AS DATE)) as date,
-                                Column2 as invoice_number, Column3 as credit_notification_letter_number, Column4 as buyer_type,
-                                Column5 as tax_registration_id, Column6 as buyer_name, 
-                                TRY_CAST(Column7 AS DECIMAL(15,2)) as total_invoice_amount,
-                                TRY_CAST(Column8 AS DECIMAL(15,2)) as amount_exclude_vat,
-                                TRY_CAST(Column9 AS DECIMAL(15,2)) as non_vat_sales,
-                                TRY_CAST(Column10 AS DECIMAL(15,2)) as vat_zero_rate,
-                                TRY_CAST(Column11 AS DECIMAL(15,2)) as vat_local_sale,
-                                TRY_CAST(Column12 AS DECIMAL(15,2)) as vat_export,
-                                TRY_CAST(Column13 AS DECIMAL(15,2)) as vat_local_sale_state_burden,
-                                TRY_CAST(Column14 AS DECIMAL(15,2)) as vat_withheld_by_national_treasury,
-                                TRY_CAST(Column15 AS DECIMAL(15,2)) as plt,
-                                TRY_CAST(Column16 AS DECIMAL(15,2)) as special_tax_on_goods,
-                                TRY_CAST(Column17 AS DECIMAL(15,2)) as special_tax_on_services,
-                                TRY_CAST(Column18 AS DECIMAL(15,2)) as accommodation_tax,
-                                TRY_CAST(Column19 AS DECIMAL(15,2)) as income_tax_redemption_rate,
-                                Column20 as notes, Column21 as description, Column22 as tax_declaration_status
+                                COALESCE(
+                                    TRY_STRPTIME(CAST(Column1 AS VARCHAR), '%d-%m-%Y')::DATE, 
+                                    TRY_STRPTIME(CAST(Column1 AS VARCHAR), '%d/%m/%Y')::DATE,
+                                    TRY_STRPTIME(CAST(Column1 AS VARCHAR), '%m/%d/%Y')::DATE,
+                                    TRY_STRPTIME(CAST(Column1 AS VARCHAR), '%Y-%m-%d')::DATE,
+                                    TRY_CAST(Column1 AS DATE)
+                                ) as date,
+                                REGEXP_REPLACE(CAST(Column2 AS VARCHAR), '\.0$', '') as invoice_number, 
+                                CAST(Column3 AS VARCHAR) as credit_notification_letter_number, 
+                                CAST(Column4 AS VARCHAR) as buyer_type,
+                                CAST(Column5 AS VARCHAR) as tax_registration_id, 
+                                CAST(Column6 AS VARCHAR) as buyer_name, 
+                                TRY_CAST(REPLACE(CAST(Column7 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as total_invoice_amount,
+                                TRY_CAST(REPLACE(CAST(Column8 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as amount_exclude_vat,
+                                TRY_CAST(REPLACE(CAST(Column9 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as non_vat_sales,
+                                TRY_CAST(REPLACE(CAST(Column10 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as vat_zero_rate,
+                                TRY_CAST(REPLACE(CAST(Column11 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as vat_local_sale,
+                                TRY_CAST(REPLACE(CAST(Column12 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as vat_export,
+                                TRY_CAST(REPLACE(CAST(Column13 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as vat_local_sale_state_burden,
+                                TRY_CAST(REPLACE(CAST(Column14 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as vat_withheld_by_national_treasury,
+                                TRY_CAST(REPLACE(CAST(Column15 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as plt,
+                                TRY_CAST(REPLACE(CAST(Column16 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as special_tax_on_goods,
+                                TRY_CAST(REPLACE(CAST(Column17 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as special_tax_on_services,
+                                TRY_CAST(REPLACE(CAST(Column18 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as accommodation_tax,
+                                TRY_CAST(REPLACE(CAST(Column19 AS VARCHAR), ',', '') AS DECIMAL(15,2)) as income_tax_redemption_rate,
+                                CAST(Column20 AS VARCHAR) as notes, 
+                                CAST(Column21 AS VARCHAR) as description, 
+                                CAST(Column22 AS VARCHAR) as tax_declaration_status
                             FROM df_view
-                            WHERE Column2 IS NOT NULL
-                            
-                            EXCEPT 
+                            WHERE Column2 IS NOT NULL 
+                              AND TRIM(CAST(Column2 AS VARCHAR)) != ''
+                              AND LOWER(TRIM(CAST(Column2 AS VARCHAR))) NOT IN ('nan', 'none', 'null')
+                              
+                            EXCEPT ALL
                             
                             SELECT {core_fields_str}
                             FROM tax_declaration
@@ -307,7 +315,6 @@ class ConsolidationService:
                     """)
                     self.con.unregister('df_view')
                     
-                    # Math Fix: Show completion of this file
                     percent_after = 20 + int(((i + 1) / total) * 30)
                     self.log(percent_after, "Importing", f"Ingested {fname}")
                     
@@ -326,13 +333,11 @@ class ConsolidationService:
                 self.log(100, "Failed", "No valid data could be extracted.", failed_file=current_file)
                 return
 
-            # Calculate how much % each TIN is worth (total phase is 40%)
             tin_weight = 40.0 / total_tins
 
             for idx, tin in enumerate(tins_processed):
                 tin_base_pct = 50 + (idx * tin_weight)
                 
-                # Micro-Step 1: Querying Data (10% of this TIN's progress)
                 self.log(int(tin_base_pct + (tin_weight * 0.1)), "Consolidating", f"Querying database for {tin} ({idx + 1}/{total_tins})...")
                 
                 df_all = self.con.sql(f"""
@@ -345,7 +350,6 @@ class ConsolidationService:
                     self.log(int(tin_base_pct + tin_weight), "Consolidating", f"Skipped {tin} (No data)")
                     continue
 
-                # Micro-Step 2: Stats Collection (20% of this TIN's progress)
                 self.log(int(tin_base_pct + (tin_weight * 0.2)), "Consolidating", f"Analyzing statistics for {tin}...")
                 
                 df_all['year'] = df_all['date'].dt.year
@@ -364,7 +368,6 @@ class ConsolidationService:
                         "count": row['count']
                     })
 
-                # Micro-Step 3: Setup Excel (30% of this TIN's progress)
                 self.log(int(tin_base_pct + (tin_weight * 0.3)), "Consolidating", f"Building Excel workbook for {tin}...")
                 
                 company_name = tin_company_map.get(tin, tin)
@@ -372,17 +375,17 @@ class ConsolidationService:
                 max_year = int(df_all['year'].max())
                 total_years_span = max(1, max_year - min_year + 1)
 
-                chunk_size = 1 if str(tin)[-9:] in SPECIAL_TINS_9_DIGITS else 4
+                chunk_size = 1 if tin in TINS_SPLIT_BY_YEAR else 4
                 
                 master_file = os.path.join(self.output_dir, f"{tin}.xlsx")
+                
+                # USING HIGH SPEED XLSXWRITER FOR EXPORT
                 workbook = xlsxwriter.Workbook(master_file, {'nan_inf_to_errors': True})
                 
                 current_start = min_year
                 has_sheets = False
                 
-                # Micro-Step 4: Writing Sheets (Scales dynamically up to 90% of this TIN's progress)
                 while current_start <= max_year:
-                    # Calculate how far through the years we are to update the progress bar inside the loop
                     progress_ratio = (current_start - min_year) / total_years_span
                     chunk_pct = tin_base_pct + (tin_weight * 0.3) + (tin_weight * 0.6 * progress_ratio)
                     
@@ -405,12 +408,11 @@ class ConsolidationService:
                 if has_sheets:
                     workbook.close()
 
-                # Micro-Step 5: Finished (100% of this TIN's progress)
                 self.log(int(tin_base_pct + tin_weight), "Consolidating", f"Saved {tin}.xlsx")
 
             # 4. GENERATE SUMMARY REPORT
             self.log(90, "Finalizing", "Updating Summary Report...")
-            self.generate_summary_report_fast(all_summary_stats)
+            self.generate_summary_report(all_summary_stats)
 
             shutil.rmtree(os.path.join(BASE_DIR, 'temp_extract'), ignore_errors=True)
             
@@ -426,85 +428,78 @@ class ConsolidationService:
             self.log(100, "Failed", str(e), failed_file=current_file)
         finally:
             self.con.close()
+            
+            if dropped_logs:
+                print("\n" + "="*70)
+                print("🚨 PANDAS DATA CONSOLIDATION - DROPPED ROWS SUMMARY 🚨")
+                print("="*70)
+                for log in dropped_logs:
+                    print(log)
+                print("="*70 + "\n")
 
     def write_sheet_data_fast(self, workbook, ws, df, company_name):
-        """High-speed vectorized formatting using XlsxWriter matching original design exactly."""
+        """Populates a specific worksheet with formatted data using high-speed xlsxwriter."""
         
-        # --- PREPARE FORMATS ---
-        f_title = workbook.add_format({'font_name': 'Khmer OS Muol Light', 'font_size': 12, 'align': 'left', 'valign': 'vcenter'})
-        f_header = workbook.add_format({'font_name': 'Khmer OS Siemreap', 'font_size': 11, 'bold': True, 'bg_color': '#B0DBBC', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+        # --- STYLES ---
+        font_title = workbook.add_format({'font_name': 'Khmer OS Muol Light', 'size': 12, 'align': 'center', 'valign': 'vcenter'})
+        font_header = workbook.add_format({'font_name': 'Khmer OS Siemreap', 'size': 11, 'bold': True, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'bg_color': '#B0DBBC', 'text_wrap': True})
         
-        # Data formats (Alternating rows + Number/Date variations)
-        base_even = {'font_name': 'Khmer OS Siemreap', 'font_size': 11, 'border': 1, 'border_color': '#DDDDDD', 'bg_color': '#F5F5F5', 'valign': 'vcenter'}
-        base_odd = {'font_name': 'Khmer OS Siemreap', 'font_size': 11, 'border': 1, 'border_color': '#DDDDDD', 'valign': 'vcenter'}
-        
-        f_even = workbook.add_format(base_even)
-        f_odd = workbook.add_format(base_odd)
-        
-        f_even_date = workbook.add_format({**base_even, 'num_format': 'DD-MM-YYYY', 'align': 'center'})
-        f_odd_date = workbook.add_format({**base_odd, 'num_format': 'DD-MM-YYYY', 'align': 'center'})
-        
-        f_even_num = workbook.add_format({**base_even, 'num_format': '#,##0'})
-        f_odd_num = workbook.add_format({**base_odd, 'num_format': '#,##0'})
+        format_dict = {
+            'normal': workbook.add_format({'font_name': 'Khmer OS Siemreap', 'size': 11, 'border': 1, 'valign': 'vcenter'}),
+            'alt': workbook.add_format({'font_name': 'Khmer OS Siemreap', 'size': 11, 'border': 1, 'valign': 'vcenter', 'bg_color': '#F5F5F5'}),
+            'date_normal': workbook.add_format({'font_name': 'Khmer OS Siemreap', 'size': 11, 'border': 1, 'valign': 'vcenter', 'num_format': 'dd-mm-yyyy', 'align': 'center'}),
+            'date_alt': workbook.add_format({'font_name': 'Khmer OS Siemreap', 'size': 11, 'border': 1, 'valign': 'vcenter', 'bg_color': '#F5F5F5', 'num_format': 'dd-mm-yyyy', 'align': 'center'}),
+            'num_normal': workbook.add_format({'font_name': 'Khmer OS Siemreap', 'size': 11, 'border': 1, 'valign': 'vcenter', 'num_format': '#,##0'}),
+            'num_alt': workbook.add_format({'font_name': 'Khmer OS Siemreap', 'size': 11, 'border': 1, 'valign': 'vcenter', 'bg_color': '#F5F5F5', 'num_format': '#,##0'}),
+        }
 
-        # --- 1. SET COLUMN WIDTHS ---
-        widths = [
-            8, 6, 14, 18, 15, 15, 18, 30, 20, 18, 18, 18, 18, 18, 18, 
-            18, 18, 18, 18, 18, 15, 20, 25, 20, 25
-        ]
-        for idx, w in enumerate(widths):
-            ws.set_column(idx, idx, w)
-
-        # --- 2. TITLE (Row 0) ---
+        # --- 1. TITLE (Row 1) ---
         title = f"បញ្ជីទិន្នានុប្បវត្តិលក់ របស់ {company_name}"
-        ws.merge_range(0, 0, 0, 24, title, f_title)
+        ws.merge_range('A1:Y1', title, font_title)
+        ws.set_row(0, 30)
 
-        # --- 3. HEADERS (Rows 1 & 2) ---
-        vertical_merges = [
-            (0, "ឆ្នាំ"), (1, "ល.រ"), (2, "កាលបរិច្ឆេទ"), (3, "លេខវិក្កយបត្រ ឬប្រតិវេទគយ"), 
-            (4, "លេខលិខិតជូនដំណឹងឥណទាន"), (8, "តម្លៃសរុបលើវិក្កយបត្រ"), (11, "អាករលើតម្លៃបន្ថែមអត្រា ០% "),
-            (14, "អាករលើតម្លៃបន្ថែម(បន្ទុករដ្ឋ)"), (15, "អតប កាត់ទុកដោយរតនាគារជាតិ"), 
-            (16, "អាករបំភ្លឺសាធារណៈ"), (17, "អាករពិសេសលើទំនិញមួយចំនួន"), 
-            (18, "អាករពិសេសលើសេវាមួយចំនួន"), (19, "អាករលើការស្នាក់នៅ"), 
-            (20, "អត្រាប្រាក់រំដោះពន្ធលើប្រាក់ចំណូល"), (21, "កំណត់សម្គាល់"), 
-            (22, "បរិយាយ"), (23, "ស្ថានភាពប្រកាសពន្ធ"), (24, "ស្នាក់ការ")
-        ]
-        
-        for col, text in vertical_merges:
-            ws.merge_range(1, col, 2, col, text, f_header)
+        # --- 2. HEADERS (Row 2 & 3) ---
+        headers = {
+            0: ("ឆ្នាំ", ""), 1: ("ល.រ", ""), 2: ("កាលបរិច្ឆេទ", ""), 3: ("លេខវិក្កយបត្រ ឬប្រតិវេទគយ", ""), 
+            4: ("លេខលិខិតជូនដំណឹងឥណទាន", ""), 5: ("អ្នកទិញ", "ប្រភេទ"), 6: ("", "លេខសម្គាល់ចុះបញ្ជីពន្ធដា"), 
+            7: ("", "ឈ្មោះ"), 8: ("តម្លៃសរុបលើវិក្កយបត្រ", ""), 9: ("តម្លៃ​​មិន​រួមអតប និងមិនជាប់​អតប​", "តម្លៃមិនរួមអតប"), 
+            10: ("", "ការលក់មិនជាប់អតប"), 11: ("អាករលើតម្លៃបន្ថែមអត្រា ០% ", ""), 12: ("អាករលើតម្លៃបន្ថែម", "ការលក់ក្នុងស្រុក"), 
+            13: ("", "អតបលើការនាំចេញ"), 14: ("អាករលើតម្លៃបន្ថែម(បន្ទុករដ្ឋ)", ""), 15: ("អតប កាត់ទុកដោយរតនាគារជាតិ", ""), 
+            16: ("អាករបំភ្លឺសាធារណៈ", ""), 17: ("អាករពិសេសលើទំនិញមួយចំនួន", ""), 18: ("អាករពិសេសលើសេវាមួយចំនួន", ""), 
+            19: ("អាករលើការស្នាក់នៅ", ""), 20: ("អត្រាប្រាក់រំដោះពន្ធលើប្រាក់ចំណូល", ""), 21: ("កំណត់សម្គាល់", ""), 
+            22: ("បរិយាយ", ""), 23: ("ស្ថានភាពប្រកាសពន្ធ", ""), 24: ("ស្នាក់ការ", "")
+        }
 
-        # Horizontal group merges
-        ws.merge_range(1, 5, 1, 7, "អ្នកទិញ", f_header)
-        ws.write(2, 5, "ប្រភេទ", f_header)
-        ws.write(2, 6, "លេខសម្គាល់ចុះបញ្ជីពន្ធដា", f_header)
-        ws.write(2, 7, "ឈ្មោះ", f_header)
+        for col, (p_text, c_text) in headers.items():
+            ws.write(1, col, p_text, font_header)
+            ws.write(2, col, c_text, font_header)
 
-        ws.merge_range(1, 9, 1, 10, "តម្លៃ​​មិន​រួមអតប និងមិនជាប់​អតប​", f_header)
-        ws.write(2, 9, "តម្លៃមិនរួមអតប", f_header)
-        ws.write(2, 10, "ការលក់មិនជាប់អតប", f_header)
+        # --- 3. APPLY MERGES ---
+        ws.merge_range('F2:H2', "អ្នកទិញ", font_header)
+        ws.merge_range('J2:K2', "តម្លៃ​​មិន​រួមអតប និងមិនជាប់​អតប​", font_header)
+        ws.merge_range('M2:N2', "អាករលើតម្លៃបន្ថែម", font_header)
 
-        ws.merge_range(1, 12, 1, 13, "អាករលើតម្លៃបន្ថែម", f_header)
-        ws.write(2, 12, "ការលក់ក្នុងស្រុក", f_header)
-        ws.write(2, 13, "អតបលើការនាំចេញ", f_header)
+        vertical_cols = [0, 1, 2, 3, 4, 8, 11, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
+        for col in vertical_cols:
+            ws.merge_range(1, col, 2, col, headers[col][0], font_header)
 
-        # --- 4. DATA WRITING (High Speed Row Writes) ---
+        # --- 4. DATA WRITING ---
         df = df.sort_values('date')
-        row_idx = 3
+        current_row = 3
         counter = 1
         previous_year = None
-        
+
         for _, row in df.iterrows():
             year = row['date'].year if pd.notnull(row['date']) else ""
             if previous_year is not None and year != previous_year:
-                row_idx += 1 
+                current_row += 1 
             previous_year = year
 
-            is_even = (counter % 2 == 0)
-            fmt_base = f_even if is_even else f_odd
-            fmt_date = f_even_date if is_even else f_odd_date
-            fmt_num = f_even_num if is_even else f_odd_num
+            is_alt = (counter % 2 == 0)
+            fmt_base = format_dict['alt'] if is_alt else format_dict['normal']
+            fmt_date = format_dict['date_alt'] if is_alt else format_dict['date_normal']
+            fmt_num = format_dict['num_alt'] if is_alt else format_dict['num_normal']
 
-            # Array matching the 25 columns
             vals = [
                 year, counter, row['date'], row['invoice_number'], row['credit_notification_letter_number'],
                 row['buyer_type'], row['tax_registration_id'], row['buyer_name'], row['total_invoice_amount'],
@@ -514,29 +509,45 @@ class ConsolidationService:
                 row['income_tax_redemption_rate'], row['notes'], row['description'], row['tax_declaration_status'], 
                 row['branch_name']
             ]
-            
-            for c_idx, val in enumerate(vals):
-                if pd.isna(val) or val is None:
-                    ws.write(row_idx, c_idx, "", fmt_base)
-                elif c_idx == 2:
-                    ws.write_datetime(row_idx, c_idx, val, fmt_date)
-                elif 8 <= c_idx <= 19:
-                    ws.write_number(row_idx, c_idx, float(val), fmt_num)
-                else:
-                    ws.write(row_idx, c_idx, str(val), fmt_base)
 
-            row_idx += 1
+            for i, val in enumerate(vals):
+                if pd.isna(val):
+                    val = ""
+                    
+                if i == 2 and val:
+                    ws.write_datetime(current_row, i, val, fmt_date)
+                elif 8 <= i <= 20 and val != "":
+                    try:
+                        ws.write_number(current_row, i, float(val), fmt_num)
+                    except ValueError:
+                        ws.write(current_row, i, val, fmt_base)
+                else:
+                    ws.write(current_row, i, val, fmt_base)
+
+            current_row += 1
             counter += 1
 
-    def generate_summary_report_fast(self, summary_data_list):
-        """High-speed vectorized summary report generator matching openpyxl design."""
+        # --- 5. WIDTHS ---
+        widths = {
+            0: 8, 1: 6, 2: 14, 3: 18, 4: 15, 5: 15, 6: 18, 7: 30, 
+            8: 20, 9: 18, 10: 18, 11: 18, 12: 18, 13: 18, 14: 18, 
+            15: 18, 16: 18, 17: 18, 18: 18, 19: 18, 20: 15, 21: 20, 22: 25, 23: 20, 24: 25
+        }
+        for col, w in widths.items():
+            ws.set_column(col, col, w)
+
+    def generate_summary_report(self, summary_data_list):
+        """
+        Update the master summary Excel file.
+        Uses openpyxl engine so it seamlessly updates your existing file format.
+        """
         if not summary_data_list:
             return None
 
         try:
-            filepath = os.path.join(self.output_dir, "0.Import_Summary.xlsx")
+            filename = "0.Import_Summary.xlsx"
+            filepath = os.path.join(self.output_dir, filename)
             
-            # 1. Load existing data if available
             existing_data = []
             if os.path.exists(filepath):
                 try:
@@ -553,7 +564,6 @@ class ConsolidationService:
                     logger.warning(f"Error reading existing summary: {e}")
                     existing_data = []
 
-            # 2. Merge New Data
             updated_tins = set(str(item['tin']) for item in summary_data_list)
             final_data = [row for row in existing_data if str(row.get('TIN')) not in updated_tins]
             
@@ -567,89 +577,93 @@ class ConsolidationService:
             
             df = pd.DataFrame(final_data)
             if df.empty: return None
+            
             if 'No' in df.columns: df = df.drop(columns=['No'])
 
             df['TIN'] = df['TIN'].astype(str)
             df = df.sort_values(by=['TIN', 'Year'])
+            df.insert(0, 'No', 0) 
             
             total_transactions = df['Total Transactions'].sum()
             unique_tins_count = df['TIN'].nunique()
 
-            # 3. WRITE VIA XLSXWRITER
-            workbook = xlsxwriter.Workbook(filepath)
-            worksheet = workbook.add_worksheet('Summary')
-            
-            # Configure columns
-            worksheet.set_column(0, 0, 15)
-            worksheet.set_column(1, 1, 25)
-            worksheet.set_column(2, 2, 35)
-            worksheet.set_column(3, 3, 10)
-            worksheet.set_column(4, 4, 20)
-            
-            # Formatting definitions
-            f_head = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#4472C4', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            
-            fmt_dict = {
-                'white': {
-                    'center': workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'}),
-                    'left': workbook.add_format({'border': 1, 'align': 'left', 'valign': 'vcenter', 'text_wrap': True}),
-                    'num': workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0'})
-                },
-                'grey': {
-                    'center': workbook.add_format({'border': 1, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter'}),
-                    'left': workbook.add_format({'border': 1, 'bg_color': '#D9E1F2', 'align': 'left', 'valign': 'vcenter', 'text_wrap': True}),
-                    'num': workbook.add_format({'border': 1, 'bg_color': '#D9E1F2', 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0'})
-                }
-            }
-            
-            f_grand_total = workbook.add_format({'bold': True, 'bg_color': '#ACB9CA', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-            f_grand_total_num = workbook.add_format({'bold': True, 'bg_color': '#ACB9CA', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'num_format': '#,##0'})
+            with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+                df.to_excel(writer, index=False, sheet_name='Summary')
+                
+                worksheet = writer.sheets['Summary']
+                
+                header_font = Font(bold=True, color="FFFFFF")
+                header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+                thin_border = Side(style='thin', color="000000")
+                border = Border(left=thin_border, right=thin_border, top=thin_border, bottom=thin_border)
+                center_align = Alignment(horizontal='center', vertical='center')
+                left_align = Alignment(horizontal='left', vertical='center', wrap_text=True)
+                fill_white = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
+                fill_grey = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+                
+                for cell in worksheet[1]:
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = center_align
+                    cell.border = border
 
-            # Write Headers
-            headers = ["No", "TIN", "Month", "Year", "Total Transactions"]
-            for col_num, data in enumerate(headers):
-                worksheet.write(0, col_num, data, f_head)
+                current_tin = None
+                start_row = 2
+                tin_counter = 1
+                use_grey_fill = False 
+                
+                for row in range(2, worksheet.max_row + 2):
+                    cell_value = worksheet.cell(row=row, column=2).value if row <= worksheet.max_row else None
+                    
+                    if cell_value != current_tin:
+                        if current_tin is not None:
+                            end_row = row - 1
+                            worksheet.cell(row=start_row, column=1).value = tin_counter
+                            tin_counter += 1
+                            
+                            if end_row > start_row:
+                                worksheet.merge_cells(start_row=start_row, start_column=1, end_row=end_row, end_column=1)
+                                worksheet.merge_cells(start_row=start_row, start_column=2, end_row=end_row, end_column=2)
+                            
+                            current_fill = fill_grey if use_grey_fill else fill_white
+                            for r in range(start_row, end_row + 1):
+                                for c in range(1, 6):
+                                    cell = worksheet.cell(row=r, column=c)
+                                    cell.fill = current_fill
+                                    cell.border = border
+                                    if c == 3: cell.alignment = left_align
+                                    else: cell.alignment = center_align
+                                    if c == 5: cell.number_format = '#,##0'
 
-            # Write Data with Smart Merging
-            row_idx = 1
-            tin_counter = 1
-            use_grey = False
+                            use_grey_fill = not use_grey_fill
+                        
+                        current_tin = cell_value
+                        start_row = row
 
-            for tin, group in df.groupby('TIN', sort=False):
-                span = len(group)
-                end_row = row_idx + span - 1
-                color_key = 'grey' if use_grey else 'white'
-                f_c = fmt_dict[color_key]['center']
-                f_l = fmt_dict[color_key]['left']
-                f_n = fmt_dict[color_key]['num']
+                last_row = worksheet.max_row + 1
+                worksheet.cell(row=last_row, column=1).value = "GRAND TOTAL"
+                worksheet.cell(row=last_row, column=2).value = f"Total TINs: {unique_tins_count}"
+                worksheet.cell(row=last_row, column=5).value = total_transactions
+                
+                total_font = Font(bold=True)
+                total_fill = PatternFill(start_color="ACB9CA", end_color="ACB9CA", fill_type="solid")
+                
+                for col in range(1, 6):
+                    cell = worksheet.cell(row=last_row, column=col)
+                    cell.font = total_font
+                    cell.fill = total_fill
+                    cell.border = border
+                    cell.alignment = center_align
+                    if col == 5: cell.number_format = '#,##0'
 
-                if span > 1:
-                    worksheet.merge_range(row_idx, 0, end_row, 0, tin_counter, f_c)
-                    worksheet.merge_range(row_idx, 1, end_row, 1, tin, f_c)
-                else:
-                    worksheet.write(row_idx, 0, tin_counter, f_c)
-                    worksheet.write(row_idx, 1, tin, f_c)
-
-                for i, (_, row_data) in enumerate(group.iterrows()):
-                    c_row = row_idx + i
-                    worksheet.write(c_row, 2, row_data['Month'], f_l)
-                    worksheet.write(c_row, 3, row_data['Year'], f_c)
-                    worksheet.write(c_row, 4, row_data['Total Transactions'], f_n)
-
-                row_idx += span
-                tin_counter += 1
-                use_grey = not use_grey
-
-            # Write Grand Total Row
-            worksheet.write(row_idx, 0, "GRAND TOTAL", f_grand_total)
-            worksheet.write(row_idx, 1, f"Total TINs: {unique_tins_count}", f_grand_total)
-            worksheet.write(row_idx, 2, "", f_grand_total)
-            worksheet.write(row_idx, 3, "", f_grand_total)
-            worksheet.write(row_idx, 4, total_transactions, f_grand_total_num)
-
-            workbook.close()
+                worksheet.column_dimensions['A'].width = 15
+                worksheet.column_dimensions['B'].width = 25
+                worksheet.column_dimensions['C'].width = 35
+                worksheet.column_dimensions['D'].width = 10
+                worksheet.column_dimensions['E'].width = 20
+                
             return filepath
-
+            
         except Exception as e:
             logger.error(f"Error generating summary report: {e}")
             return None

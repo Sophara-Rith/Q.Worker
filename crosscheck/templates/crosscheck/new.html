@@ -102,8 +102,6 @@
                         <span :class="state === 'preview' ? 'text-indigo-600 dark:text-indigo-400 drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : ''" class="transition-all duration-300 uppercase tracking-wider">3. Verify</span>
                     </div>
 
-                    <!-- Download Excel Template Button -->
-
                     <a
                         href="{% url 'core:download_template' %}"
                         class="flex items-center gap-2 px-4 py-2 text-[11px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-300 dark:border-emerald-500/30 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-500/20 hover:-translate-y-0.5 transition-all shadow-sm ring-1 ring-inset ring-emerald-500/10 group"
@@ -133,12 +131,13 @@
                     type="text"
                     x-model="inputCode"
                     @keyup="validateCode()"
-                    class="block w-full text-center text-lg font-mono tracking-widest border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 uppercase py-3 shadow-inner transition-all leading-relaxed"
+                    :disabled="isCheckingDB"
+                    class="block w-full text-center text-lg font-mono tracking-widest border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 uppercase py-3 shadow-inner transition-all leading-relaxed disabled:opacity-50"
                     placeholder="OVATR..."
                     maxlength="18"
                     autofocus
                 />
-                <div class="text-[10px] font-bold tracking-widest uppercase mt-3 h-4 transition-colors duration-300" :class="codeError.includes('Verifying') ? 'text-indigo-500 animate-pulse' : 'text-rose-500'" x-text="codeError"></div>
+                <div class="text-[10px] font-bold tracking-widest uppercase mt-3 h-4 transition-colors duration-300" :class="(isCheckingDB || codeError.includes('Verifying')) ? 'text-indigo-500 animate-pulse' : 'text-rose-500'" x-text="isCheckingDB ? 'Querying Database...' : codeError"></div>
             </div>
         </div>
 
@@ -402,8 +401,15 @@
                             <input type="text" x-model="formData.company_name_kh" class="w-full text-sm border border-slate-300 dark:border-slate-600 dark:bg-[#0b1121] dark:text-white rounded-xl px-4 py-3.5 font-bold font-khmer text-slate-800 focus:ring-2 focus:ring-indigo-500/50 shadow-sm transition-all" />
                         </div>
                         <div>
-                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">VATIN (New)</label>
-                            <input type="text" x-model="formData.vatin" class="w-full text-sm font-mono border border-indigo-200 dark:border-indigo-500/30 rounded-xl px-4 py-3.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-900 dark:text-indigo-300 font-extrabold focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all" />
+                            <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5 flex items-center"> VATIN (New) <span class="text-rose-500 text-sm ml-1">*</span> </label>
+                            <input
+                                id="vatinInput"
+                                type="text"
+                                x-model="formData.vatin"
+                                @input="vatinError = false"
+                                :class="vatinError ? 'border-rose-500 ring-2 ring-rose-500/50 bg-rose-50 dark:bg-rose-900/20 text-rose-900 dark:text-rose-300' : 'border-indigo-200 dark:border-indigo-500/30 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-900 dark:text-indigo-300'"
+                                class="w-full text-sm font-mono rounded-xl px-4 py-3.5 font-extrabold focus:ring-2 focus:ring-indigo-500 shadow-sm transition-all"
+                            />
                         </div>
                         <div>
                             <label class="block text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-1.5">VATIN (Old)</label>
@@ -573,7 +579,7 @@
                 <div class="lg:col-span-12 bg-white dark:bg-slate-800/80 backdrop-blur-sm p-6 lg:p-8 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700">
                     <div class="flex justify-between items-center mb-6 border-b border-slate-100 dark:border-slate-700/50 pb-3">
                         <h4 class="text-xs font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"></path></svg>
                             E. សកម្មភាពអាជីវកម្ម (Business Activities)
                         </h4>
                         <button @click="formData.business_activities.push({no:'', code:'', name:'', desc:'', type:''})" class="text-xs bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-4 py-1.5 rounded-full font-bold hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors shadow-sm ring-1 ring-inset ring-indigo-500/20">+ Add Row</button>
@@ -792,6 +798,7 @@
             state: 'locked', // locked, upload, preview
             inputCode: '',
             codeError: '',
+            isCheckingDB: false,
             ovatrCode: '',
             isDragging: false,
             isProcessing: false,
@@ -799,8 +806,9 @@
             isSaving: false,
             saveMessage: '',
             showScrollButton: false,
+            vatinError: false,
+            tempFilePath: '',
 
-            // For the dropdown menus
             khmerMonths: ['មករា', 'កុម្ភៈ', 'មីនា', 'មេសា', 'ឧសភា', 'មិថុនា', 'កក្កដា', 'សីហា', 'កញ្ញា', 'តុលា', 'វិច្ឆិកា', 'ធ្នូ'],
 
             uiState: {
@@ -830,13 +838,11 @@
                 taxpayer_type: '',
                 tax_year: '',
                 registered_entity: '',
-
                 // Contact
                 phone: '',
                 email: '',
                 address_main: '',
                 address_office: '',
-
                 // Operations
                 employee_count: '',
                 total_salary: '',
@@ -845,12 +851,10 @@
                 enterprise_form: '',
                 add_ent_form: '',
                 signage: '',
-
                 // Tables
                 business_activities: [],
                 enterprise_accounts: [],
                 related_institutions: [],
-
                 // Report Info specific fields
                 i_moc_number: '',
                 i_moc_date: '',
@@ -859,7 +863,6 @@
                 i_vat_cert_date: '',
                 i_contact_position: '',
                 i_amount_requested: '',
-
                 // Estimates
                 h_date: '',
                 h_real_12m: '',
@@ -914,7 +917,43 @@
                 return `ថ្ងៃទី${day} ខែ${this.khmerMonths[monthIndex]} ឆ្នាំ${year}`;
             },
 
-            validateCode() {
+            // --- THE FIX: Aggressive Date Hunting Parser ---
+            convertToISODate(dateStr) {
+                if (!dateStr || typeof dateStr !== 'string') return '';
+
+                // 1. Convert Khmer Numerals to Arabic
+                const khmerNums = ['០', '១', '២', '៣', '៤', '៥', '៦', '៧', '៨', '៩'];
+                let norm = dateStr;
+                for (let i = 0; i < 10; i++) {
+                    norm = norm.split(khmerNums[i]).join(i.toString());
+                }
+
+                // 2. Remove zero-width spaces and trim
+                norm = norm.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+
+                // 3. If already standard ISO YYYY-MM-DD, return immediately
+                if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) return norm;
+
+                // 4. Hunt for the numbers bypassing all spacing/text noise
+                let nums = norm.match(/\d+/g) || [];
+                let year = nums.find((n) => n.length === 4);
+                if (!year) return norm; // Fallback to original string if no year exists
+
+                let day = nums.find((n) => n.length <= 2) || '01';
+                day = day.padStart(2, '0');
+
+                let month = '01';
+                for (let i = 0; i < this.khmerMonths.length; i++) {
+                    if (norm.includes(this.khmerMonths[i])) {
+                        month = (i + 1).toString().padStart(2, '0');
+                        break;
+                    }
+                }
+
+                return `${year}-${month}-${day}`;
+            },
+
+            async validateCode() {
                 const code = this.inputCode.toUpperCase();
                 if (code.length === 0) {
                     this.codeError = '';
@@ -924,15 +963,113 @@
                     this.codeError = 'Must start with "OVATR"';
                     return;
                 }
+
                 if (code.length === 18) {
                     this.codeError = '';
-                    this.isProcessing = true;
-                    setTimeout(() => {
+                    this.isCheckingDB = true;
+
+                    try {
+                        const response = await fetch(`/crosscheck/api/check-ovatr/${encodeURIComponent(code)}/`);
+                        const result = await response.json();
+
+                        if (result.status === 'success' && result.data) {
+                            const dbData = result.data;
+                            const dateFields = ['i_moc_date', 'i_patent_date', 'i_vat_cert_date', 'reg_date', 'success_date', 'h_date'];
+
+                            Object.keys(dbData).forEach((key) => {
+                                if (this.formData.hasOwnProperty(key)) {
+                                    if (dateFields.includes(key) && dbData[key]) {
+                                        this.formData[key] = this.convertToISODate(dbData[key]);
+                                    } else {
+                                        this.formData[key] = dbData[key] || '';
+                                    }
+                                }
+                            });
+
+                            if (typeof dbData.business_activities === 'string') {
+                                try {
+                                    this.formData.business_activities = JSON.parse(dbData.business_activities);
+                                } catch (e) {}
+                            }
+                            if (typeof dbData.enterprise_accounts === 'string') {
+                                try {
+                                    this.formData.enterprise_accounts = JSON.parse(dbData.enterprise_accounts);
+                                } catch (e) {}
+                            }
+                            if (typeof dbData.related_institutions === 'string') {
+                                try {
+                                    this.formData.related_institutions = JSON.parse(dbData.related_institutions);
+                                } catch (e) {}
+                            }
+
+                            if (dbData.i_contact_person) {
+                                let match = dbData.i_contact_person.match(/^(លោក|លោកស្រី|កញ្ញា)\s+(.*)$/);
+                                if (match) {
+                                    this.uiState.contact_title = match[1];
+                                    this.uiState.contact_name = match[2];
+                                } else {
+                                    this.uiState.contact_name = dbData.i_contact_person;
+                                }
+                            }
+
+                            if (dbData.i_auditor_names) {
+                                let auds = dbData.i_auditor_names.split(',').map((a) => a.trim());
+                                this.uiState.auditors = [];
+                                auds.forEach((a) => {
+                                    let match = a.match(/^(លោក|លោកស្រី|កញ្ញា)\s+(.*)$/);
+                                    if (match) {
+                                        this.uiState.auditors.push({title: match[1], name: match[2]});
+                                    } else {
+                                        this.uiState.auditors.push({title: 'លោក', name: a});
+                                    }
+                                });
+                                if (this.uiState.auditors.length === 0) this.uiState.auditors = [{title: 'លោក', name: ''}];
+                            }
+
+                            // --- THE FIX: Requested Period (Robust string index scanner) ---
+                            if (dbData.i_request_date) {
+                                let str = dbData.i_request_date.replace(/[\u200B-\u200D\uFEFF]/g, '');
+                                let years = str.match(/(\d{4})/g);
+
+                                let monthsFound = [];
+                                this.khmerMonths.forEach((m) => {
+                                    let idx = str.indexOf(m);
+                                    if (idx !== -1) {
+                                        monthsFound.push({month: m, index: idx});
+                                        let lastIdx = str.lastIndexOf(m);
+                                        if (lastIdx !== idx) {
+                                            monthsFound.push({month: m, index: lastIdx}); // Catch duplicate months
+                                        }
+                                    }
+                                });
+                                monthsFound.sort((a, b) => a.index - b.index); // Sort by appearance in string
+
+                                if (monthsFound.length > 0) this.uiState.req_from_month = monthsFound[0].month;
+                                if (years && years.length > 0) this.uiState.req_from_year = years[0];
+
+                                if (monthsFound.length > 1) this.uiState.req_to_month = monthsFound[1].month;
+                                if (years && years.length > 1) this.uiState.req_to_year = years[1];
+                            }
+
+                            // --- THE FIX: Timeline & Submission robust parse ---
+                            if (dbData.i_audit_timeline) {
+                                let parts = dbData.i_audit_timeline.split('ដល់');
+                                if (parts.length > 0) this.uiState.audit_start = this.convertToISODate(parts[0]);
+                                if (parts.length > 1) this.uiState.audit_end = this.convertToISODate(parts[1]);
+                            }
+
+                            if (dbData.i_request_submission_date) {
+                                this.uiState.request_submission_date = this.convertToISODate(dbData.i_request_submission_date);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Database connection error during lookup:', error);
+                    } finally {
+                        this.isCheckingDB = false;
                         this.ovatrCode = code;
                         this.state = 'upload';
                         this.inputCode = '';
-                        this.isProcessing = false;
-                    }, 500);
+                    }
                 } else if (code.length > 5) {
                     this.codeError = `Verifying... (${code.length}/18)`;
                 } else {
@@ -944,6 +1081,7 @@
                 this.isDragging = false;
                 if (e.dataTransfer.files.length > 0) this.uploadFile(e.dataTransfer.files[0]);
             },
+
             handleFileSelect(e) {
                 if (e.target.files.length > 0) this.uploadFile(e.target.files[0]);
             },
@@ -956,12 +1094,24 @@
                 this.isProcessing = true;
                 const fd = new FormData();
                 fd.append('file', file);
+
                 fetch('{% url "crosscheck:upload_init" %}', {method: 'POST', body: fd})
                     .then((r) => r.json())
                     .then((res) => {
                         this.isProcessing = false;
                         if (res.status === 'success') {
-                            this.formData = {...this.formData, ...res.data};
+                            // Safe merge: Only fill in blank gaps with Excel data
+                            for (let key in res.data) {
+                                if (this.formData.hasOwnProperty(key)) {
+                                    const currentValue = this.formData[key];
+                                    const isEmpty = currentValue === null || currentValue === undefined || currentValue === '' || (Array.isArray(currentValue) && currentValue.length === 0);
+
+                                    if (isEmpty && res.data[key]) {
+                                        this.formData[key] = res.data[key];
+                                    }
+                                }
+                            }
+
                             this.tempFilePath = res.temp_path;
                             this.state = 'preview';
                         } else {
@@ -970,7 +1120,7 @@
                     })
                     .catch((e) => {
                         this.isProcessing = false;
-                        console.error(e);
+                        console.error('Upload Error:', e);
                         alert('System Error: Upload failed.');
                     });
             },
@@ -983,6 +1133,16 @@
             },
 
             saveComputedData() {
+                if (!this.formData.vatin || this.formData.vatin.trim() === '') {
+                    this.vatinError = true;
+                    const vatinEl = document.getElementById('vatinInput');
+                    if (vatinEl) {
+                        vatinEl.scrollIntoView({behavior: 'smooth', block: 'center'});
+                        setTimeout(() => vatinEl.focus(), 300);
+                    }
+                    return;
+                }
+
                 if (this.uiState.req_from_year && this.uiState.req_to_year) {
                     if (parseInt(this.uiState.req_to_year) < parseInt(this.uiState.req_from_year)) {
                         alert('Validation Error: Requested Period "To Year" cannot be earlier than "From Year".');
@@ -1003,17 +1163,14 @@
                 this.isSaving = true;
                 this.saveMessage = 'Saving Company Info...';
 
-                // CREATE A COPY OF FORM DATA to safely manipulate before sending
                 let payload = {...this.formData};
                 payload.OVATR = this.ovatrCode;
 
-                // 1. Process Auditors
                 payload.i_auditor_names = this.uiState.auditors
                     .filter((a) => a.name.trim() !== '')
                     .map((a) => `${a.title} ${a.name}`)
                     .join(', ');
 
-                // 2. Process Requested Period
                 let reqDate = '';
                 if (this.uiState.req_from_month && this.uiState.req_from_year) {
                     reqDate = `ខែ${this.uiState.req_from_month} ឆ្នាំ${this.uiState.req_from_year}`;
@@ -1021,7 +1178,6 @@
                 }
                 payload.i_request_date = reqDate;
 
-                // 3. Process Audit Timeline
                 let auditTimeline = '';
                 if (this.uiState.audit_start) {
                     auditTimeline = `ពី${this.formatKhmerDate(this.uiState.audit_start)}`;
@@ -1029,11 +1185,9 @@
                 }
                 payload.i_audit_timeline = auditTimeline;
 
-                // 4. Process Contact & Submission Date
                 payload.i_contact_person = this.uiState.contact_name.trim() !== '' ? `${this.uiState.contact_title} ${this.uiState.contact_name}` : '';
                 payload.i_request_submission_date = this.uiState.request_submission_date ? `ស្នើសុំបង្វិលសងអាករលើតម្លៃបន្ថែមតាមអនឡាញចុះ${this.formatKhmerDate(this.uiState.request_submission_date)}` : '';
 
-                // 5. STRIP COMMAS FROM ALL NUMERIC FIELDS BEFORE SENDING TO DB
                 const numericFields = ['i_patent_amount', 'i_amount_requested', 'employee_count', 'total_salary', 'rent_per_month', 'h_real_12m', 'h_real_3m', 'h_est_12m', 'h_est_3m'];
                 numericFields.forEach((field) => {
                     if (payload[field]) {
@@ -1041,7 +1195,6 @@
                     }
                 });
 
-                // Send the payload instead of this.formData
                 fetch('{% url "crosscheck:save_company_info" %}', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}'}, body: JSON.stringify(payload)})
                     .then((response) => response.json())
                     .then((data) => {

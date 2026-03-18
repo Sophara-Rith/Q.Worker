@@ -102,6 +102,12 @@ DATABASES = {
     }
 }
 
+# Set to 10,000 files (Default is 100) to allow large batch uploads
+DATA_UPLOAD_MAX_NUMBER_FILES = 10000 
+
+# Set to 100MB (Default is 2.5MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600
+
 # ==========================================
 # SESSION & SECURITY SETTINGS
 # ==========================================

@@ -626,7 +626,7 @@
                 this.showToast('Generating Excel & Processing Summary...', 'success');
 
                 try {
-                    const response = await fetch(`/crosscheck/download_full_report/?ovatr_code=${ovatrCode}`);
+                    const response = await fetch(`/crosscheck/download_excel_report/?ovatr_code=${ovatrCode}`);
                     if (!response.ok) throw new Error('Failed to generate report on server.');
                     const arrayBuffer = await response.arrayBuffer();
 
@@ -686,7 +686,7 @@
                         }
                     }
 
-                    this.triggerDownload(arrayBuffer, `FullReport_${ovatrCode}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                    this.triggerDownload(arrayBuffer, `Audit_Result_${ovatrCode}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                     this.showToast('Excel Downloaded Successfully', 'success');
                 } catch (error) {
                     console.error('Error processing report:', error);

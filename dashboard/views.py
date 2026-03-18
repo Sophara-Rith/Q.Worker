@@ -1,11 +1,14 @@
 import duckdb
 import os
 import pandas as pd
+import logging
 from datetime import datetime
 from django.conf import settings
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+
+logger = logging.getLogger(__name__)
 
 def get_db_connection():
     # Helper to connect to the same DuckDB as Crosscheck app
@@ -111,45 +114,77 @@ def index(request):
     return render(request, 'dashboard/index.html', context)
 
 def update_buyer_names(request):
+    """
+    Handles uploaded Excel file to update English buyer names in the local DuckDB database.
+    """
     if request.method == 'POST' and request.FILES.get('company_info_file'):
         excel_file = request.FILES['company_info_file']
+        con = None
         
         try:
             # 1. Read the Excel File
-            # skiprows=1 assumes Row 1 is a Title, Row 2 is Headers, Row 3 is Data. 
-            # (Change to skiprows=0 if headers are on Row 1)
-            df = pd.read_excel(excel_file, sheet_name='UPDATE_COMPANY_INFO', skiprows=1)
+            # Removed skiprows=1 because the headers are on the very first row.
+            try:
+                df = pd.read_excel(excel_file, sheet_name='UPDATE_COMPANY_INFO')
+            except ValueError as e:
+                messages.error(request, f"Excel parsing error: Make sure the sheet 'UPDATE_COMPANY_INFO' exists. Detail: {str(e)}")
+                return redirect('dashboard:index')
+
+            # 2. Prevent KeyErrors: Clean column headers (strip spaces, convert to uppercase)
+            df.columns = df.columns.astype(str).str.strip().str.upper()
+
+            # 3. Validate Required Columns before proceeding
+            required_cols = ['TAX_REGISTRATION_ID', 'BUYER_NAME']
+            missing_cols = [col for col in required_cols if col not in df.columns]
             
-            # 2. Clean the Data
-            # Drop empty rows
+            if missing_cols:
+                error_msg = f"Missing required columns in uploaded file: {', '.join(missing_cols)}. Found: {', '.join(df.columns)}"
+                logger.error(error_msg)
+                messages.error(request, error_msg)
+                return redirect('dashboard:index')
+
+            # 4. Clean the Data
+            # Drop empty rows for the specific columns
             df = df.dropna(subset=['TAX_REGISTRATION_ID', 'BUYER_NAME'])
             
             # Extract exactly 9 digits from the Excel TIN (ignores branch codes/hyphens)
             df['CLEAN_TIN'] = df['TAX_REGISTRATION_ID'].astype(str).str.replace(r'\D', '', regex=True).str[:9]
             
-            # 3. Connect to DuckDB
+            # 5. Connect to DuckDB
+            # Ensure the database path matches your project structure (e.g., 'datawarehouse.duckdb')
             con = duckdb.connect('datawarehouse.duckdb')
             
-            # Register pandas dataframe as a virtual DuckDB table
+            # Register pandas dataframe as a virtual DuckDB table in memory
             con.register('df_updates', df)
             
-            # 4. Execute the Bulk Update
-            # Replace 'tax_declaration' with your actual DuckDB table name (e.g., 'sale' or 'purchase')
-            update_query = r"""
+            # 6. Execute the Bulk Update
+            # Replace 'tax_declaration' with your actual target table (e.g., 'sale')
+            update_query = """
                 UPDATE tax_declaration 
                 SET buyer_name = df_updates.BUYER_NAME
                 FROM df_updates
-                WHERE LEFT(REGEXP_REPLACE(CAST(tax_declaration.tax_registration_id AS VARCHAR), '\D', '', 'g'), 9) = df_updates.CLEAN_TIN
+                WHERE LEFT(REGEXP_REPLACE(CAST(tax_declaration.tax_registration_id AS VARCHAR), '[^0-9]', '', 'g'), 9) = df_updates.CLEAN_TIN
             """
             con.execute(update_query)
             
-            # Cleanup
-            con.unregister('df_updates')
-            con.close()
+            messages.success(request, f"Buyer names successfully updated to English from the uploaded file!")
             
-            messages.success(request, "Buyer names successfully updated to English!")
+        except duckdb.Error as db_err:
+            error_msg = f"Database update failed. Check if 'tax_declaration' table exists. Error: {str(db_err)}"
+            logger.error(error_msg)
+            messages.error(request, error_msg)
             
         except Exception as e:
+            logger.error(f"Error processing file: {str(e)}")
             messages.error(request, f"Error processing file: {str(e)}")
             
-        return redirect('dashboard:index')
+        finally:
+            # 7. Cleanup: ALWAYS run this, even if the code crashes above
+            if con:
+                try:
+                    con.unregister('df_updates')
+                except Exception:
+                    pass
+                con.close()
+                
+    return redirect('dashboard:index')

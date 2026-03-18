@@ -188,7 +188,7 @@
                 </div>
             </div>
 
-            <form method="POST" action="{% url 'dashboard:update_buyer_names' %}" enctype="multipart/form-data" class="relative z-10 flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto">
+            <form method="POST" action="{% url 'dashboard:update_buyer_names' %}" enctype="multipart/form-data" class="relative z-10 flex flex-col sm:flex-row items-center gap-3 w-full xl:w-auto" x-data="{ isSyncing: false }" @submit="isSyncing = true">
                 {% csrf_token %}
                 <div class="relative w-full sm:w-auto flex-1 xl:flex-none">
                     <input
@@ -210,9 +210,15 @@
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
                         Template
                     </a>
-                    <button type="submit" class="flex-1 sm:flex-none py-2.5 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-[11px] font-extrabold uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/30 hover:-translate-y-0.5 whitespace-nowrap flex items-center justify-center gap-2">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                        Sync
+
+                    <button
+                        type="submit"
+                        class="flex-1 sm:flex-none py-2.5 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white text-[11px] font-extrabold uppercase tracking-wider rounded-xl transition-all shadow-lg shadow-emerald-500/30 whitespace-nowrap flex items-center justify-center gap-2"
+                        :class="isSyncing ? 'opacity-75 cursor-not-allowed scale-95' : 'hover:-translate-y-0.5'"
+                        :disabled="isSyncing"
+                    >
+                        <svg class="w-3.5 h-3.5" :class="isSyncing ? 'animate-spin' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                        <span x-text="isSyncing ? 'SYNCING...' : 'SYNC'">Sync</span>
                     </button>
                 </div>
             </form>

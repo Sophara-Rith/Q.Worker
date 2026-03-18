@@ -14,7 +14,7 @@ urlpatterns = [
     path('report/', views.report_view, name='report'),
     path('api/report/data/', views.get_report_data, name='get_report_data'),
     path('api/report/update/', views.update_report_cell, name='update_report_cell'),
-    path('download_full_report/', views.download_full_report, name='download_full_report'),
+    path('download_excel_report/', views.download_excel_report, name='download_excel_report'),
     path('download_word_report/', views.download_word_report, name='download_word_report'),
 
     # --- APIs (Existing) ---
@@ -33,6 +33,7 @@ urlpatterns = [
     path('api/save-purchase/', views.save_purchase, name='save_purchase'),
     path('api/save-sale/', views.save_sale, name='save_sale'),
     path('api/save-reverse-charge/', views.save_reverse_charge, name='save_reverse_charge'),
+    path('api/check-ovatr/<str:ovatr_code>/', views.check_ovatr, name='check_ovatr'),
 
     # --- Processing & Stats APIs (Existing) ---
     path('api/generate-annex3/', views.generate_annex_iii, name='generate_annex3'),
